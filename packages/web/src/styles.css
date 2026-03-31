@@ -88,13 +88,12 @@ button:disabled {
   z-index: 1;
   display: grid;
   grid-template-columns: 1fr 380px;
-  grid-template-rows: auto auto 1fr;
-  gap: 18px;
-  padding: 24px;
+  grid-template-rows: auto 1fr;
+  gap: 14px;
+  padding: 18px;
 }
 
 .topbar,
-.workspace-banner,
 .board,
 .details-panel {
   backdrop-filter: blur(18px);
@@ -102,25 +101,45 @@ button:disabled {
 
 .topbar {
   grid-column: 1 / -1;
-  display: flex;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 24px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 14px 18px;
+  padding: 16px 18px;
   border: 1px solid var(--border);
   background: linear-gradient(180deg, rgba(20, 27, 56, 0.94), rgba(13, 18, 38, 0.72));
   border-radius: 28px;
   box-shadow: var(--shadow);
 }
 
+.topbar-brand,
+.topbar-heading {
+  display: grid;
+}
+
+.topbar-brand {
+  gap: 10px;
+  min-width: 0;
+}
+
+.topbar-heading {
+  gap: 2px;
+}
+
 .eyebrow {
-  margin: 0 0 10px;
+  margin: 0;
   color: var(--accent);
   text-transform: uppercase;
   letter-spacing: 0.2em;
   font-size: 0.72rem;
 }
 
-.topbar h1,
+.topbar h1 {
+  margin: 0;
+  font-size: clamp(1.3rem, 2vw, 1.95rem);
+  line-height: 1;
+}
+
 .details-panel h2,
 .modal h2 {
   margin: 0;
@@ -129,22 +148,33 @@ button:disabled {
 }
 
 .topbar-copy {
-  margin: 12px 0 0;
+  margin: 0;
   color: var(--muted);
   max-width: 54ch;
+  font-size: 0.9rem;
+}
+
+.topbar-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
 
 .topbar-controls {
-  display: grid;
-  gap: 14px;
-  align-content: start;
-  min-width: min(100%, 420px);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  align-self: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .topbar-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
   justify-content: flex-end;
 }
 
@@ -175,24 +205,54 @@ dt {
   outline: none;
 }
 
-.meta-chip,
-.workspace-banner {
+.select-inline {
+  width: auto;
+}
+
+.select-inline select {
+  min-width: min(240px, 100%);
+  padding: 10px 12px;
+}
+
+.meta-chip {
   display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  width: fit-content;
+  gap: 8px;
   border-radius: 999px;
-  padding: 10px 16px;
+  padding: 7px 11px;
   border: 1px solid var(--border);
   background: rgba(10, 14, 30, 0.84);
   color: var(--muted);
+  font-size: 0.78rem;
 }
 
-.workspace-banner {
-  grid-column: 1 / -1;
-  justify-self: start;
-  width: 100%;
+.meta-chip-status {
+  color: var(--text);
+}
+
+.status-dot {
+  width: 0.48rem;
+  height: 0.48rem;
+  border-radius: 999px;
+  background: var(--warning);
+  box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.12);
+}
+
+.meta-chip-status-ok .status-dot {
+  background: var(--success);
+  box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.12);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .button,
@@ -202,7 +262,7 @@ dt {
 .tab {
   border: 1px solid var(--border);
   border-radius: 16px;
-  padding: 11px 14px;
+  padding: 9px 12px;
   color: var(--text);
   background: linear-gradient(180deg, rgba(114, 200, 255, 0.18), rgba(114, 200, 255, 0.1));
 }
@@ -391,7 +451,7 @@ dt {
 
 .details-panel {
   grid-column: 2;
-  grid-row: 3;
+  grid-row: 2;
   display: grid;
   gap: 16px;
   padding: 22px;
@@ -567,11 +627,22 @@ dt {
 
 @media (max-width: 900px) {
   .topbar {
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
 
   .topbar-controls {
     min-width: 100%;
+    justify-content: flex-start;
+  }
+
+  .topbar-actions {
+    justify-content: flex-start;
+  }
+
+  .select-inline,
+  .select-inline select {
+    width: 100%;
+    min-width: 0;
   }
 
   .details-grid,

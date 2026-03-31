@@ -119,6 +119,7 @@ function ReactAppShell() {
         <TopBar
           workspaces={workspaces}
           selectedWorkspaceId={board.selectedWorkspaceId}
+          selectedWorkspaceName={selectedWorkspaceName}
           onWorkspaceChange={board.setWorkspaceSelection}
           onCreateWorkspace={() => board.setWorkspaceModalOpen(true)}
           onCreateTask={() => board.setTaskModalOpen(true)}
@@ -129,12 +130,8 @@ function ReactAppShell() {
           }}
           lastSyncedAt={syncedAt}
           boardCount={tasks.length}
+          runtimeStatus={board.healthQuery.data?.status ?? "connecting"}
         />
-
-        <div className="workspace-banner">
-          <span>Showing {selectedWorkspaceName}</span>
-          <span>{board.healthQuery.data?.status ?? "connecting"}</span>
-        </div>
 
         <DragDropContext onDragEnd={handleDrop}>
           <Board
