@@ -5,6 +5,7 @@ import { formatRelativeTime } from "@/lib/format";
 import { LiveLog } from "./LiveLog";
 
 interface Props {
+  className?: string;
   task: Task | null;
   runs: Run[];
   workspaces: Workspace[];
@@ -18,6 +19,7 @@ interface Props {
 }
 
 export function TaskDetailsPanel({
+  className,
   task,
   runs,
   workspaces,
@@ -42,7 +44,7 @@ export function TaskDetailsPanel({
 
   if (!task) {
     return (
-      <aside className="details-panel empty-panel">
+      <aside className={["details-panel", className, "empty-panel"].filter(Boolean).join(" ")}>
         <div className="empty-state">
           <p className="eyebrow">Task details</p>
           <h2>Select a card</h2>
@@ -55,7 +57,7 @@ export function TaskDetailsPanel({
   const workspaceName = workspaces.find((workspace) => workspace.id === task.workspaceId)?.name ?? "Unknown";
 
   return (
-    <aside className="details-panel">
+    <aside className={["details-panel", className].filter(Boolean).join(" ")}>
       <div className="details-header">
         <div>
           <p className="eyebrow">Task details</p>

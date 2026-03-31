@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd";
-import type { ServerEvent, TaskColumn } from "@workhorse/contracts";
+import {
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams
+} from "react-router-dom";
+import type { ServerEvent, Task, TaskColumn, Workspace } from "@workhorse/contracts";
 
 import { Board } from "@/components/Board";
 import { TaskDetailsPanel } from "@/components/TaskDetailsPanel";
@@ -18,16 +26,13 @@ export default function App() {
 
 function ReactAppShell() {
   const board = useBoardData();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [syncedAt, setSyncedAt] = useState<string>(new Date().toISOString());
   const {
-    selectedTask,
     selectedWorkspaceTasks,
-    selectedWorkspaceId,
     workspacesQuery,
-    selectedTaskRunsQuery,
-    selectedRun,
-    selectedRunLogQuery,
-    liveLogByRunId
+    tasksQuery
   } = board;
 
   const handleEvent = useCallback(
@@ -57,17 +62,9 @@ function ReactAppShell() {
 
   useWorkspaceSocket({ onEvent: handleEvent });
 
-  useEffect(() => {
-    if (!selectedTask && selectedWorkspaceTasks[0]) {
-      board.setTaskSelection(selectedWorkspaceTasks[0].id);
-    }
-  }, [board, selectedTask, selectedWorkspaceTasks]);
-
   const workspaces = workspacesQuery.data ?? [];
   const tasks = selectedWorkspaceTasks;
-  const runs = selectedTaskRunsQuery.data ?? [];
-  const liveLog = selectedRun?.id ? liveLogByRunId[selectedRun.id] ?? "" : "";
-  const runLog = selectedRunLogQuery.data ?? "";
+  const allTasks = tasksQuery.data ?? [];
 
   const selectedWorkspaceName = useMemo(() => {
     if (board.selectedWorkspaceId === "all") {
@@ -111,11 +108,20 @@ function ReactAppShell() {
     });
   }
 
+  function openTask(taskId: string) {
+    board.setTaskSelection(taskId);
+    navigate(`/tasks/${taskId}`);
+  }
+
   return (
     <div className="app-shell">
       <div className="ambient ambient-a" />
       <div className="ambient ambient-b" />
-      <main className="app">
+      <main
+        className={
+          location.pathname.startsWith("/tasks/") ? "app app-details" : "app app-board"
+        }
+      >
         <TopBar
           workspaces={workspaces}
           selectedWorkspaceId={board.selectedWorkspaceId}
@@ -133,29 +139,34 @@ function ReactAppShell() {
           runtimeStatus={board.healthQuery.data?.status ?? "connecting"}
         />
 
-        <DragDropContext onDragEnd={handleDrop}>
-          <Board
-            tasks={tasks}
-            workspaces={workspaces}
-            selectedTaskId={selectedTask?.id ?? null}
-            onTaskSelect={board.setTaskSelection}
-            onTaskStart={(taskId) => board.startTask(taskId)}
-            onTaskStop={(taskId) => board.stopTask(taskId)}
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <DragDropContext onDragEnd={handleDrop}>
+                <Board
+                  tasks={tasks}
+                  workspaces={workspaces}
+                  selectedTaskId={null}
+                  onTaskOpen={openTask}
+                  onTaskStart={(taskId) => board.startTask(taskId)}
+                  onTaskStop={(taskId) => board.stopTask(taskId)}
+                />
+              </DragDropContext>
+            }
           />
-        </DragDropContext>
-
-        <TaskDetailsPanel
-          task={selectedTask}
-          runs={runs}
-          workspaces={workspaces}
-          selectedRunId={board.selectedRunId}
-          onSelectRun={board.setSelectedRunId}
-          liveLog={liveLog}
-          runLog={runLog}
-          onStart={() => selectedTask && board.startTask(selectedTask.id)}
-          onStop={() => selectedTask && board.stopTask(selectedTask.id)}
-          onDelete={() => selectedTask && board.deleteTask(selectedTask.id)}
-        />
+          <Route
+            path="/tasks/:taskId"
+            element={
+              <TaskDetailsRoute
+                board={board}
+                allTasks={allTasks}
+                workspaces={workspaces}
+              />
+            }
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </main>
 
       <WorkspaceModal
@@ -177,5 +188,137 @@ function ReactAppShell() {
         }}
       />
     </div>
+  );
+}
+
+type BoardData = ReturnType<typeof useBoardData>;
+
+interface TaskDetailsRouteProps {
+  board: BoardData;
+  allTasks: Task[];
+  workspaces: Workspace[];
+}
+
+function TaskDetailsRoute({
+  board,
+  allTasks,
+  workspaces
+}: TaskDetailsRouteProps) {
+  const navigate = useNavigate();
+  const { taskId } = useParams<{ taskId: string }>();
+
+  useEffect(() => {
+    if (taskId) {
+      board.setTaskSelection(taskId);
+    }
+  }, [board, taskId]);
+
+  if (!taskId) {
+    return <Navigate to="/" replace />;
+  }
+
+  if (board.tasksQuery.isLoading) {
+    return (
+      <section className="details-page-shell">
+        <TaskRouteState
+          eyebrow="Task details"
+          title="Loading task"
+          description="We are pulling the latest task state and run history."
+          actionLabel="Back to board"
+          onAction={() => navigate("/")}
+        />
+      </section>
+    );
+  }
+
+  const task = allTasks.find((entry) => entry.id === taskId) ?? null;
+  if (!task) {
+    return (
+      <section className="details-page-shell">
+        <TaskRouteState
+          eyebrow="Task details"
+          title="Task not found"
+          description="This task may have been deleted or moved out of the current dataset."
+          actionLabel="Back to board"
+          onAction={() => navigate("/")}
+        />
+      </section>
+    );
+  }
+
+  const isSelectedTaskActive = board.selectedTask?.id === task.id;
+  const runs = isSelectedTaskActive ? board.selectedTaskRunsQuery.data ?? [] : [];
+  const selectedRun = isSelectedTaskActive ? board.selectedRun : null;
+  const liveLog = selectedRun?.id ? board.liveLogByRunId[selectedRun.id] ?? "" : "";
+  const runLog = isSelectedTaskActive ? board.selectedRunLogQuery.data ?? "" : "";
+  const workspaceName =
+    workspaces.find((workspace) => workspace.id === task.workspaceId)?.name ?? "Unknown workspace";
+
+  return (
+    <section className="details-page-shell">
+      <div className="details-page-header">
+        <button
+          type="button"
+          className="button button-secondary"
+          onClick={() => navigate("/")}
+        >
+          Back to board
+        </button>
+        <div className="details-page-meta">
+          <span className="meta-chip">Workspace {workspaceName}</span>
+          <span className={`status status-${task.column}`}>{task.column}</span>
+        </div>
+      </div>
+
+      <TaskDetailsPanel
+        className="details-panel-page"
+        task={task}
+        runs={runs}
+        workspaces={workspaces}
+        selectedRunId={board.selectedRunId}
+        onSelectRun={board.setSelectedRunId}
+        liveLog={liveLog}
+        runLog={runLog}
+        onStart={() => board.startTask(task.id)}
+        onStop={() => board.stopTask(task.id)}
+        onDelete={async () => {
+          await board.deleteTask(task.id);
+          navigate("/");
+        }}
+      />
+    </section>
+  );
+}
+
+interface TaskRouteStateProps {
+  eyebrow: string;
+  title: string;
+  description: string;
+  actionLabel: string;
+  onAction(): void;
+}
+
+function TaskRouteState({
+  eyebrow,
+  title,
+  description,
+  actionLabel,
+  onAction
+}: TaskRouteStateProps) {
+  return (
+    <section className="details-panel details-panel-page empty-panel">
+      <div className="empty-state">
+        <p className="eyebrow">{eyebrow}</p>
+        <h2>{title}</h2>
+        <p>{description}</p>
+        <button
+          type="button"
+          className="button button-secondary empty-state-action"
+          onClick={onAction}
+        >
+          {actionLabel}
+        </button>
+      </div>
+    </section>
   );
 }

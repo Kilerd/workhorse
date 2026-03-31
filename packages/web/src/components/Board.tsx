@@ -15,7 +15,7 @@ interface Props {
   tasks: Task[];
   workspaces: Workspace[];
   selectedTaskId: string | null;
-  onTaskSelect(taskId: string): void;
+  onTaskOpen(taskId: string): void;
   onTaskStart(taskId: string): void;
   onTaskStop(taskId: string): void;
 }
@@ -54,7 +54,7 @@ export function Board({
   tasks,
   workspaces,
   selectedTaskId,
-  onTaskSelect,
+  onTaskOpen,
   onTaskStart,
   onTaskStop
 }: Props) {
@@ -107,11 +107,11 @@ export function Board({
                           {...dragProvided.dragHandleProps}
                           role="button"
                           tabIndex={0}
-                          onClick={() => onTaskSelect(task.id)}
+                          onClick={() => onTaskOpen(task.id)}
                           onKeyDown={(event) => {
                             if (event.key === "Enter" || event.key === " ") {
                               event.preventDefault();
-                              onTaskSelect(task.id);
+                              onTaskOpen(task.id);
                             }
                           }}
                         >

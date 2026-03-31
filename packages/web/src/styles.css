@@ -87,10 +87,15 @@ button:disabled {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: 1fr 380px;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto 1fr;
   gap: 14px;
   padding: 18px;
+}
+
+.app-board .board,
+.app-details .details-page-shell {
+  grid-column: 1 / -1;
 }
 
 .topbar,
@@ -450,12 +455,35 @@ dt {
 }
 
 .details-panel {
-  grid-column: 2;
-  grid-row: 2;
   display: grid;
   gap: 16px;
   padding: 22px;
   min-height: 72vh;
+}
+
+.details-page-shell {
+  width: min(100%, 1080px);
+  justify-self: center;
+  display: grid;
+  gap: 14px;
+}
+
+.details-page-header,
+.details-page-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.details-page-header {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.details-panel-page {
+  grid-column: 1 / -1;
+  grid-row: auto;
+  min-height: auto;
 }
 
 .empty-panel {
@@ -465,6 +493,10 @@ dt {
 .empty-state {
   max-width: 30ch;
   text-align: center;
+}
+
+.empty-state-action {
+  margin-top: 16px;
 }
 
 .details-tabs {
@@ -614,10 +646,6 @@ dt {
 }
 
 @media (max-width: 1200px) {
-  .app {
-    grid-template-columns: 1fr;
-  }
-
   .details-panel {
     grid-column: 1;
     grid-row: auto;
