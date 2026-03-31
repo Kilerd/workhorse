@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import type { CreateTaskBody, TaskColumn, Workspace } from "@workhorse/contracts";
+import type { Workspace } from "@workhorse/contracts";
+
+import type { DisplayTaskColumn, TaskFormValues } from "@/lib/task-view";
 
 interface WorkspaceModalProps {
   open: boolean;
@@ -11,7 +13,7 @@ interface TaskModalProps {
   open: boolean;
   workspaces: Workspace[];
   onClose(): void;
-  onSubmit(values: CreateTaskBody): void;
+  onSubmit(values: TaskFormValues): void;
 }
 
 export function WorkspaceModal({ open, onClose, onSubmit }: WorkspaceModalProps) {
@@ -72,7 +74,7 @@ export function TaskModal({ open, workspaces, onClose, onSubmit }: TaskModalProp
   const [runnerType, setRunnerType] = useState<"shell" | "codex">("codex");
   const [shellCommand, setShellCommand] = useState("npm test");
   const [prompt, setPrompt] = useState("Implement the requested task.");
-  const [column, setColumn] = useState<TaskColumn>("todo");
+  const [column, setColumn] = useState<TaskFormValues["column"]>("backlog");
 
   useEffect(() => {
     if (!open) {
@@ -82,7 +84,7 @@ export function TaskModal({ open, workspaces, onClose, onSubmit }: TaskModalProp
       setRunnerType("codex");
       setShellCommand("npm test");
       setPrompt("Implement the requested task.");
-      setColumn("todo");
+      setColumn("backlog");
     }
   }, [open, workspaces]);
 
@@ -155,7 +157,11 @@ export function TaskModal({ open, workspaces, onClose, onSubmit }: TaskModalProp
           </label>
           <label>
             <span>Column</span>
-            <select value={column} onChange={(event) => setColumn(event.target.value as TaskColumn)}>
+            <select
+              value={column}
+              onChange={(event) => setColumn(event.target.value as DisplayTaskColumn)}
+            >
+              <option value="backlog">backlog</option>
               <option value="todo">todo</option>
               <option value="running">running</option>
               <option value="review">review</option>

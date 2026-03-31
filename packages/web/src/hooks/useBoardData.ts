@@ -6,16 +6,15 @@ import {
 } from "@tanstack/react-query";
 
 import type {
-  CreateTaskBody,
   Run,
   ServerEvent,
   Task,
-  TaskColumn,
   Workspace
 } from "@workhorse/contracts";
 
 import { api } from "@/lib/api";
 import { readStoredValue, writeStoredValue } from "@/lib/persist";
+import { type DisplayTask, type TaskFormValues } from "@/lib/task-view";
 
 const STORAGE_KEYS = {
   selectedWorkspaceId: "workhorse.selectedWorkspaceId",
@@ -64,19 +63,23 @@ export function useBoardData() {
     queryFn: async () => unwrap(await api.health())
   });
 
+  const displayedTasks = useMemo<DisplayTask[]>(
+    () => tasksQuery.data ?? [],
+    [tasksQuery.data]
+  );
+
   const selectedWorkspaceTasks = useMemo(() => {
-    const tasks = tasksQuery.data ?? [];
     if (selectedWorkspaceId === "all") {
-      return tasks;
+      return displayedTasks;
     }
-    return tasks.filter((task) => task.workspaceId === selectedWorkspaceId);
-  }, [selectedWorkspaceId, tasksQuery.data]);
+    return displayedTasks.filter((task) => task.workspaceId === selectedWorkspaceId);
+  }, [displayedTasks, selectedWorkspaceId]);
 
   const selectedTask = useMemo(() => {
     return selectedTaskId
-      ? (tasksQuery.data ?? []).find((task) => task.id === selectedTaskId) ?? null
+      ? displayedTasks.find((task) => task.id === selectedTaskId) ?? null
       : null;
-  }, [selectedTaskId, tasksQuery.data]);
+  }, [displayedTasks, selectedTaskId]);
 
   const selectedTaskRunsQuery = useQuery({
     queryKey: queryKey("runs", selectedTask?.id ?? ""),
@@ -123,7 +126,7 @@ export function useBoardData() {
   });
 
   const createTaskMutation = useMutation({
-    mutationFn: async (input: CreateTaskBody) => {
+    mutationFn: async (input: TaskFormValues) => {
       const response = await api.createTask(input);
       return unwrap(response).task;
     },
@@ -182,6 +185,46 @@ export function useBoardData() {
       if (context?.previous) {
         queryClient.setQueryData(queryKey("tasks"), context.previous);
       }
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
+    }
+  });
+
+  const planTaskMutation = useMutation({
+    mutationFn: async (taskId: string) => {
+      const response = await api.planTask(taskId);
+      return unwrap(response).task;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
+    }
+  });
+
+  const moveToTodoMutation = useMutation({
+    mutationFn: async (taskId: string) => {
+      const response = await api.updateTask(taskId, { column: "todo" });
+      return unwrap(response).task;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
+    }
+  });
+
+  const markDoneMutation = useMutation({
+    mutationFn: async (taskId: string) => {
+      const response = await api.updateTask(taskId, { column: "done" });
+      return unwrap(response).task;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
+    }
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: async (taskId: string) => {
+      const response = await api.updateTask(taskId, { column: "archived" });
+      return unwrap(response).task;
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
@@ -250,6 +293,7 @@ export function useBoardData() {
     healthQuery,
     workspacesQuery,
     tasksQuery,
+    displayedTasks,
     selectedWorkspaceId,
     selectedWorkspaceTasks,
     selectedTask,
@@ -272,6 +316,10 @@ export function useBoardData() {
     startTask: startTaskMutation.mutateAsync,
     stopTask: stopTaskMutation.mutateAsync,
     updateTask: updateTaskMutation.mutateAsync,
+    planTask: planTaskMutation.mutateAsync,
+    moveToTodo: moveToTodoMutation.mutateAsync,
+    markDone: markDoneMutation.mutateAsync,
+    archiveTask: archiveMutation.mutateAsync,
     deleteWorkspace: deleteWorkspaceMutation.mutateAsync,
     deleteTask: deleteTaskMutation.mutateAsync,
     isBusy:
@@ -280,6 +328,10 @@ export function useBoardData() {
       startTaskMutation.isPending ||
       stopTaskMutation.isPending ||
       updateTaskMutation.isPending ||
+      planTaskMutation.isPending ||
+      moveToTodoMutation.isPending ||
+      markDoneMutation.isPending ||
+      archiveMutation.isPending ||
       deleteWorkspaceMutation.isPending ||
       deleteTaskMutation.isPending
   };

@@ -1,53 +1,36 @@
 import { Draggable, Droppable } from "@hello-pangea/dnd";
-import type { Task, TaskColumn, Workspace } from "@workhorse/contracts";
+import type { Workspace } from "@workhorse/contracts";
 
 import { formatRelativeTime } from "@/lib/format";
-
-const columns: Array<{ id: TaskColumn; title: string; tone: string }> = [
-  { id: "todo", title: "Todo", tone: "tone-todo" },
-  { id: "running", title: "Running", tone: "tone-running" },
-  { id: "review", title: "Review", tone: "tone-review" },
-  { id: "done", title: "Done", tone: "tone-done" },
-  { id: "archived", title: "Archived", tone: "tone-archived" }
-];
+import { BOARD_COLUMNS, type DisplayTask, type DisplayTaskColumn } from "@/lib/task-view";
+import { TaskActionBar } from "./TaskActionBar";
 
 interface Props {
-  tasks: Task[];
+  tasks: DisplayTask[];
   workspaces: Workspace[];
   selectedTaskId: string | null;
   onTaskOpen(taskId: string): void;
+  onPlan(taskId: string): void;
   onTaskStart(taskId: string): void;
   onTaskStop(taskId: string): void;
+  onMoveToTodo(taskId: string): void;
+  onMarkDone(taskId: string): void;
+  onArchive(taskId: string): void;
 }
 
-function groupTasks(tasks: Task[]): Record<TaskColumn, Task[]> {
+function groupTasks(): Record<DisplayTaskColumn, DisplayTask[]> {
   return {
+    backlog: [],
     todo: [],
     running: [],
     review: [],
     done: [],
     archived: []
-  } satisfies Record<TaskColumn, Task[]>;
+  };
 }
 
 function getWorkspaceName(workspaces: Workspace[], workspaceId: string) {
   return workspaces.find((workspace) => workspace.id === workspaceId)?.name ?? "Unknown";
-}
-
-function rankBetween(previous?: Task, next?: Task) {
-  if (previous && next) {
-    return (previous.order + next.order) / 2;
-  }
-
-  if (previous) {
-    return previous.order + 1024;
-  }
-
-  if (next) {
-    return next.order - 1024;
-  }
-
-  return 1024;
 }
 
 export function Board({
@@ -55,19 +38,23 @@ export function Board({
   workspaces,
   selectedTaskId,
   onTaskOpen,
+  onPlan,
   onTaskStart,
-  onTaskStop
+  onTaskStop,
+  onMoveToTodo,
+  onMarkDone,
+  onArchive
 }: Props) {
-  const grouped = columns.reduce((acc, column) => {
+  const grouped = BOARD_COLUMNS.reduce((acc, column) => {
     acc[column.id] = tasks
       .filter((task) => task.column === column.id)
       .sort((left, right) => left.order - right.order);
     return acc;
-  }, groupTasks(tasks));
+  }, groupTasks());
 
   return (
     <section className="board">
-      {columns.map((column) => (
+      {BOARD_COLUMNS.map((column) => (
         <Droppable droppableId={column.id} key={column.id}>
           {(provided, snapshot) => (
             <article
@@ -128,28 +115,16 @@ export function Board({
                           </div>
                           <div className="task-card-footer">
                             <span className={`status status-${task.column}`}>{task.column}</span>
-                            <span className="task-card-actions">
-                              <button
-                                type="button"
-                                className="icon-button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  onTaskStart(task.id);
-                                }}
-                              >
-                                Start
-                              </button>
-                              <button
-                                type="button"
-                                className="icon-button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  onTaskStop(task.id);
-                                }}
-                              >
-                                Stop
-                              </button>
-                            </span>
+                            <TaskActionBar
+                              column={task.column}
+                              compact
+                              onPlan={() => onPlan(task.id)}
+                              onStart={() => onTaskStart(task.id)}
+                              onStop={() => onTaskStop(task.id)}
+                              onMoveToTodo={() => onMoveToTodo(task.id)}
+                              onMarkDone={() => onMarkDone(task.id)}
+                              onArchive={() => onArchive(task.id)}
+                            />
                           </div>
                         </article>
                       )}

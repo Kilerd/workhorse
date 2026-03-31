@@ -1,20 +1,26 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Run, Task, Workspace } from "@workhorse/contracts";
+import type { Run, Workspace } from "@workhorse/contracts";
 
 import { formatRelativeTime } from "@/lib/format";
+import type { DisplayTask } from "@/lib/task-view";
 import { LiveLog } from "./LiveLog";
+import { TaskActionBar } from "./TaskActionBar";
 
 interface Props {
   className?: string;
-  task: Task | null;
+  task: DisplayTask | null;
   runs: Run[];
   workspaces: Workspace[];
   selectedRunId: string | null;
   onSelectRun(runId: string): void;
   liveLog: string;
   runLog: string;
+  onPlan(): void;
   onStart(): void;
   onStop(): void;
+  onMoveToTodo(): void;
+  onMarkDone(): void;
+  onArchive(): void;
   onDelete(): void;
 }
 
@@ -27,8 +33,12 @@ export function TaskDetailsPanel({
   onSelectRun,
   liveLog,
   runLog,
+  onPlan,
   onStart,
   onStop,
+  onMoveToTodo,
+  onMarkDone,
+  onArchive,
   onDelete
 }: Props) {
   const [tab, setTab] = useState<"overview" | "logs">("overview");
@@ -65,12 +75,15 @@ export function TaskDetailsPanel({
           <p className="details-subtitle">{workspaceName}</p>
         </div>
         <div className="details-actions">
-          <button type="button" className="button button-secondary" onClick={onStart}>
-            Start
-          </button>
-          <button type="button" className="button button-secondary" onClick={onStop}>
-            Stop
-          </button>
+          <TaskActionBar
+            column={task.column}
+            onPlan={onPlan}
+            onStart={onStart}
+            onStop={onStop}
+            onMoveToTodo={onMoveToTodo}
+            onMarkDone={onMarkDone}
+            onArchive={onArchive}
+          />
           <button type="button" className="button button-danger" onClick={onDelete}>
             Delete
           </button>

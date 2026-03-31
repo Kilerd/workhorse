@@ -478,6 +478,57 @@
         ]
       }
     },
+    "/api/tasks/{taskId}/plan": {
+      "post": {
+        "operationId": "planTask",
+        "summary": "Create a task plan and move it to todo",
+        "tags": [
+          "Tasks"
+        ],
+        "responses": {
+          "200": {
+            "description": "Planned task",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanTaskResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unable to plan task",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
     "/api/tasks/{taskId}/runs": {
       "get": {
         "operationId": "listRuns",
@@ -705,6 +756,11 @@
       },
       "TaskColumn": {
         "oneOf": [
+          {
+            "enum": [
+              "backlog"
+            ]
+          },
           {
             "enum": [
               "todo"
@@ -970,6 +1026,11 @@
             "oneOf": [
               {
                 "enum": [
+                  "backlog"
+                ]
+              },
+              {
+                "enum": [
                   "todo"
                 ]
               },
@@ -1037,6 +1098,11 @@
           },
           "column": {
             "oneOf": [
+              {
+                "enum": [
+                  "backlog"
+                ]
+              },
               {
                 "enum": [
                   "todo"
@@ -1124,6 +1190,17 @@
         ]
       },
       "StopTaskParams": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      },
+      "PlanTaskParams": {
         "type": "object",
         "properties": {
           "taskId": {
@@ -1381,6 +1458,38 @@
         "required": [
           "task",
           "run"
+        ]
+      },
+      "PlanTaskResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/PlanTaskData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "PlanTaskData": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "$ref": "#/components/schemas/Task"
+          },
+          "plan": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "task",
+          "plan"
         ]
       },
       "RunsResponse": {

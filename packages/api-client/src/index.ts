@@ -6,6 +6,7 @@ import type {
   DeleteTaskResponse,
   DeleteWorkspaceResponse,
   HealthResponse,
+  PlanTaskResponse,
   RunLogResponse,
   RunsResponse,
   StartTaskResponse,
@@ -64,6 +65,10 @@ export function createApiClient(baseUrl: string) {
     .path("/api/tasks/{taskId}/stop")
     .method("post")
     .create();
+  const planTask = fetcher
+    .path("/api/tasks/{taskId}/plan")
+    .method("post")
+    .create();
   const listRuns = fetcher
     .path("/api/tasks/{taskId}/runs")
     .method("get")
@@ -104,6 +109,8 @@ export function createApiClient(baseUrl: string) {
       (await startTask({ taskId })).data,
     stopTask: async (taskId: string): Promise<StopTaskResponse> =>
       (await stopTask({ taskId })).data,
+    planTask: async (taskId: string): Promise<PlanTaskResponse> =>
+      (await planTask({ taskId })).data,
     listRuns: async (taskId: string): Promise<RunsResponse> =>
       (await listRuns({ taskId })).data,
     getRunLog: async (runId: string): Promise<RunLogResponse> =>

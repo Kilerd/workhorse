@@ -111,6 +111,7 @@ describe("workhorse runtime", () => {
     expect(taskResponse.status).toBe(201);
     const taskPayload = await taskResponse.json();
     expect(taskPayload.ok).toBe(true);
+    expect(taskPayload.data.task.column).toBe("backlog");
 
     const listResponse = await app.request("/api/tasks");
     expect(listResponse.status).toBe(200);
@@ -122,6 +123,7 @@ describe("workhorse runtime", () => {
     const openApiPayload = await openApiResponse.json();
     expect(openApiPayload.openapi).toBe("3.0.3");
     expect(openApiPayload.paths["/api/tasks"]).toBeDefined();
+    expect(openApiPayload.paths["/api/tasks/{taskId}/plan"]).toBeDefined();
   });
 
   it("runs a shell task to completion and persists the log", async () => {
@@ -262,10 +264,82 @@ describe("workhorse runtime", () => {
     });
   });
 
+  it("rejects starting tasks outside backlog and todo", async () => {
+    const { service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+    const reviewTask = await service.createTask({
+      title: "Review task",
+      workspaceId: workspace.id,
+      column: "review",
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "true"
+      }
+    });
+    const doneTask = await service.createTask({
+      title: "Done task",
+      workspaceId: workspace.id,
+      column: "done",
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "true"
+      }
+    });
+
+    await expect(service.startTask(reviewTask.id)).rejects.toMatchObject({
+      status: 409,
+      code: "TASK_NOT_STARTABLE",
+      message: "Tasks in review cannot be started"
+    });
+    await expect(service.startTask(doneTask.id)).rejects.toMatchObject({
+      status: 409,
+      code: "TASK_NOT_STARTABLE",
+      message: "Tasks in done cannot be started"
+    });
+  });
+
+  it("plans backlog tasks and moves them into todo", async () => {
+    const { app, service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+    const task = await service.createTask({
+      title: "Plan me",
+      description: "Need a rollout.",
+      workspaceId: workspace.id,
+      runnerType: "codex",
+      runnerConfig: {
+        type: "codex",
+        prompt: "Create a plan"
+      }
+    });
+
+    const response = await app.request(`/api/tasks/${task.id}/plan`, {
+      method: "POST"
+    });
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.ok).toBe(true);
+    expect(payload.data.task.column).toBe("todo");
+    expect(payload.data.plan).toContain("# Plan");
+    expect(payload.data.task.description).toContain("Need a rollout.");
+  });
+
   it("lists tasks using board column order", async () => {
     const { service, workspaceDir } = await createRuntime();
     const workspace = await createWorkspace(service, workspaceDir);
 
+    await service.createTask({
+      title: "Backlog task",
+      workspaceId: workspace.id,
+      column: "backlog",
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "true"
+      }
+    });
     await service.createTask({
       title: "Archived task",
       workspaceId: workspace.id,
@@ -318,6 +392,7 @@ describe("workhorse runtime", () => {
     });
 
     expect(service.listTasks({}).map((task) => task.column)).toEqual([
+      "backlog",
       "todo",
       "running",
       "review",

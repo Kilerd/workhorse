@@ -8,6 +8,7 @@ import {
   validateDeleteWorkspaceParams,
   validateListRunsParams,
   validateListTasksQuery,
+  validatePlanTaskParams,
   validateRunLogParams,
   validateStartTaskParams,
   validateStopTaskParams,
@@ -144,6 +145,16 @@ export function createApp(service: BoardService): Hono {
       "Invalid task params"
     );
     const result = await service.stopTask(params.taskId);
+    return c.json(ok(result));
+  });
+
+  app.post("/api/tasks/:taskId/plan", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validatePlanTaskParams,
+      "Invalid task params"
+    );
+    const result = await service.planTask(params.taskId);
     return c.json(ok(result));
   });
 

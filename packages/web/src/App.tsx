@@ -8,7 +8,7 @@ import {
   useNavigate,
   useParams
 } from "react-router-dom";
-import type { ServerEvent, Task, TaskColumn, Workspace } from "@workhorse/contracts";
+import type { ServerEvent, Workspace } from "@workhorse/contracts";
 
 import { Board } from "@/components/Board";
 import { TaskDetailsPanel } from "@/components/TaskDetailsPanel";
@@ -16,6 +16,7 @@ import { TaskModal, WorkspaceModal } from "@/components/WorkspaceModals";
 import { TopBar } from "@/components/TopBar";
 import { useBoardData } from "@/hooks/useBoardData";
 import { useWorkspaceSocket } from "@/hooks/useWorkspaceSocket";
+import type { DisplayTaskColumn } from "@/lib/task-view";
 import { queryClient } from "@/lib/query";
 
 export default function App() {
@@ -31,8 +32,8 @@ function ReactAppShell() {
   const [syncedAt, setSyncedAt] = useState<string>(new Date().toISOString());
   const {
     selectedWorkspaceTasks,
-    workspacesQuery,
-    tasksQuery
+    displayedTasks,
+    workspacesQuery
   } = board;
 
   const handleEvent = useCallback(
@@ -64,7 +65,7 @@ function ReactAppShell() {
 
   const workspaces = workspacesQuery.data ?? [];
   const tasks = selectedWorkspaceTasks;
-  const allTasks = tasksQuery.data ?? [];
+  const allTasks = displayedTasks;
 
   const selectedWorkspaceName = useMemo(() => {
     if (board.selectedWorkspaceId === "all") {
@@ -78,12 +79,17 @@ function ReactAppShell() {
       return;
     }
 
+    if (result.destination.droppableId !== result.source.droppableId) {
+      return;
+    }
+
     const task = tasks.find((item) => item.id === result.draggableId);
     if (!task) {
       return;
     }
 
-    const destinationColumn = result.destination.droppableId as TaskColumn;
+    const destinationColumn = result.destination.droppableId as DisplayTaskColumn;
+
     const destinationTasks = tasks
       .filter((item) => item.column === destinationColumn && item.id !== task.id)
       .sort((left, right) => left.order - right.order);
@@ -102,7 +108,6 @@ function ReactAppShell() {
     void board.updateTask({
       taskId: task.id,
       body: {
-        column: destinationColumn,
         order
       }
     });
@@ -149,8 +154,12 @@ function ReactAppShell() {
                   workspaces={workspaces}
                   selectedTaskId={null}
                   onTaskOpen={openTask}
+                  onPlan={(taskId) => board.planTask(taskId)}
                   onTaskStart={(taskId) => board.startTask(taskId)}
                   onTaskStop={(taskId) => board.stopTask(taskId)}
+                  onMoveToTodo={(taskId) => board.moveToTodo(taskId)}
+                  onMarkDone={(taskId) => board.markDone(taskId)}
+                  onArchive={(taskId) => board.archiveTask(taskId)}
                 />
               </DragDropContext>
             }
@@ -195,7 +204,7 @@ type BoardData = ReturnType<typeof useBoardData>;
 
 interface TaskDetailsRouteProps {
   board: BoardData;
-  allTasks: Task[];
+  allTasks: BoardData["displayedTasks"];
   workspaces: Workspace[];
 }
 
@@ -279,8 +288,12 @@ function TaskDetailsRoute({
         onSelectRun={board.setSelectedRunId}
         liveLog={liveLog}
         runLog={runLog}
+        onPlan={() => board.planTask(task.id)}
         onStart={() => board.startTask(task.id)}
         onStop={() => board.stopTask(task.id)}
+        onMoveToTodo={() => board.moveToTodo(task.id)}
+        onMarkDone={() => board.markDone(task.id)}
+        onArchive={() => board.archiveTask(task.id)}
         onDelete={async () => {
           await board.deleteTask(task.id);
           navigate("/");

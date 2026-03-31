@@ -1,4 +1,5 @@
 export type TaskColumn =
+  | "backlog"
   | "todo"
   | "running"
   | "review"

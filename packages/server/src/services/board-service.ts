@@ -30,11 +30,12 @@ interface ActiveRun {
 }
 
 const COLUMN_ORDER: Record<Task["column"], number> = {
-  todo: 0,
-  running: 1,
-  review: 2,
-  done: 3,
-  archived: 4
+  backlog: 0,
+  todo: 1,
+  running: 2,
+  review: 3,
+  done: 4,
+  archived: 5
 };
 
 export class BoardService {
@@ -187,7 +188,7 @@ export class BoardService {
     this.ensureRunnerConfig(input.runnerType, input.runnerConfig);
 
     const now = new Date().toISOString();
-    const column = input.column ?? "todo";
+    const column = input.column ?? "backlog";
     const task: Task = {
       id: createId(),
       title: input.title.trim(),
@@ -299,6 +300,7 @@ export class BoardService {
       "TASK_NOT_FOUND",
       "Task not found"
     );
+    this.ensureStartableTask(task);
     const workspace = ensure(
       this.store.listWorkspaces().find((entry) => entry.id === task.workspaceId),
       404,
@@ -491,6 +493,41 @@ export class BoardService {
     return { task, run };
   }
 
+  public async planTask(taskId: string): Promise<{ task: Task; plan: string }> {
+    const tasks = this.store.listTasks();
+    const task = ensure(
+      tasks.find((entry) => entry.id === taskId),
+      404,
+      "TASK_NOT_FOUND",
+      "Task not found"
+    );
+
+    if (task.column !== "backlog") {
+      throw new AppError(
+        409,
+        "TASK_NOT_PLANNABLE",
+        "Only backlog tasks can generate a plan"
+      );
+    }
+
+    const plan = this.buildTaskPlan(task);
+    task.description = plan;
+    task.column = "todo";
+    task.order = this.nextOrder("todo");
+    task.updatedAt = new Date().toISOString();
+
+    this.store.setTasks(tasks);
+    await this.store.save();
+    this.events.publish({
+      type: "task.updated",
+      action: "updated",
+      taskId: task.id,
+      task
+    });
+
+    return { task, plan };
+  }
+
   public listRuns(taskId: string): Run[] {
     const exists = this.store.listTasks().some((task) => task.id === taskId);
     if (!exists) {
@@ -593,6 +630,43 @@ export class BoardService {
     }
 
     throw new AppError(400, "INVALID_RUNNER_CONFIG", "Unsupported runner configuration");
+  }
+
+  private ensureStartableTask(task: Task): void {
+    if (task.column === "backlog" || task.column === "todo") {
+      return;
+    }
+
+    throw new AppError(
+      409,
+      "TASK_NOT_STARTABLE",
+      `Tasks in ${task.column} cannot be started`
+    );
+  }
+
+  private buildTaskPlan(task: Task): string {
+    const description = task.description.trim();
+    const context = description || "No additional context provided yet.";
+    const executionHint =
+      task.runnerType === "codex"
+        ? "Use the Codex runner to implement the task in small, verifiable steps."
+        : "Use the shell runner to execute the task in small, verifiable steps.";
+
+    return [
+      "# Plan",
+      "## Objective",
+      task.title,
+      "## Context",
+      context,
+      "## Steps",
+      "1. Confirm the expected outcome and any repo-specific constraints.",
+      "2. Break the work into one or two concrete implementation steps.",
+      `3. ${executionHint}`,
+      "4. Verify the result with the smallest useful test or smoke check.",
+      "## Exit Criteria",
+      "- The task result is visible or testable.",
+      "- Any follow-up work is captured before moving to review."
+    ].join("\n\n");
   }
 
   private nextOrder(column: Task["column"]): number {

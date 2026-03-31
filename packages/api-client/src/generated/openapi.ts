@@ -127,6 +127,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tasks/{taskId}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a task plan and move it to todo */
+        post: operations["planTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tasks/{taskId}/runs": {
         parameters: {
             query?: never;
@@ -200,7 +217,7 @@ export interface components {
             createdAt: string;
             updatedAt: string;
         };
-        TaskColumn: "todo" | "running" | "review" | "done" | "archived";
+        TaskColumn: "backlog" | "todo" | "running" | "review" | "done" | "archived";
         RunnerType: "codex" | "shell";
         RunnerConfig: components["schemas"]["ShellRunnerConfig"] | components["schemas"]["CodexRunnerConfig"];
         ShellRunnerConfig: {
@@ -259,7 +276,7 @@ export interface components {
             title: string;
             description?: string;
             workspaceId: string;
-            column?: "todo" | "running" | "review" | "done" | "archived";
+            column?: "backlog" | "todo" | "running" | "review" | "done" | "archived";
             order?: number;
             runnerType: components["schemas"]["RunnerType"];
             runnerConfig: components["schemas"]["RunnerConfig"];
@@ -271,7 +288,7 @@ export interface components {
             title?: string;
             description?: string;
             workspaceId?: string;
-            column?: "todo" | "running" | "review" | "done" | "archived";
+            column?: "backlog" | "todo" | "running" | "review" | "done" | "archived";
             order?: number;
             runnerType?: "codex" | "shell";
             runnerConfig?: components["schemas"]["ShellRunnerConfig"] | components["schemas"]["CodexRunnerConfig"];
@@ -283,6 +300,9 @@ export interface components {
             taskId: string;
         };
         StopTaskParams: {
+            taskId: string;
+        };
+        PlanTaskParams: {
             taskId: string;
         };
         ListRunsParams: {
@@ -353,6 +373,15 @@ export interface components {
         StopTaskData: {
             task: components["schemas"]["Task"];
             run: components["schemas"]["Run"];
+        };
+        PlanTaskResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["PlanTaskData"];
+        };
+        PlanTaskData: {
+            task: components["schemas"]["Task"];
+            plan: string;
         };
         RunsResponse: {
             /** @enum {unknown} */
@@ -732,6 +761,46 @@ export interface operations {
                 };
             };
             /** @description Unable to stop task */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Task not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    planTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Planned task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanTaskResponse"];
+                };
+            };
+            /** @description Unable to plan task */
             400: {
                 headers: {
                     [name: string]: unknown;

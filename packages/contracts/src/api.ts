@@ -105,6 +105,10 @@ export interface StopTaskParams {
   taskId: string;
 }
 
+export interface PlanTaskParams {
+  taskId: string;
+}
+
 export interface StartTaskData {
   task: Task;
   run: Run;
@@ -113,6 +117,11 @@ export interface StartTaskData {
 export interface StopTaskData {
   task: Task;
   run: Run;
+}
+
+export interface PlanTaskData {
+  task: Task;
+  plan: string;
 }
 
 export interface ListRunsParams {
@@ -144,6 +153,7 @@ export type TaskResponse = ApiSuccess<TaskData>;
 export type DeleteTaskResponse = ApiSuccess<DeleteResult>;
 export type StartTaskResponse = ApiSuccess<StartTaskData>;
 export type StopTaskResponse = ApiSuccess<StopTaskData>;
+export type PlanTaskResponse = ApiSuccess<PlanTaskData>;
 export type RunsResponse = ApiSuccess<ListRunsData>;
 export type RunLogResponse = ApiSuccess<RunLogData>;
 export type HealthResponse = ApiSuccess<HealthData>;
@@ -184,6 +194,7 @@ export type SchemaName =
   | "DeleteTaskParams"
   | "StartTaskParams"
   | "StopTaskParams"
+  | "PlanTaskParams"
   | "ListRunsParams"
   | "RunLogParams"
   | "WorkspacesResponse"
@@ -194,6 +205,7 @@ export type SchemaName =
   | "DeleteTaskResponse"
   | "StartTaskResponse"
   | "StopTaskResponse"
+  | "PlanTaskResponse"
   | "RunsResponse"
   | "RunLogResponse"
   | "HealthResponse";
@@ -415,6 +427,31 @@ export const endpointRegistry: EndpointSpec[] = [
       {
         status: 400,
         description: "Unable to stop task",
+        schema: "ApiError"
+      },
+      {
+        status: 404,
+        description: "Task not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "planTask",
+    method: "post",
+    path: "/api/tasks/{taskId}/plan",
+    summary: "Create a task plan and move it to todo",
+    tag: "Tasks",
+    paramsSchema: "PlanTaskParams",
+    responses: [
+      {
+        status: 200,
+        description: "Planned task",
+        schema: "PlanTaskResponse"
+      },
+      {
+        status: 400,
+        description: "Unable to plan task",
         schema: "ApiError"
       },
       {
