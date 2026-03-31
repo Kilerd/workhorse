@@ -1,0 +1,1493 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Workhorse API",
+    "version": "0.1.0",
+    "description": "Local-first runtime API for the Workhorse multi-workspace kanban."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:3484"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Runtime"
+    },
+    {
+      "name": "Workspaces"
+    },
+    {
+      "name": "Tasks"
+    },
+    {
+      "name": "Runs"
+    }
+  ],
+  "paths": {
+    "/api/health": {
+      "get": {
+        "operationId": "health",
+        "summary": "Read runtime health",
+        "tags": [
+          "Runtime"
+        ],
+        "responses": {
+          "200": {
+            "description": "Runtime health information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces": {
+      "get": {
+        "operationId": "listWorkspaces",
+        "summary": "List registered workspaces",
+        "tags": [
+          "Workspaces"
+        ],
+        "responses": {
+          "200": {
+            "description": "Workspace collection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspacesResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createWorkspace",
+        "summary": "Register a workspace",
+        "tags": [
+          "Workspaces"
+        ],
+        "responses": {
+          "201": {
+            "description": "Created workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWorkspaceBody"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces/{workspaceId}": {
+      "patch": {
+        "operationId": "updateWorkspace",
+        "summary": "Rename a workspace",
+        "tags": [
+          "Workspaces"
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Workspace not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWorkspaceBody"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteWorkspace",
+        "summary": "Delete a workspace",
+        "tags": [
+          "Workspaces"
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted workspace id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteWorkspaceResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Workspace not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/tasks": {
+      "get": {
+        "operationId": "listTasks",
+        "summary": "List tasks across workspaces",
+        "tags": [
+          "Tasks"
+        ],
+        "responses": {
+          "200": {
+            "description": "Task collection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TasksResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "operationId": "createTask",
+        "summary": "Create a task card",
+        "tags": [
+          "Tasks"
+        ],
+        "responses": {
+          "201": {
+            "description": "Created task",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTaskBody"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{taskId}": {
+      "patch": {
+        "operationId": "updateTask",
+        "summary": "Update a task card",
+        "tags": [
+          "Tasks"
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated task",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTaskBody"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteTask",
+        "summary": "Delete a task card",
+        "tags": [
+          "Tasks"
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted task id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteTaskResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/tasks/{taskId}/start": {
+      "post": {
+        "operationId": "startTask",
+        "summary": "Start task execution",
+        "tags": [
+          "Runs"
+        ],
+        "responses": {
+          "200": {
+            "description": "Started run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartTaskResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unable to start task",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/tasks/{taskId}/stop": {
+      "post": {
+        "operationId": "stopTask",
+        "summary": "Stop task execution",
+        "tags": [
+          "Runs"
+        ],
+        "responses": {
+          "200": {
+            "description": "Stopped run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StopTaskResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unable to stop task",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/tasks/{taskId}/runs": {
+      "get": {
+        "operationId": "listRuns",
+        "summary": "List task runs",
+        "tags": [
+          "Runs"
+        ],
+        "responses": {
+          "200": {
+            "description": "Run collection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/runs/{runId}/log": {
+      "get": {
+        "operationId": "getRunLog",
+        "summary": "Read a stored run log",
+        "tags": [
+          "Runs"
+        ],
+        "responses": {
+          "200": {
+            "description": "Run log content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunLogResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Run not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApiError": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              false
+            ]
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "details": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ApiErrorIssue"
+                    }
+                  }
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "error"
+        ]
+      },
+      "ApiErrorIssue": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "expected": {
+            "type": "string"
+          },
+          "value": {}
+        },
+        "required": [
+          "path",
+          "expected",
+          "value"
+        ]
+      },
+      "Workspace": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "rootPath": {
+            "type": "string"
+          },
+          "isGitRepo": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "rootPath",
+          "isGitRepo",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "Task": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string"
+          },
+          "column": {
+            "$ref": "#/components/schemas/TaskColumn"
+          },
+          "order": {
+            "type": "number"
+          },
+          "runnerType": {
+            "$ref": "#/components/schemas/RunnerType"
+          },
+          "runnerConfig": {
+            "$ref": "#/components/schemas/RunnerConfig"
+          },
+          "lastRunId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "description",
+          "workspaceId",
+          "column",
+          "order",
+          "runnerType",
+          "runnerConfig",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "TaskColumn": {
+        "oneOf": [
+          {
+            "enum": [
+              "todo"
+            ]
+          },
+          {
+            "enum": [
+              "running"
+            ]
+          },
+          {
+            "enum": [
+              "review"
+            ]
+          },
+          {
+            "enum": [
+              "done"
+            ]
+          },
+          {
+            "enum": [
+              "archived"
+            ]
+          }
+        ]
+      },
+      "RunnerType": {
+        "oneOf": [
+          {
+            "enum": [
+              "codex"
+            ]
+          },
+          {
+            "enum": [
+              "shell"
+            ]
+          }
+        ]
+      },
+      "RunnerConfig": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/ShellRunnerConfig"
+          },
+          {
+            "$ref": "#/components/schemas/CodexRunnerConfig"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": {
+            "shell": "#/components/schemas/ShellRunnerConfig",
+            "codex": "#/components/schemas/CodexRunnerConfig"
+          }
+        }
+      },
+      "ShellRunnerConfig": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "enum": [
+              "shell"
+            ]
+          },
+          "command": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "command"
+        ]
+      },
+      "CodexRunnerConfig": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "enum": [
+              "codex"
+            ]
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "approvalMode": {
+            "oneOf": [
+              {
+                "enum": [
+                  "default"
+                ]
+              },
+              {
+                "enum": [
+                  "auto"
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "prompt"
+        ]
+      },
+      "Run": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "taskId": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RunStatus"
+          },
+          "runnerType": {
+            "$ref": "#/components/schemas/RunnerType"
+          },
+          "command": {
+            "type": "string"
+          },
+          "pid": {
+            "type": "number"
+          },
+          "exitCode": {
+            "type": "number"
+          },
+          "startedAt": {
+            "type": "string"
+          },
+          "endedAt": {
+            "type": "string"
+          },
+          "logFile": {
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/Recordstringstring"
+          }
+        },
+        "required": [
+          "id",
+          "taskId",
+          "status",
+          "runnerType",
+          "command",
+          "startedAt",
+          "logFile"
+        ]
+      },
+      "RunStatus": {
+        "oneOf": [
+          {
+            "enum": [
+              "running"
+            ]
+          },
+          {
+            "enum": [
+              "queued"
+            ]
+          },
+          {
+            "enum": [
+              "succeeded"
+            ]
+          },
+          {
+            "enum": [
+              "failed"
+            ]
+          },
+          {
+            "enum": [
+              "canceled"
+            ]
+          }
+        ]
+      },
+      "Recordstringstring": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "description": "Construct a type with a set of properties K of type T",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "CreateWorkspaceBody": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "rootPath": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "rootPath"
+        ]
+      },
+      "UpdateWorkspaceBody": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "UpdateWorkspaceParams": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId"
+        ]
+      },
+      "DeleteWorkspaceParams": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId"
+        ]
+      },
+      "ListTasksQuery": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "CreateTaskBody": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string"
+          },
+          "column": {
+            "oneOf": [
+              {
+                "enum": [
+                  "todo"
+                ]
+              },
+              {
+                "enum": [
+                  "running"
+                ]
+              },
+              {
+                "enum": [
+                  "review"
+                ]
+              },
+              {
+                "enum": [
+                  "done"
+                ]
+              },
+              {
+                "enum": [
+                  "archived"
+                ]
+              }
+            ]
+          },
+          "order": {
+            "type": "number"
+          },
+          "runnerType": {
+            "$ref": "#/components/schemas/RunnerType"
+          },
+          "runnerConfig": {
+            "$ref": "#/components/schemas/RunnerConfig"
+          }
+        },
+        "required": [
+          "title",
+          "workspaceId",
+          "runnerType",
+          "runnerConfig"
+        ]
+      },
+      "UpdateTaskParams": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      },
+      "UpdateTaskBody": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string"
+          },
+          "column": {
+            "oneOf": [
+              {
+                "enum": [
+                  "todo"
+                ]
+              },
+              {
+                "enum": [
+                  "running"
+                ]
+              },
+              {
+                "enum": [
+                  "review"
+                ]
+              },
+              {
+                "enum": [
+                  "done"
+                ]
+              },
+              {
+                "enum": [
+                  "archived"
+                ]
+              }
+            ]
+          },
+          "order": {
+            "type": "number"
+          },
+          "runnerType": {
+            "oneOf": [
+              {
+                "enum": [
+                  "codex"
+                ]
+              },
+              {
+                "enum": [
+                  "shell"
+                ]
+              }
+            ]
+          },
+          "runnerConfig": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ShellRunnerConfig"
+              },
+              {
+                "$ref": "#/components/schemas/CodexRunnerConfig"
+              }
+            ],
+            "discriminator": {
+              "propertyName": "type",
+              "mapping": {
+                "shell": "#/components/schemas/ShellRunnerConfig",
+                "codex": "#/components/schemas/CodexRunnerConfig"
+              }
+            }
+          }
+        },
+        "required": []
+      },
+      "DeleteTaskParams": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      },
+      "StartTaskParams": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      },
+      "StopTaskParams": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      },
+      "ListRunsParams": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      },
+      "RunLogParams": {
+        "type": "object",
+        "properties": {
+          "runId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "runId"
+        ]
+      },
+      "WorkspacesResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/ListWorkspacesData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "ListWorkspacesData": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Workspace"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "WorkspaceResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/WorkspaceData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "WorkspaceData": {
+        "type": "object",
+        "properties": {
+          "workspace": {
+            "$ref": "#/components/schemas/Workspace"
+          }
+        },
+        "required": [
+          "workspace"
+        ]
+      },
+      "DeleteWorkspaceResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/DeleteResult"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "DeleteResult": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "TasksResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/ListTasksData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "ListTasksData": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Task"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "TaskResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/TaskData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "TaskData": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "$ref": "#/components/schemas/Task"
+          }
+        },
+        "required": [
+          "task"
+        ]
+      },
+      "DeleteTaskResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/DeleteResult"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "StartTaskResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/StartTaskData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "StartTaskData": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "$ref": "#/components/schemas/Task"
+          },
+          "run": {
+            "$ref": "#/components/schemas/Run"
+          }
+        },
+        "required": [
+          "task",
+          "run"
+        ]
+      },
+      "StopTaskResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/StopTaskData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "StopTaskData": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "$ref": "#/components/schemas/Task"
+          },
+          "run": {
+            "$ref": "#/components/schemas/Run"
+          }
+        },
+        "required": [
+          "task",
+          "run"
+        ]
+      },
+      "RunsResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/ListRunsData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "ListRunsData": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Run"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "RunLogResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/RunLogData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "RunLogData": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "content"
+        ]
+      },
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/HealthData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "HealthData": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/PickAppStateschemaVersion"
+          }
+        },
+        "required": [
+          "status",
+          "state"
+        ]
+      },
+      "PickAppStateschemaVersion": {
+        "type": "object",
+        "properties": {
+          "schemaVersion": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "schemaVersion"
+        ],
+        "description": "From T, pick a set of properties whose keys are in the union K"
+      }
+    }
+  }
+}

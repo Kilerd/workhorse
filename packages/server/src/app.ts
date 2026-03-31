@@ -1,0 +1,170 @@
+import { Hono } from "hono";
+
+import {
+  buildOpenApiDocument,
+  validateCreateTaskBody,
+  validateCreateWorkspaceBody,
+  validateDeleteTaskParams,
+  validateDeleteWorkspaceParams,
+  validateListRunsParams,
+  validateListTasksQuery,
+  validateRunLogParams,
+  validateStartTaskParams,
+  validateStopTaskParams,
+  validateUpdateTaskBody,
+  validateUpdateTaskParams,
+  validateUpdateWorkspaceBody,
+  validateUpdateWorkspaceParams
+} from "@workhorse/contracts";
+
+import { errorStatus, ok, toApiError, validateOrThrow } from "./lib/http.js";
+import type { BoardService } from "./services/board-service.js";
+
+function queryObject(url: string): Record<string, string> {
+  const search = new URL(url).searchParams;
+  return Object.fromEntries(search.entries());
+}
+
+export function createApp(service: BoardService): Hono {
+  const app = new Hono();
+  const openApiDocument = buildOpenApiDocument();
+
+  app.onError((error) =>
+    new Response(JSON.stringify(toApiError(error)), {
+      status: errorStatus(error),
+      headers: {
+        "content-type": "application/json"
+      }
+    })
+  );
+
+  app.get("/openapi.json", (c) => c.json(openApiDocument));
+
+  app.get("/api/health", (c) =>
+    c.json(ok({ status: "ok", state: { schemaVersion: service.snapshot().schemaVersion } }))
+  );
+
+  app.get("/api/workspaces", (c) =>
+    c.json(ok({ items: service.listWorkspaces() }))
+  );
+
+  app.post("/api/workspaces", async (c) => {
+    const body = validateOrThrow(
+      await c.req.json(),
+      validateCreateWorkspaceBody,
+      "Invalid workspace payload"
+    );
+    const workspace = await service.createWorkspace(body);
+    return c.json(ok({ workspace }), 201);
+  });
+
+  app.patch("/api/workspaces/:workspaceId", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateUpdateWorkspaceParams,
+      "Invalid workspace params"
+    );
+    const body = validateOrThrow(
+      await c.req.json(),
+      validateUpdateWorkspaceBody,
+      "Invalid workspace payload"
+    );
+    const workspace = await service.updateWorkspace(params.workspaceId, body);
+    return c.json(ok({ workspace }));
+  });
+
+  app.delete("/api/workspaces/:workspaceId", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateDeleteWorkspaceParams,
+      "Invalid workspace params"
+    );
+    const result = await service.deleteWorkspace(params.workspaceId);
+    return c.json(ok(result));
+  });
+
+  app.get("/api/tasks", (c) => {
+    const query = validateOrThrow(
+      queryObject(c.req.url),
+      validateListTasksQuery,
+      "Invalid task query"
+    );
+    return c.json(ok({ items: service.listTasks(query) }));
+  });
+
+  app.post("/api/tasks", async (c) => {
+    const body = validateOrThrow(
+      await c.req.json(),
+      validateCreateTaskBody,
+      "Invalid task payload"
+    );
+    const task = await service.createTask(body);
+    return c.json(ok({ task }), 201);
+  });
+
+  app.patch("/api/tasks/:taskId", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateUpdateTaskParams,
+      "Invalid task params"
+    );
+    const body = validateOrThrow(
+      await c.req.json(),
+      validateUpdateTaskBody,
+      "Invalid task payload"
+    );
+    const task = await service.updateTask(params.taskId, body);
+    return c.json(ok({ task }));
+  });
+
+  app.delete("/api/tasks/:taskId", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateDeleteTaskParams,
+      "Invalid task params"
+    );
+    const result = await service.deleteTask(params.taskId);
+    return c.json(ok(result));
+  });
+
+  app.post("/api/tasks/:taskId/start", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateStartTaskParams,
+      "Invalid task params"
+    );
+    const result = await service.startTask(params.taskId);
+    return c.json(ok(result));
+  });
+
+  app.post("/api/tasks/:taskId/stop", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateStopTaskParams,
+      "Invalid task params"
+    );
+    const result = await service.stopTask(params.taskId);
+    return c.json(ok(result));
+  });
+
+  app.get("/api/tasks/:taskId/runs", (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateListRunsParams,
+      "Invalid run params"
+    );
+    return c.json(ok({ items: service.listRuns(params.taskId) }));
+  });
+
+  app.get("/api/runs/:runId/log", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateRunLogParams,
+      "Invalid run params"
+    );
+    const content = await service.getRunLog(params.runId);
+    return c.json(ok({ content }));
+  });
+
+  return app;
+}

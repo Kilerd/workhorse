@@ -1,0 +1,14 @@
+{
+  "name": "@workhorse/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@workhorse/contracts": "0.1.0",
+    "openapi-typescript-fetch": "^2.2.1"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "name": "workhorse",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "postinstall": "ts-patch install -s",
+    "clean": "rimraf packages/*/dist packages/api-client/openapi.json packages/api-client/src/generated/openapi.ts",
+    "build:contracts": "npm run build --workspace @workhorse/contracts",
+    "generate:openapi": "npm run build:contracts && node packages/contracts/dist/scripts/generate-openapi.js",
+    "generate:client": "npm run generate:openapi && openapi-typescript packages/api-client/openapi.json -o packages/api-client/src/generated/openapi.ts",
+    "check:contracts": "npm run generate:client && git diff --exit-code -- packages/api-client/openapi.json packages/api-client/src/generated/openapi.ts",
+    "build:server": "npm run build --workspace @workhorse/server",
+    "build:web": "npm run build --workspace @workhorse/web",
+    "build": "npm run generate:client && npm run build:server && npm run build:web",
+    "dev": "npm run generate:client && concurrently -k -n contracts,server,web -c cyan,green,magenta \"npm run dev --workspace @workhorse/contracts\" \"npm run dev --workspace @workhorse/server\" \"npm run dev --workspace @workhorse/web\"",
+    "test": "npm run test --workspace @workhorse/server"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.1",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@types/ws": "^8.18.1",
+    "concurrently": "^9.2.1",
+    "openapi-typescript": "^7.13.0",
+    "rimraf": "^6.1.0",
+    "ts-patch": "^3.3.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.3"
+  }
+}
