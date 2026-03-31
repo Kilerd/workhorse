@@ -27,8 +27,8 @@ npm run dev
 
 Services:
 
-- Web app: [http://localhost:5173](http://localhost:5173)
-- Runtime API: [http://127.0.0.1:3484/api/health](http://127.0.0.1:3484/api/health)
+- App and API: [http://127.0.0.1:3484](http://127.0.0.1:3484)
+- Health: [http://127.0.0.1:3484/api/health](http://127.0.0.1:3484/api/health)
 - OpenAPI: [http://127.0.0.1:3484/openapi.json](http://127.0.0.1:3484/openapi.json)
 
 ## Useful scripts
@@ -39,6 +39,12 @@ npm run test
 npm run generate:openapi
 npm run generate:client
 npm run check:contracts
+```
+
+To run the built app from the same single port:
+
+```bash
+node packages/server/dist/index.js
 ```
 
 ## Runtime data

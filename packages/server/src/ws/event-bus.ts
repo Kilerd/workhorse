@@ -20,7 +20,6 @@ export class EventBus {
     server.on("upgrade", (request, socket, head) => {
       const url = new URL(request.url ?? "/", "http://127.0.0.1");
       if (url.pathname !== "/ws") {
-        socket.destroy();
         return;
       }
 
