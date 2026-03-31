@@ -2,7 +2,12 @@ import { access, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import { dirname, join } from "node:path";
 
-import type { AppState, Run, Task, Workspace } from "@workhorse/contracts";
+import type { AppState, Run, RunLogEntry, Task, Workspace } from "@workhorse/contracts";
+
+import {
+  parseRunLogEntries,
+  serializeRunLogEntry
+} from "../lib/run-log.js";
 
 const SCHEMA_VERSION = 1;
 
@@ -78,19 +83,20 @@ export class StateStore {
     return join(this.logsDir, `${runId}.log`);
   }
 
-  public async readLog(runId: string): Promise<string> {
+  public async readLogEntries(runId: string): Promise<RunLogEntry[]> {
     const path = this.createLogPath(runId);
     try {
-      return await readFile(path, "utf8");
+      const raw = await readFile(path, "utf8");
+      return parseRunLogEntries(runId, raw);
     } catch {
-      return "";
+      return [];
     }
   }
 
-  public async appendLog(runId: string, chunk: string): Promise<void> {
+  public async appendLogEntry(runId: string, entry: RunLogEntry): Promise<void> {
     const path = this.createLogPath(runId);
     await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, chunk, {
+    await writeFile(path, serializeRunLogEntry(entry), {
       encoding: "utf8",
       flag: "a"
     });

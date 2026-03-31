@@ -141,7 +141,8 @@ describe("workhorse runtime", () => {
     expect(updatedTask?.column).toBe("review");
 
     const log = await service.getRunLog(completedRun.id);
-    expect(log).toContain("hello from shell");
+    expect(log.some((entry) => entry.text.includes("hello from shell"))).toBe(true);
+    expect(log.some((entry) => entry.kind === "text")).toBe(true);
   });
 
   it("stops an active shell task and marks the run canceled", async () => {
@@ -324,6 +325,56 @@ describe("workhorse runtime", () => {
     expect(payload.data.task.column).toBe("todo");
     expect(payload.data.plan).toContain("# Plan");
     expect(payload.data.task.description).toContain("Need a rollout.");
+  });
+
+  it("moves tasks to the end of the destination column by default", async () => {
+    const { service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+
+    const doneOne = await service.createTask({
+      title: "Done one",
+      workspaceId: workspace.id,
+      column: "done",
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "true"
+      }
+    });
+    const doneTwo = await service.createTask({
+      title: "Done two",
+      workspaceId: workspace.id,
+      column: "done",
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "true"
+      }
+    });
+    const reviewTask = await service.createTask({
+      title: "Review me",
+      workspaceId: workspace.id,
+      column: "review",
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "true"
+      }
+    });
+
+    const movedTask = await service.updateTask(reviewTask.id, {
+      column: "done"
+    });
+    const doneTasks = service
+      .listTasks({})
+      .filter((task) => task.column === "done");
+
+    expect(movedTask.order).toBeGreaterThan(doneTwo.order);
+    expect(doneTasks.map((task) => task.id)).toEqual([
+      doneOne.id,
+      doneTwo.id,
+      movedTask.id
+    ]);
   });
 
   it("lists tasks using board column order", async () => {

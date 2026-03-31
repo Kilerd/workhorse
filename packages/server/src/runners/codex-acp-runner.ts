@@ -84,10 +84,10 @@ interface CommandExecutionOutputDeltaNotification {
   delta: string;
 }
 
-interface ItemCompletedNotification {
+interface ItemLifecycleNotification {
   threadId: string;
   turnId: string;
-  item: {
+  item: Record<string, unknown> & {
     type: string;
     aggregatedOutput?: string | null;
     text?: string;
@@ -99,6 +99,147 @@ interface ItemCompletedNotification {
 interface PendingRequest {
   resolve: (value: any) => void;
   reject: (reason?: unknown) => void;
+}
+
+function flattenItemText(value: unknown): string[] {
+  if (typeof value === "string") {
+    return value.trim() ? [value.trim()] : [];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => flattenItemText(entry));
+  }
+
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+
+  const record = value as Record<string, unknown>;
+  return [
+    ...flattenItemText(record.text),
+    ...flattenItemText(record.command),
+    ...flattenItemText(record.aggregatedOutput),
+    ...flattenItemText(record.title),
+    ...flattenItemText(record.name),
+    ...flattenItemText(record.summary),
+    ...flattenItemText(record.content),
+    ...flattenItemText(record.output),
+    ...flattenItemText(record.message)
+  ];
+}
+
+function summarizeItem(item: Record<string, unknown>): string {
+  const text = [...new Set(flattenItemText(item))].join("\n").trim();
+  if (text) {
+    return text;
+  }
+
+  const details: string[] = [];
+  if (typeof item.status === "string") {
+    details.push(`status: ${item.status}`);
+  }
+  if (typeof item.exitCode === "number") {
+    details.push(`exit code: ${item.exitCode}`);
+  }
+  return details.join(" · ");
+}
+
+function humanizeItemType(type: string): string {
+  return type
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_/.-]+/g, " ")
+    .trim();
+}
+
+function classifyItemLifecycle(
+  item: Record<string, unknown> & { type: string },
+  phase: "started" | "completed"
+):
+  | {
+      kind: "agent" | "tool_call" | "plan" | "status";
+      text: string;
+      stream: "stdout" | "stderr" | "system";
+      title: string;
+      source: string;
+      metadata?: Record<string, string>;
+    }
+  | null {
+  const type = item.type;
+  if (type === "userMessage") {
+    return null;
+  }
+
+  const normalized = type.toLowerCase();
+  const summary = summarizeItem(item);
+
+  if (normalized.includes("reason")) {
+    return {
+      kind: "plan",
+      text: summary || (phase === "started" ? "Planning started." : "Planning updated."),
+      stream: "system",
+      title: phase === "started" ? "Plan started" : "Plan updated",
+      source: `item/${phase}`,
+      metadata: {
+        itemType: type,
+        phase
+      }
+    };
+  }
+
+  if (normalized.includes("command") || normalized.includes("tool")) {
+    const metadata: Record<string, string> = {
+      itemType: type,
+      phase
+    };
+    if (typeof item.status === "string") {
+      metadata.status = item.status;
+    }
+    if (typeof item.exitCode === "number") {
+      metadata.exitCode = String(item.exitCode);
+    }
+
+    return {
+      kind: "tool_call",
+      text:
+        summary ||
+        `${humanizeItemType(type)} ${phase === "started" ? "started" : "completed"}.`,
+      stream: "system",
+      title:
+        phase === "started"
+          ? `${humanizeItemType(type)} started`
+          : `${humanizeItemType(type)} completed`,
+      source: `item/${phase}`,
+      metadata
+    };
+  }
+
+  if (normalized.includes("assistant") || normalized.includes("agent")) {
+    return {
+      kind: "agent",
+      text: summary || "Agent updated the response.",
+      stream: "stdout",
+      title: "Agent response",
+      source: `item/${phase}`,
+      metadata: {
+        itemType: type,
+        phase
+      }
+    };
+  }
+
+  return {
+    kind: "status",
+    text:
+      summary ||
+      `${humanizeItemType(type)} ${phase === "started" ? "started" : "completed"}.`,
+    stream: "system",
+    title: humanizeItemType(type),
+    source: `item/${phase}`,
+    metadata: {
+      itemType: type,
+      phase
+    }
+  };
 }
 
 export class CodexAcpRunner implements RunnerAdapter {
@@ -133,11 +274,21 @@ export class CodexAcpRunner implements RunnerAdapter {
     );
 
     child.stdout.on("data", async (chunk: Buffer) => {
-      await hooks.onOutput(chunk.toString("utf8"), "system");
+      await hooks.onOutput({
+        kind: "system",
+        text: chunk.toString("utf8"),
+        stream: "system",
+        title: "Codex ACP"
+      });
     });
 
     child.stderr.on("data", async (chunk: Buffer) => {
-      await hooks.onOutput(chunk.toString("utf8"), "system");
+      await hooks.onOutput({
+        kind: "system",
+        text: chunk.toString("utf8"),
+        stream: "system",
+        title: "Codex ACP"
+      });
     });
 
     const ws = await this.connect(listenUrl);
@@ -186,7 +337,12 @@ export class CodexAcpRunner implements RunnerAdapter {
     };
 
     child.on("error", async (error) => {
-      await hooks.onOutput(`${error.message}\n`, "system");
+      await hooks.onOutput({
+        kind: "system",
+        text: `${error.message}\n`,
+        stream: "system",
+        title: "Codex ACP error"
+      });
       await finalize({
         status: stopRequested ? "canceled" : "failed",
         metadata: threadId && turnId ? { threadId, turnId } : undefined
@@ -199,7 +355,12 @@ export class CodexAcpRunner implements RunnerAdapter {
       try {
         message = JSON.parse(rawMessage.toString());
       } catch (error) {
-        await hooks.onOutput(`Invalid ACP message: ${String(error)}\n`, "system");
+        await hooks.onOutput({
+          kind: "system",
+          text: `Invalid ACP message: ${String(error)}\n`,
+          stream: "system",
+          title: "Codex ACP error"
+        });
         return;
       }
 
@@ -231,26 +392,61 @@ export class CodexAcpRunner implements RunnerAdapter {
       switch (notification.method) {
         case "item/agentMessage/delta": {
           const params = notification.params as AgentMessageDeltaNotification;
-          await hooks.onOutput(params.delta, "stdout");
+          await hooks.onOutput({
+            kind: "agent",
+            text: params.delta,
+            stream: "stdout",
+            title: "Agent output",
+            source: notification.method
+          });
+          break;
+        }
+        case "item/assistantMessage/delta": {
+          const params = notification.params as AgentMessageDeltaNotification;
+          await hooks.onOutput({
+            kind: "agent",
+            text: params.delta,
+            stream: "stdout",
+            title: "Agent output",
+            source: notification.method
+          });
           break;
         }
         case "command/exec/outputDelta": {
           const params = notification.params as CommandExecOutputDeltaNotification;
-          await hooks.onOutput(params.delta, params.stream ?? "stdout");
+          await hooks.onOutput({
+            kind: "tool_output",
+            text: params.delta,
+            stream: params.stream ?? "stdout",
+            title: "Tool output",
+            source: notification.method
+          });
           break;
         }
         case "item/commandExecution/outputDelta": {
           const params = notification.params as CommandExecutionOutputDeltaNotification;
-          await hooks.onOutput(params.delta, "stdout");
+          await hooks.onOutput({
+            kind: "tool_output",
+            text: params.delta,
+            stream: "stdout",
+            title: "Tool output",
+            source: notification.method
+          });
+          break;
+        }
+        case "item/started": {
+          const params = notification.params as ItemLifecycleNotification;
+          const output = classifyItemLifecycle(params.item, "started");
+          if (output) {
+            await hooks.onOutput(output);
+          }
           break;
         }
         case "item/completed": {
-          const params = notification.params as ItemCompletedNotification;
-          if (
-            params.item.type === "commandExecution" &&
-            params.item.aggregatedOutput
-          ) {
-            await hooks.onOutput(params.item.aggregatedOutput, "stdout");
+          const params = notification.params as ItemLifecycleNotification;
+          const output = classifyItemLifecycle(params.item, "completed");
+          if (output) {
+            await hooks.onOutput(output);
           }
           break;
         }
@@ -271,7 +467,13 @@ export class CodexAcpRunner implements RunnerAdapter {
           break;
         }
         case "error": {
-          await hooks.onOutput("Codex ACP emitted an error notification.\n", "system");
+          await hooks.onOutput({
+            kind: "system",
+            text: "Codex ACP emitted an error notification.\n",
+            stream: "system",
+            title: "Codex ACP error",
+            source: notification.method
+          });
           break;
         }
         default:
@@ -280,7 +482,12 @@ export class CodexAcpRunner implements RunnerAdapter {
     });
 
     ws.on("error", async (error: Error) => {
-      await hooks.onOutput(`${error.message}\n`, "system");
+      await hooks.onOutput({
+        kind: "system",
+        text: `${error.message}\n`,
+        stream: "system",
+        title: "WebSocket error"
+      });
     });
 
     ws.on("close", async () => {

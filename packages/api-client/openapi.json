@@ -1543,12 +1543,113 @@
       "RunLogData": {
         "type": "object",
         "properties": {
-          "content": {
-            "type": "string"
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunLogEntry"
+            }
           }
         },
         "required": [
-          "content"
+          "items"
+        ]
+      },
+      "RunLogEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string"
+          },
+          "stream": {
+            "$ref": "#/components/schemas/RunLogStream"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/RunLogKind"
+          },
+          "text": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/Recordstringstring"
+          }
+        },
+        "required": [
+          "id",
+          "runId",
+          "timestamp",
+          "stream",
+          "kind",
+          "text"
+        ]
+      },
+      "RunLogStream": {
+        "oneOf": [
+          {
+            "enum": [
+              "stdout"
+            ]
+          },
+          {
+            "enum": [
+              "stderr"
+            ]
+          },
+          {
+            "enum": [
+              "system"
+            ]
+          }
+        ]
+      },
+      "RunLogKind": {
+        "oneOf": [
+          {
+            "enum": [
+              "system"
+            ]
+          },
+          {
+            "enum": [
+              "text"
+            ]
+          },
+          {
+            "enum": [
+              "agent"
+            ]
+          },
+          {
+            "enum": [
+              "tool_call"
+            ]
+          },
+          {
+            "enum": [
+              "tool_output"
+            ]
+          },
+          {
+            "enum": [
+              "plan"
+            ]
+          },
+          {
+            "enum": [
+              "status"
+            ]
+          }
         ]
       },
       "HealthResponse": {

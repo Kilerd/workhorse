@@ -1,4 +1,11 @@
-import type { Run, RunStatus, Task, Workspace } from "@workhorse/contracts";
+import type {
+  Run,
+  RunLogKind,
+  RunLogStream,
+  RunStatus,
+  Task,
+  Workspace
+} from "@workhorse/contracts";
 
 export interface RunnerStartContext {
   run: Run;
@@ -7,7 +14,14 @@ export interface RunnerStartContext {
 }
 
 export interface RunnerLifecycleHooks {
-  onOutput(chunk: string, stream: "stdout" | "stderr" | "system"): Promise<void>;
+  onOutput(entry: {
+    kind: RunLogKind;
+    text: string;
+    stream: RunLogStream;
+    title?: string;
+    source?: string;
+    metadata?: Record<string, string>;
+  }): Promise<void>;
   onExit(result: {
     status: RunStatus;
     exitCode?: number;

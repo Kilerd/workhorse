@@ -173,8 +173,8 @@ export function createApp(service: BoardService): Hono {
       validateRunLogParams,
       "Invalid run params"
     );
-    const content = await service.getRunLog(params.runId);
-    return c.json(ok({ content }));
+    const items = await service.getRunLog(params.runId);
+    return c.json(ok({ items }));
   });
 
   return app;

@@ -79,7 +79,10 @@ function ReactAppShell() {
       return;
     }
 
-    if (result.destination.droppableId !== result.source.droppableId) {
+    if (
+      result.destination.droppableId === result.source.droppableId &&
+      result.destination.index === result.source.index
+    ) {
       return;
     }
 
@@ -105,11 +108,14 @@ function ReactAppShell() {
             ? after.order - 1024
             : 1024;
 
+    const body: Record<string, unknown> = { order };
+    if (destinationColumn !== task.column) {
+      body.column = destinationColumn;
+    }
+
     void board.updateTask({
       taskId: task.id,
-      body: {
-        order
-      }
+      body
     });
   }
 
@@ -258,8 +264,8 @@ function TaskDetailsRoute({
   const isSelectedTaskActive = board.selectedTask?.id === task.id;
   const runs = isSelectedTaskActive ? board.selectedTaskRunsQuery.data ?? [] : [];
   const selectedRun = isSelectedTaskActive ? board.selectedRun : null;
-  const liveLog = selectedRun?.id ? board.liveLogByRunId[selectedRun.id] ?? "" : "";
-  const runLog = isSelectedTaskActive ? board.selectedRunLogQuery.data ?? "" : "";
+  const liveLog = selectedRun?.id ? board.liveLogByRunId[selectedRun.id] ?? [] : [];
+  const runLog = isSelectedTaskActive ? board.selectedRunLogQuery.data ?? [] : [];
   const workspaceName =
     workspaces.find((workspace) => workspace.id === task.workspaceId)?.name ?? "Unknown workspace";
 

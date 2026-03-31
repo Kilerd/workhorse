@@ -38,15 +38,28 @@ export class ShellRunner implements RunnerAdapter {
     };
 
     child.stdout.on("data", async (chunk: Buffer) => {
-      await hooks.onOutput(chunk.toString("utf8"), "stdout");
+      await hooks.onOutput({
+        kind: "text",
+        text: chunk.toString("utf8"),
+        stream: "stdout"
+      });
     });
 
     child.stderr.on("data", async (chunk: Buffer) => {
-      await hooks.onOutput(chunk.toString("utf8"), "stderr");
+      await hooks.onOutput({
+        kind: "text",
+        text: chunk.toString("utf8"),
+        stream: "stderr"
+      });
     });
 
     child.on("error", async (error) => {
-      await hooks.onOutput(`${error.message}\n`, "system");
+      await hooks.onOutput({
+        kind: "system",
+        text: `${error.message}\n`,
+        stream: "system",
+        title: "Shell runner error"
+      });
       await finalize("failed");
     });
 

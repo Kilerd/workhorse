@@ -7,6 +7,7 @@ import {
 
 import type {
   Run,
+  RunLogEntry,
   ServerEvent,
   Task,
   Workspace
@@ -38,7 +39,7 @@ export function useBoardData() {
     readStoredValue<string | null>(STORAGE_KEYS.selectedTaskId, null)
   );
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const [liveLogByRunId, setLiveLogByRunId] = useState<Record<string, string>>({});
+  const [liveLogByRunId, setLiveLogByRunId] = useState<Record<string, RunLogEntry[]>>({});
   const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
   const [taskModalOpen, setTaskModalOpen] = useState(false);
 
@@ -105,12 +106,12 @@ export function useBoardData() {
 
   const selectedRunLogQuery = useQuery({
     queryKey: queryKey("run-log", selectedRun?.id ?? ""),
-    queryFn: async () => {
+    queryFn: async (): Promise<RunLogEntry[]> => {
       if (!selectedRun?.id) {
-        return "";
+        return [];
       }
       const response = await api.getRunLog(selectedRun.id);
-      return unwrap(response).content;
+      return unwrap(response).items;
     },
     enabled: Boolean(selectedRun?.id)
   });
@@ -272,7 +273,7 @@ export function useBoardData() {
     }
     setLiveLogByRunId((current) => ({
       ...current,
-      [event.runId]: `${current[event.runId] ?? ""}${event.chunk}`
+      [event.runId]: [...(current[event.runId] ?? []), event.entry]
     }));
   }
 

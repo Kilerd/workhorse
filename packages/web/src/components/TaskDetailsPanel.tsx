@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Run, Workspace } from "@workhorse/contracts";
+import type { Run, RunLogEntry, Workspace } from "@workhorse/contracts";
 
 import { formatRelativeTime } from "@/lib/format";
 import type { DisplayTask } from "@/lib/task-view";
@@ -13,8 +13,8 @@ interface Props {
   workspaces: Workspace[];
   selectedRunId: string | null;
   onSelectRun(runId: string): void;
-  liveLog: string;
-  runLog: string;
+  liveLog: RunLogEntry[];
+  runLog: RunLogEntry[];
   onPlan(): void;
   onStart(): void;
   onStop(): void;

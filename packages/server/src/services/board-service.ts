@@ -18,6 +18,7 @@ import type {
 
 import { AppError, ensure } from "../lib/errors.js";
 import { createId } from "../lib/id.js";
+import { createRunLogEntry } from "../lib/run-log.js";
 import { StateStore } from "../persistence/state-store.js";
 import { CodexAcpRunner } from "../runners/codex-acp-runner.js";
 import type { RunnerAdapter, RunnerControl } from "../runners/types.js";
@@ -248,8 +249,12 @@ export class BoardService {
       task.title = title;
     }
     task.description = input.description?.trim() ?? task.description;
-    task.column = input.column ?? task.column;
-    task.order = input.order ?? task.order;
+    const nextColumn = input.column ?? task.column;
+    const columnChanged = nextColumn !== task.column;
+    task.column = nextColumn;
+    task.order =
+      input.order ??
+      (columnChanged ? this.nextOrder(nextColumn) : task.order);
     task.runnerType = input.runnerType ?? task.runnerType;
     task.runnerConfig = input.runnerConfig ?? task.runnerConfig;
     task.updatedAt = new Date().toISOString();
@@ -359,15 +364,14 @@ export class BoardService {
           workspace
         },
         {
-          onOutput: async (chunk, stream) => {
-            await this.store.appendLog(run.id, chunk);
+          onOutput: async (output) => {
+            const entry = createRunLogEntry(run.id, output);
+            await this.store.appendLogEntry(run.id, entry);
             this.events.publish({
               type: "run.output",
               taskId: task.id,
               runId: run.id,
-              chunk,
-              stream,
-              timestamp: new Date().toISOString()
+              entry
             });
           },
           onExit: async (result) => {
@@ -442,7 +446,19 @@ export class BoardService {
     } catch (error) {
       run.status = "failed";
       run.endedAt = new Date().toISOString();
-      await this.store.appendLog(run.id, `${error instanceof Error ? error.message : String(error)}\n`);
+      const entry = createRunLogEntry(run.id, {
+        kind: "system",
+        stream: "system",
+        text: `${error instanceof Error ? error.message : String(error)}\n`,
+        title: "Runner error"
+      });
+      await this.store.appendLogEntry(run.id, entry);
+      this.events.publish({
+        type: "run.output",
+        taskId: task.id,
+        runId: run.id,
+        entry
+      });
       tasks[taskIndex] = {
         ...tasks[taskIndex],
         column: "review",
@@ -540,13 +556,13 @@ export class BoardService {
       .sort((left, right) => right.startedAt.localeCompare(left.startedAt));
   }
 
-  public async getRunLog(runId: string): Promise<string> {
+  public async getRunLog(runId: string) {
     const run = this.store.listRuns().find((entry) => entry.id === runId);
     if (!run) {
       throw new AppError(404, "RUN_NOT_FOUND", "Run not found");
     }
 
-    return this.store.readLog(runId);
+    return this.store.readLogEntries(runId);
   }
 
   private async recoverOrphanedRuns(): Promise<void> {

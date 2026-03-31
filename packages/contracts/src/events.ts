@@ -1,4 +1,4 @@
-import type { Run, Task, Workspace } from "./domain.js";
+import type { Run, RunLogEntry, Task, Workspace } from "./domain.js";
 
 export interface WorkspaceUpdatedEvent {
   type: "workspace.updated";
@@ -24,9 +24,7 @@ export interface RunOutputEvent {
   type: "run.output";
   taskId: string;
   runId: string;
-  chunk: string;
-  stream: "stdout" | "stderr" | "system";
-  timestamp: string;
+  entry: RunLogEntry;
 }
 
 export interface RunFinishedEvent {

@@ -15,6 +15,17 @@ export type RunStatus =
   | "failed"
   | "canceled";
 
+export type RunLogStream = "stdout" | "stderr" | "system";
+
+export type RunLogKind =
+  | "text"
+  | "agent"
+  | "tool_call"
+  | "tool_output"
+  | "plan"
+  | "system"
+  | "status";
+
 export interface Workspace {
   id: string;
   name: string;
@@ -63,6 +74,18 @@ export interface Run {
   startedAt: string;
   endedAt?: string;
   logFile: string;
+  metadata?: Record<string, string>;
+}
+
+export interface RunLogEntry {
+  id: string;
+  runId: string;
+  timestamp: string;
+  stream: RunLogStream;
+  kind: RunLogKind;
+  text: string;
+  title?: string;
+  source?: string;
   metadata?: Record<string, string>;
 }
 

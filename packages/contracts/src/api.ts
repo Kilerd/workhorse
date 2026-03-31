@@ -1,6 +1,7 @@
 import type {
   AppState,
   Run,
+  RunLogEntry,
   RunnerConfig,
   RunnerType,
   Task,
@@ -137,7 +138,7 @@ export interface RunLogParams {
 }
 
 export interface RunLogData {
-  content: string;
+  items: RunLogEntry[];
 }
 
 export interface HealthData {

@@ -571,18 +571,6 @@ dt {
   line-height: 1.6;
 }
 
-.log-viewer {
-  margin: 0;
-  min-height: 220px;
-  max-height: 48vh;
-  overflow: auto;
-  border-radius: 16px;
-  background: rgba(2, 4, 10, 0.9);
-  color: #e8f2ff;
-  padding: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
 .run-list {
   display: grid;
   gap: 10px;
@@ -603,6 +591,137 @@ dt {
 .active-run {
   padding: 14px;
   align-items: center;
+}
+
+.log-empty,
+.log-stream {
+  min-height: 220px;
+  max-height: 48vh;
+  overflow: auto;
+  border-radius: 16px;
+  background: rgba(2, 4, 10, 0.9);
+  color: #e8f2ff;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.log-empty {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.log-stream {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.log-entry {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: rgba(10, 14, 28, 0.9);
+  overflow: hidden;
+}
+
+.log-entry-agent {
+  border-color: rgba(114, 200, 255, 0.25);
+}
+
+.log-entry-tool_call,
+.log-entry-tool_output {
+  border-color: rgba(255, 187, 92, 0.22);
+}
+
+.log-entry-plan {
+  border-color: rgba(117, 235, 174, 0.22);
+}
+
+.log-entry-system,
+.log-entry-status {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.log-entry-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.log-entry-title,
+.log-entry-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.log-entry-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.log-entry-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 0;
+  padding: 10px 12px 0;
+}
+
+.log-entry-details div {
+  display: inline-flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.log-entry-details dt,
+.log-entry-details dd {
+  margin: 0;
+  font-size: 12px;
+}
+
+.log-entry-details dt {
+  color: var(--muted);
+}
+
+.log-kind,
+.log-stream-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.log-kind-agent {
+  background: rgba(114, 200, 255, 0.14);
+}
+
+.log-kind-tool_call,
+.log-kind-tool_output {
+  background: rgba(255, 187, 92, 0.14);
+}
+
+.log-kind-plan {
+  background: rgba(117, 235, 174, 0.14);
+}
+
+.log-entry-body {
+  margin: 0;
+  padding: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.6;
+  font: 12px/1.6 "SFMono-Regular", ui-monospace, monospace;
 }
 
 .modal-backdrop {

@@ -397,8 +397,21 @@ export interface components {
             data: components["schemas"]["RunLogData"];
         };
         RunLogData: {
-            content: string;
+            items: components["schemas"]["RunLogEntry"][];
         };
+        RunLogEntry: {
+            id: string;
+            runId: string;
+            timestamp: string;
+            stream: components["schemas"]["RunLogStream"];
+            kind: components["schemas"]["RunLogKind"];
+            text: string;
+            title?: string;
+            source?: string;
+            metadata?: components["schemas"]["Recordstringstring"];
+        };
+        RunLogStream: "stdout" | "stderr" | "system";
+        RunLogKind: "system" | "text" | "agent" | "tool_call" | "tool_output" | "plan" | "status";
         HealthResponse: {
             /** @enum {unknown} */
             ok: true;
