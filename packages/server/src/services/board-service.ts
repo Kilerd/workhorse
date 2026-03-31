@@ -1,4 +1,4 @@
-import { access } from "node:fs/promises";
+import { access, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { join } from "node:path";
 
@@ -28,6 +28,14 @@ interface ActiveRun {
   control: RunnerControl;
   stopRequested: boolean;
 }
+
+const COLUMN_ORDER: Record<Task["column"], number> = {
+  todo: 0,
+  running: 1,
+  review: 2,
+  done: 3,
+  archived: 4
+};
 
 export class BoardService {
   private readonly store: StateStore;
@@ -63,8 +71,9 @@ export class BoardService {
   }
 
   public async createWorkspace(input: CreateWorkspaceBody): Promise<Workspace> {
+    const name = input.name.trim();
     const rootPath = input.rootPath.trim();
-    if (!input.name.trim()) {
+    if (!name) {
       throw new AppError(400, "INVALID_WORKSPACE", "Workspace name is required");
     }
     await this.ensureReadableDirectory(rootPath);
@@ -72,7 +81,7 @@ export class BoardService {
     const now = new Date().toISOString();
     const workspace: Workspace = {
       id: createId(),
-      name: input.name.trim(),
+      name,
       rootPath,
       isGitRepo: await this.detectGitRepo(rootPath),
       createdAt: now,
@@ -103,7 +112,13 @@ export class BoardService {
       "Workspace not found"
     );
 
-    workspace.name = input.name?.trim() || workspace.name;
+    if (input.name !== undefined) {
+      const name = input.name.trim();
+      if (!name) {
+        throw new AppError(400, "INVALID_WORKSPACE", "Workspace name is required");
+      }
+      workspace.name = name;
+    }
     workspace.updatedAt = new Date().toISOString();
 
     this.store.setWorkspaces(workspaces);
@@ -152,7 +167,7 @@ export class BoardService {
       )
       .sort((left, right) => {
         if (left.column !== right.column) {
-          return left.column.localeCompare(right.column);
+          return COLUMN_ORDER[left.column] - COLUMN_ORDER[right.column];
         }
         return left.order - right.order;
       });
@@ -224,7 +239,13 @@ export class BoardService {
       );
     }
 
-    task.title = input.title?.trim() ?? task.title;
+    if (input.title !== undefined) {
+      const title = input.title.trim();
+      if (!title) {
+        throw new AppError(400, "INVALID_TASK", "Task title is required");
+      }
+      task.title = title;
+    }
     task.description = input.description?.trim() ?? task.description;
     task.column = input.column ?? task.column;
     task.order = input.order ?? task.order;
@@ -521,8 +542,17 @@ export class BoardService {
 
   private async ensureReadableDirectory(path: string): Promise<void> {
     try {
-      await access(path, constants.R_OK);
-    } catch {
+      const info = await stat(path);
+      if (!info.isDirectory()) {
+        throw new AppError(400, "INVALID_WORKSPACE", "Workspace path must be a directory");
+      }
+
+      await access(path, constants.R_OK | constants.X_OK);
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+
       throw new AppError(400, "INVALID_WORKSPACE", "Workspace path is not readable");
     }
   }

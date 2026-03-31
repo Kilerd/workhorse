@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -212,5 +212,117 @@ describe("workhorse runtime", () => {
     expect(recoveredRun.status).toBe("canceled");
     expect(recoveredRun.endedAt).toBeTruthy();
     expect(recoveredTask?.column).toBe("review");
+  });
+
+  it("rejects workspace paths that are not directories", async () => {
+    const { service, dataDir } = await createRuntime();
+    const filePath = join(dataDir, "not-a-directory.txt");
+    await writeFile(filePath, "content", "utf8");
+
+    await expect(
+      service.createWorkspace({
+        name: "Invalid",
+        rootPath: filePath
+      })
+    ).rejects.toMatchObject({
+      status: 400,
+      code: "INVALID_WORKSPACE",
+      message: "Workspace path must be a directory"
+    });
+  });
+
+  it("rejects blank workspace updates", async () => {
+    const { service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+
+    await expect(
+      service.updateWorkspace(workspace.id, {
+        name: "   "
+      })
+    ).rejects.toMatchObject({
+      status: 400,
+      code: "INVALID_WORKSPACE",
+      message: "Workspace name is required"
+    });
+  });
+
+  it("rejects blank task title updates", async () => {
+    const { service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+    const task = await createShellTask(service, workspace.id);
+
+    await expect(
+      service.updateTask(task.id, {
+        title: "   "
+      })
+    ).rejects.toMatchObject({
+      status: 400,
+      code: "INVALID_TASK",
+      message: "Task title is required"
+    });
+  });
+
+  it("lists tasks using board column order", async () => {
+    const { service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+
+    await service.createTask({
+      title: "Archived task",
+      workspaceId: workspace.id,
+      column: "archived",
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "true"
+      }
+    });
+    await service.createTask({
+      title: "Todo task",
+      workspaceId: workspace.id,
+      column: "todo",
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "true"
+      }
+    });
+    await service.createTask({
+      title: "Done task",
+      workspaceId: workspace.id,
+      column: "done",
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "true"
+      }
+    });
+    await service.createTask({
+      title: "Review task",
+      workspaceId: workspace.id,
+      column: "review",
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "true"
+      }
+    });
+    await service.createTask({
+      title: "Running task",
+      workspaceId: workspace.id,
+      column: "running",
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "true"
+      }
+    });
+
+    expect(service.listTasks({}).map((task) => task.column)).toEqual([
+      "todo",
+      "running",
+      "review",
+      "done",
+      "archived"
+    ]);
   });
 });
