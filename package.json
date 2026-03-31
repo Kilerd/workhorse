@@ -17,6 +17,7 @@
     "build:web": "npm run build --workspace @workhorse/web",
     "build": "npm run generate:client && npm run build:server && npm run build:web",
     "dev": "npm run generate:client && concurrently -k -n contracts,server -c cyan,green \"npm run dev --workspace @workhorse/contracts\" \"npm run dev --workspace @workhorse/server\"",
+    "start": "npm run build && npm run start --workspace @workhorse/server",
     "test": "npm run test --workspace @workhorse/server"
   },
   "devDependencies": {

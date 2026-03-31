@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   useMutation,
   useQuery,
@@ -104,16 +104,30 @@ export function useBoardData() {
     );
   }, [selectedRunId, selectedTaskRunsQuery.data]);
 
+  const activeRunId = useMemo(() => {
+    if (selectedRunId) {
+      return selectedRunId;
+    }
+
+    const runs = selectedTaskRunsQuery.data ?? [];
+    return (
+      runs.find((run) => run.status === "running")?.id ??
+      runs[0]?.id ??
+      selectedTask?.lastRunId ??
+      null
+    );
+  }, [selectedRunId, selectedTask?.lastRunId, selectedTaskRunsQuery.data]);
+
   const selectedRunLogQuery = useQuery({
-    queryKey: queryKey("run-log", selectedRun?.id ?? ""),
+    queryKey: queryKey("run-log", activeRunId ?? ""),
     queryFn: async (): Promise<RunLogEntry[]> => {
-      if (!selectedRun?.id) {
+      if (!activeRunId) {
         return [];
       }
-      const response = await api.getRunLog(selectedRun.id);
+      const response = await api.getRunLog(activeRunId);
       return unwrap(response).items;
     },
-    enabled: Boolean(selectedRun?.id)
+    enabled: Boolean(activeRunId)
   });
 
   const createWorkspaceMutation = useMutation({
@@ -143,7 +157,11 @@ export function useBoardData() {
       const response = await api.startTask(taskId);
       return unwrap(response);
     },
-    onSuccess: async () => {
+    onSuccess: async (result, taskId) => {
+      if (taskId === selectedTaskId) {
+        setSelectedRunId(result.run.id);
+      }
+
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
       await queryClient.invalidateQueries({ queryKey: queryKey("runs") });
     }
@@ -256,28 +274,33 @@ export function useBoardData() {
     }
   });
 
-  function setWorkspaceSelection(workspaceId: string | "all") {
+  const setWorkspaceSelection = useCallback((workspaceId: string | "all") => {
     setSelectedWorkspaceId(workspaceId);
     writeStoredValue(STORAGE_KEYS.selectedWorkspaceId, workspaceId);
-  }
+  }, []);
 
-  function setTaskSelection(taskId: string | null) {
+  const setTaskSelection = useCallback((taskId: string | null) => {
     setSelectedTaskId(taskId);
     writeStoredValue(STORAGE_KEYS.selectedTaskId, taskId);
     setSelectedRunId(null);
-  }
+  }, []);
 
-  function recordLiveOutput(event: ServerEvent) {
+  const recordLiveOutput = useCallback((event: ServerEvent) => {
     if (event.type !== "run.output") {
       return;
     }
+
+    if (event.taskId === selectedTaskId && !selectedRunId) {
+      setSelectedRunId(event.runId);
+    }
+
     setLiveLogByRunId((current) => ({
       ...current,
       [event.runId]: [...(current[event.runId] ?? []), event.entry]
     }));
-  }
+  }, [selectedRunId, selectedTaskId]);
 
-  function clearLiveOutput(runId: string) {
+  const clearLiveOutput = useCallback((runId: string) => {
     setLiveLogByRunId((current) => {
       if (!(runId in current)) {
         return current;
@@ -287,7 +310,7 @@ export function useBoardData() {
       delete next[runId];
       return next;
     });
-  }
+  }, []);
 
   return {
     queryClient,
@@ -300,6 +323,7 @@ export function useBoardData() {
     selectedTask,
     selectedTaskRunsQuery,
     selectedRun,
+    activeRunId,
     selectedRunLogQuery,
     selectedRunId,
     liveLogByRunId,

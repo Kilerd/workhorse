@@ -153,7 +153,8 @@ function humanizeItemType(type: string): string {
 
 function classifyItemLifecycle(
   item: Record<string, unknown> & { type: string },
-  phase: "started" | "completed"
+  phase: "started" | "completed",
+  context: { threadId: string; turnId: string }
 ):
   | {
       kind: "agent" | "tool_call" | "plan" | "status";
@@ -171,6 +172,17 @@ function classifyItemLifecycle(
 
   const normalized = type.toLowerCase();
   const summary = summarizeItem(item);
+  const itemId = typeof item.id === "string" ? item.id : undefined;
+  const lifecycleMetadata = {
+    ...(itemId
+      ? {
+          groupId: `item:${context.turnId}:${itemId}`,
+          itemId
+        }
+      : {}),
+    ...(context.turnId ? { turnId: context.turnId } : {}),
+    ...(context.threadId ? { threadId: context.threadId } : {})
+  };
 
   if (normalized.includes("reason")) {
     return {
@@ -181,7 +193,8 @@ function classifyItemLifecycle(
       source: `item/${phase}`,
       metadata: {
         itemType: type,
-        phase
+        phase,
+        ...lifecycleMetadata
       }
     };
   }
@@ -189,7 +202,8 @@ function classifyItemLifecycle(
   if (normalized.includes("command") || normalized.includes("tool")) {
     const metadata: Record<string, string> = {
       itemType: type,
-      phase
+      phase,
+      ...lifecycleMetadata
     };
     if (typeof item.status === "string") {
       metadata.status = item.status;
@@ -222,7 +236,8 @@ function classifyItemLifecycle(
       source: `item/${phase}`,
       metadata: {
         itemType: type,
-        phase
+        phase,
+        ...lifecycleMetadata
       }
     };
   }
@@ -237,7 +252,8 @@ function classifyItemLifecycle(
     source: `item/${phase}`,
     metadata: {
       itemType: type,
-      phase
+      phase,
+      ...lifecycleMetadata
     }
   };
 }
@@ -397,7 +413,13 @@ export class CodexAcpRunner implements RunnerAdapter {
             text: params.delta,
             stream: "stdout",
             title: "Agent output",
-            source: notification.method
+            source: notification.method,
+            metadata: {
+              groupId: `agent:${params.turnId}:${params.itemId}`,
+              itemId: params.itemId,
+              turnId: params.turnId,
+              threadId: params.threadId
+            }
           });
           break;
         }
@@ -408,7 +430,13 @@ export class CodexAcpRunner implements RunnerAdapter {
             text: params.delta,
             stream: "stdout",
             title: "Agent output",
-            source: notification.method
+            source: notification.method,
+            metadata: {
+              groupId: `agent:${params.turnId}:${params.itemId}`,
+              itemId: params.itemId,
+              turnId: params.turnId,
+              threadId: params.threadId
+            }
           });
           break;
         }
@@ -436,7 +464,10 @@ export class CodexAcpRunner implements RunnerAdapter {
         }
         case "item/started": {
           const params = notification.params as ItemLifecycleNotification;
-          const output = classifyItemLifecycle(params.item, "started");
+          const output = classifyItemLifecycle(params.item, "started", {
+            threadId: params.threadId,
+            turnId: params.turnId
+          });
           if (output) {
             await hooks.onOutput(output);
           }
@@ -444,7 +475,10 @@ export class CodexAcpRunner implements RunnerAdapter {
         }
         case "item/completed": {
           const params = notification.params as ItemLifecycleNotification;
-          const output = classifyItemLifecycle(params.item, "completed");
+          const output = classifyItemLifecycle(params.item, "completed", {
+            threadId: params.threadId,
+            turnId: params.turnId
+          });
           if (output) {
             await hooks.onOutput(output);
           }

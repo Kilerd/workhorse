@@ -48,8 +48,13 @@ export function TaskDetailsPanel({
   }, [task?.id]);
 
   const activeRun = useMemo(
-    () => runs.find((run) => run.id === selectedRunId) ?? runs.find((run) => run.status === "running") ?? runs[0] ?? null,
-    [runs, selectedRunId]
+    () => runs.find((run) => run.status === "running") ?? null,
+    [runs]
+  );
+
+  const viewedRun = useMemo(
+    () => runs.find((run) => run.id === selectedRunId) ?? activeRun ?? runs[0] ?? null,
+    [activeRun, runs, selectedRunId]
   );
 
   if (!task) {
@@ -141,7 +146,7 @@ export function TaskDetailsPanel({
                   <button
                     type="button"
                     key={run.id}
-                    className={run.id === activeRun?.id ? "run-row run-row-active" : "run-row"}
+                    className={run.id === viewedRun?.id ? "run-row run-row-active" : "run-row"}
                     onClick={() => onSelectRun(run.id)}
                   >
                     <span>{run.status}</span>
@@ -156,6 +161,7 @@ export function TaskDetailsPanel({
         <LiveLog
           task={task}
           activeRun={activeRun}
+          viewedRun={viewedRun}
           liveLog={liveLog}
           runLog={runLog}
         />

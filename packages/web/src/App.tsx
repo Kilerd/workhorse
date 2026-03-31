@@ -50,6 +50,12 @@ function ReactAppShell() {
           queryClient.invalidateQueries({ queryKey: ["tasks"] });
           break;
         case "run.started":
+          if (event.taskId === board.selectedTask?.id) {
+            board.setSelectedRunId(event.run.id);
+          }
+          queryClient.invalidateQueries({ queryKey: ["tasks"] });
+          queryClient.invalidateQueries({ queryKey: ["runs"] });
+          break;
         case "run.finished":
           queryClient.invalidateQueries({ queryKey: ["tasks"] });
           queryClient.invalidateQueries({ queryKey: ["runs"] });
@@ -223,10 +229,10 @@ function TaskDetailsRoute({
   const { taskId } = useParams<{ taskId: string }>();
 
   useEffect(() => {
-    if (taskId) {
+    if (taskId && board.selectedTask?.id !== taskId) {
       board.setTaskSelection(taskId);
     }
-  }, [board, taskId]);
+  }, [board.selectedTask?.id, board.setTaskSelection, taskId]);
 
   if (!taskId) {
     return <Navigate to="/" replace />;
@@ -264,7 +270,8 @@ function TaskDetailsRoute({
   const isSelectedTaskActive = board.selectedTask?.id === task.id;
   const runs = isSelectedTaskActive ? board.selectedTaskRunsQuery.data ?? [] : [];
   const selectedRun = isSelectedTaskActive ? board.selectedRun : null;
-  const liveLog = selectedRun?.id ? board.liveLogByRunId[selectedRun.id] ?? [] : [];
+  const activeRunId = isSelectedTaskActive ? board.activeRunId : null;
+  const liveLog = activeRunId ? board.liveLogByRunId[activeRunId] ?? [] : [];
   const runLog = isSelectedTaskActive ? board.selectedRunLogQuery.data ?? [] : [];
   const workspaceName =
     workspaces.find((workspace) => workspace.id === task.workspaceId)?.name ?? "Unknown workspace";
