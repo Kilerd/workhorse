@@ -79,7 +79,13 @@ export function TaskDetailsPanel({
     (task.worktree.status === "ready" || task.worktree.status === "cleanup_pending");
 
   return (
-    <aside className={["details-panel", className].filter(Boolean).join(" ")}>
+    <aside
+      className={
+        ["details-panel", className, tab === "logs" ? "details-panel-logs" : null]
+          .filter(Boolean)
+          .join(" ")
+      }
+    >
       <div className="details-header">
         <div>
           <p className="eyebrow">Task details</p>

@@ -218,7 +218,7 @@ export function LiveLog({ task, activeRun, viewedRun, liveLog, runLog }: Props) 
   }, [entries]);
 
   return (
-    <div className="details-body">
+    <div className="details-body details-body-live-log">
       <section className="details-section">
         <h3>Run status</h3>
         <div className="active-run">
@@ -239,14 +239,14 @@ export function LiveLog({ task, activeRun, viewedRun, liveLog, runLog }: Props) 
           </p>
         ) : null}
       </section>
-      <section className="details-section">
+      <section className="details-section details-section-live-log">
         <h3>Live log</h3>
         {aggregatedEntries.length === 0 ? (
-          <div className="log-empty">
+          <div className="log-empty log-scroll-region">
             Logs will appear here when a run starts.
           </div>
         ) : (
-          <div className="log-stream">
+          <div className="log-stream log-scroll-region" tabIndex={0} aria-label="Task log output">
             {aggregatedEntries.map((entry) => (
               <article
                 key={entry.id}
