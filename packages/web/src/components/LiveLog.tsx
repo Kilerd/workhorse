@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Run, RunLogEntry, Task } from "@workhorse/contracts";
 
 import {
+  buildLiveLogStreamItems,
   ENTRY_LABELS,
   getToolStatus,
+  isCommandExecutionEntry,
   partitionLiveLogEntries,
   metadataEntries,
   normalizeToolTitle,
@@ -80,17 +82,27 @@ function renderEntryHeader(entry: RunLogEntry, collapsible = false) {
   );
 }
 
-function getConsoleEntryTone(entry: RunLogEntry): "agent" | "stderr" | "system" | "tool" | "stdout" {
+function getConsoleEntryTone(
+  entry: RunLogEntry
+): "agent" | "plan" | "status" | "stderr" | "system" | "tool" | "stdout" {
   if (entry.stream === "stderr") {
     return "stderr";
+  }
+
+  if (entry.kind === "tool_call" || entry.kind === "tool_output") {
+    return "tool";
   }
 
   if (entry.kind === "agent") {
     return "agent";
   }
 
-  if (entry.kind === "tool_output") {
-    return "tool";
+  if (entry.kind === "plan") {
+    return "plan";
+  }
+
+  if (entry.kind === "status") {
+    return "status";
   }
 
   if (entry.stream === "system") {
@@ -101,6 +113,10 @@ function getConsoleEntryTone(entry: RunLogEntry): "agent" | "stderr" | "system" 
 }
 
 function getConsoleEntryLabel(entry: RunLogEntry): string {
+  if (entry.kind === "tool_call") {
+    return "tool";
+  }
+
   if (entry.kind === "agent") {
     return "agent";
   }
@@ -109,14 +125,25 @@ function getConsoleEntryLabel(entry: RunLogEntry): string {
     return entry.stream === "stderr" ? "tool stderr" : "tool output";
   }
 
+  if (entry.kind === "plan") {
+    return "plan";
+  }
+
+  if (entry.kind === "status") {
+    return "status";
+  }
+
   return entry.stream;
 }
 
 function renderConsoleEntry(entry: RunLogEntry) {
   const tone = getConsoleEntryTone(entry);
+  const toolStatus = getToolStatus(entry);
   const title =
-    entry.title && !["Agent output", "Tool output"].includes(entry.title)
-      ? entry.title
+    entry.kind === "tool_call"
+      ? normalizeToolTitle(entry)
+      : entry.title && !["Agent output", "Tool output"].includes(entry.title)
+        ? entry.title
       : null;
 
   return (
@@ -127,6 +154,11 @@ function renderConsoleEntry(entry: RunLogEntry) {
             {getConsoleEntryLabel(entry)}
           </span>
           {title ? <strong>{title}</strong> : null}
+          {toolStatus ? (
+            <span className={`log-entry-status-chip log-entry-status-${toolStatus.tone}`}>
+              {toolStatus.label}
+            </span>
+          ) : null}
         </div>
         <time dateTime={entry.timestamp}>{formatTimestamp(entry.timestamp)}</time>
       </div>
@@ -135,40 +167,99 @@ function renderConsoleEntry(entry: RunLogEntry) {
   );
 }
 
-function renderArchiveSection({
-  title,
-  description,
-  entries
-}: {
-  title: string;
-  description: string;
-  entries: RunLogEntry[];
-}) {
-  if (entries.length === 0) {
-    return null;
+function renderToolOutputEntry(entry: RunLogEntry) {
+  const tone = getConsoleEntryTone(entry);
+
+  return (
+    <article key={entry.id} className={`log-tool-output-entry log-tool-output-entry-${tone}`}>
+      <div className="log-tool-output-meta">
+        <span className={`log-console-label log-console-label-${tone}`}>
+          {getConsoleEntryLabel(entry)}
+        </span>
+        <time dateTime={entry.timestamp}>{formatTimestamp(entry.timestamp)}</time>
+      </div>
+      <pre className="log-console-entry-body">{entry.text}</pre>
+    </article>
+  );
+}
+
+function summarizeToolPreview(text: string): string {
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .find(Boolean) ?? "";
+}
+
+function renderToolStreamItem(entry: RunLogEntry, outputEntries: RunLogEntry[]) {
+  const toolStatus = getToolStatus(entry);
+  const isCommandExecution = isCommandExecutionEntry(entry);
+  const preview = summarizeToolPreview(entry.text);
+
+  if (isCommandExecution) {
+    return (
+      <details key={entry.id} className="log-tool-stream-item log-tool-stream-item-collapsible">
+        <summary className="log-tool-stream-summary">
+          <div className="log-console-entry-meta">
+            <div className="log-console-entry-heading">
+              <span className="log-console-label log-console-label-tool">tool</span>
+              <strong>{normalizeToolTitle(entry)}</strong>
+              {toolStatus ? (
+                <span className={`log-entry-status-chip log-entry-status-${toolStatus.tone}`}>
+                  {toolStatus.label}
+                </span>
+              ) : null}
+            </div>
+            <time dateTime={entry.timestamp}>{formatTimestamp(entry.timestamp)}</time>
+          </div>
+          {preview ? <code className="log-tool-preview">{preview}</code> : null}
+        </summary>
+
+        <div className="log-tool-body">{renderEntryBody(entry)}</div>
+
+        {outputEntries.length > 0 ? (
+          <details className="log-tool-output-toggle">
+            <summary className="log-tool-output-summary">
+              <span className="log-console-label log-console-label-tool">tool output</span>
+              <span>{outputEntries.length} block{outputEntries.length > 1 ? "s" : ""}</span>
+            </summary>
+            <div className="log-tool-output-list">
+              {outputEntries.map((outputEntry) => renderToolOutputEntry(outputEntry))}
+            </div>
+          </details>
+        ) : null}
+      </details>
+    );
   }
 
   return (
-    <details className="log-archive">
-      <summary className="log-archive-summary">
-        <div className="log-archive-copy">
-          <strong>{title}</strong>
-          <p>{description}</p>
+    <article key={entry.id} className="log-tool-stream-item">
+      <div className="log-console-entry-meta">
+        <div className="log-console-entry-heading">
+          <span className="log-console-label log-console-label-tool">tool</span>
+          <strong>{normalizeToolTitle(entry)}</strong>
+          {toolStatus ? (
+            <span className={`log-entry-status-chip log-entry-status-${toolStatus.tone}`}>
+              {toolStatus.label}
+            </span>
+          ) : null}
         </div>
-        <span className="log-stream-chip">{entries.length} items</span>
-      </summary>
-      <div className="log-archive-list">
-        {entries.map((entry) => (
-          <details
-            key={entry.id}
-            className={`log-entry log-entry-${entry.kind} log-entry-collapsible log-archive-entry`}
-          >
-            {renderEntryHeader(entry, true)}
-            <div className="log-entry-content">{renderEntryBody(entry)}</div>
-          </details>
-        ))}
+        <time dateTime={entry.timestamp}>{formatTimestamp(entry.timestamp)}</time>
       </div>
-    </details>
+
+      <div className="log-tool-body">{renderEntryBody(entry)}</div>
+
+      {outputEntries.length > 0 ? (
+        <details className="log-tool-output-toggle">
+          <summary className="log-tool-output-summary">
+            <span className="log-console-label log-console-label-tool">tool output</span>
+            <span>{outputEntries.length} block{outputEntries.length > 1 ? "s" : ""}</span>
+          </summary>
+          <div className="log-tool-output-list">
+            {outputEntries.map((outputEntry) => renderToolOutputEntry(outputEntry))}
+          </div>
+        </details>
+      ) : null}
+    </article>
   );
 }
 
@@ -184,9 +275,12 @@ export function LiveLog({
   const aggregatedEntries = useMemo(() => {
     return prepareLiveLogEntries([...runLog, ...liveLog]);
   }, [liveLog, runLog]);
-  const { streamEntries, activeEntries, completedToolEntries, systemEntries } = useMemo(() => {
+  const { streamEntries } = useMemo(() => {
     return partitionLiveLogEntries(aggregatedEntries);
   }, [aggregatedEntries]);
+  const streamItems = useMemo(() => {
+    return buildLiveLogStreamItems(streamEntries);
+  }, [streamEntries]);
   const streamRef = useRef<HTMLDivElement>(null);
   const [isPinnedToBottom, setIsPinnedToBottom] = useState(true);
   const streamTailKey = useMemo(() => {
@@ -268,15 +362,6 @@ export function LiveLog({
               {streamEntries.length > 0 ? (
                 <span className="meta-chip">{streamEntries.length} stream</span>
               ) : null}
-              {activeEntries.length > 0 ? (
-                <span className="meta-chip meta-chip-status">{activeEntries.length} active</span>
-              ) : null}
-              {completedToolEntries.length > 0 ? (
-                <span className="meta-chip">{completedToolEntries.length} done</span>
-              ) : null}
-              {systemEntries.length > 0 ? (
-                <span className="meta-chip">{systemEntries.length} system</span>
-              ) : null}
             </div>
           ) : null}
         </div>
@@ -290,25 +375,6 @@ export function LiveLog({
           )
         ) : (
           <div className="log-stack">
-            {activeEntries.length > 0 ? (
-              <div className="log-group">
-                <div className="log-group-header">
-                  <p className="log-group-title">Current activity</p>
-                </div>
-                <div className="log-activity-lane">
-                  {activeEntries.map((entry) => (
-                    <article
-                      key={entry.id}
-                      className={`log-entry log-entry-${entry.kind} log-activity-card`}
-                    >
-                      {renderEntryHeader(entry)}
-                      <div className="log-entry-content">{renderEntryBody(entry)}</div>
-                    </article>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
             <div className="log-group">
               <div className="log-group-header">
                 <p className="log-group-title">Output stream</p>
@@ -322,28 +388,18 @@ export function LiveLog({
                   className="log-console"
                   onScroll={handleStreamScroll}
                 >
-                  {streamEntries.map((entry) => renderConsoleEntry(entry))}
+                  {streamItems.map((item) =>
+                    item.type === "tool"
+                      ? renderToolStreamItem(item.entry, item.outputEntries)
+                      : renderConsoleEntry(item.entry)
+                  )}
                 </div>
               ) : (
                 <div className="log-empty">
-                  {activeEntries.length > 0
-                    ? "Structured run events are listed above. Console output will appear here when the runner prints something."
-                    : "This run did not emit stdout or stderr output."}
+                  This run did not emit output.
                 </div>
               )}
             </div>
-
-            {renderArchiveSection({
-              title: "Completed steps",
-              description: "Finished tool calls are tucked away here so the live stream stays readable.",
-              entries: completedToolEntries
-            })}
-
-            {renderArchiveSection({
-              title: "System notices",
-              description: "Runner bootstrap and infrastructure chatter from the underlying session.",
-              entries: systemEntries
-            })}
           </div>
         )}
       </section>

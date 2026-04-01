@@ -21,43 +21,18 @@ const HIDDEN_METADATA_KEYS = new Set([
 
 export interface LiveLogDisplayGroups {
   streamEntries: RunLogEntry[];
-  activeEntries: RunLogEntry[];
-  completedToolEntries: RunLogEntry[];
-  systemEntries: RunLogEntry[];
 }
 
-function compactActiveEntries(entries: RunLogEntry[]): RunLogEntry[] {
-  const seen = new Set<string>();
-  const compacted: RunLogEntry[] = [];
-
-  for (let index = entries.length - 1; index >= 0; index -= 1) {
-    const entry = entries[index];
-    if (!entry) {
-      continue;
+export type LiveLogStreamItem =
+  | {
+      type: "entry";
+      entry: RunLogEntry;
     }
-
-    if (entry.kind === "tool_call") {
-      compacted.push(entry);
-      continue;
-    }
-
-    const key =
-      entry.kind === "plan"
-        ? "plan"
-        : entry.kind === "status"
-          ? `status:${entry.title ?? entry.metadata?.itemType ?? ""}`
-          : `${entry.kind}:${entry.title ?? ""}`;
-
-    if (seen.has(key)) {
-      continue;
-    }
-
-    seen.add(key);
-    compacted.push(entry);
-  }
-
-  return compacted.reverse();
-}
+  | {
+      type: "tool";
+      entry: RunLogEntry;
+      outputEntries: RunLogEntry[];
+    };
 
 export function metadataEntries(entry: RunLogEntry): Array<[string, string]> {
   return Object.entries(entry.metadata ?? {}).filter(
@@ -318,41 +293,63 @@ export function prepareLiveLogEntries(entries: RunLogEntry[]): RunLogEntry[] {
 export function partitionLiveLogEntries(
   entries: RunLogEntry[]
 ): LiveLogDisplayGroups {
-  const groups = entries.reduce<LiveLogDisplayGroups>(
+  return entries.reduce<LiveLogDisplayGroups>(
     (groups, entry) => {
-      if (entry.kind === "tool_call") {
-        const toolStatus = getToolStatus(entry)?.tone;
-        if (toolStatus === "completed") {
-          groups.completedToolEntries.push(entry);
-        } else {
-          groups.activeEntries.push(entry);
-        }
-        return groups;
-      }
-
-      if (entry.kind === "plan" || entry.kind === "status") {
-        groups.activeEntries.push(entry);
-        return groups;
-      }
-
-      if (entry.kind === "system") {
-        groups.systemEntries.push(entry);
-        return groups;
-      }
-
       groups.streamEntries.push(entry);
       return groups;
     },
     {
-      streamEntries: [],
-      activeEntries: [],
-      completedToolEntries: [],
-      systemEntries: []
+      streamEntries: []
     }
   );
+}
 
-  return {
-    ...groups,
-    activeEntries: compactActiveEntries(groups.activeEntries)
-  };
+export function buildLiveLogStreamItems(entries: RunLogEntry[]): LiveLogStreamItem[] {
+  const items: LiveLogStreamItem[] = [];
+
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index];
+    if (!entry) {
+      continue;
+    }
+
+    if (entry.kind === "tool_output") {
+      const groupId = entry.metadata?.groupId;
+      if (groupId) {
+        const toolItem = [...items]
+          .reverse()
+          .find(
+            (item): item is Extract<LiveLogStreamItem, { type: "tool" }> =>
+              item.type === "tool" && item.entry.metadata?.groupId === groupId
+          );
+
+        if (toolItem) {
+          toolItem.outputEntries.push(entry);
+          continue;
+        }
+      }
+
+      const lastItem = items.at(-1);
+      if (lastItem?.type === "tool") {
+        lastItem.outputEntries.push(entry);
+        continue;
+      }
+    }
+
+    if (entry.kind !== "tool_call") {
+      items.push({
+        type: "entry",
+        entry
+      });
+      continue;
+    }
+
+    items.push({
+      type: "tool",
+      entry,
+      outputEntries: []
+    });
+  }
+
+  return items;
 }

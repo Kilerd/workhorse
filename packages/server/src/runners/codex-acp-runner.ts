@@ -102,6 +102,13 @@ interface PendingRequest {
   reject: (reason?: unknown) => void;
 }
 
+interface ActiveCommandOutputContext {
+  groupId: string;
+  itemId?: string;
+  turnId?: string;
+  threadId?: string;
+}
+
 function flattenItemText(value: unknown): string[] {
   if (typeof value === "string") {
     return value.trim() ? [value.trim()] : [];
@@ -129,8 +136,53 @@ function flattenItemText(value: unknown): string[] {
   ];
 }
 
+function flattenToolSummaryText(value: unknown): string[] {
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+
+  const record = value as Record<string, unknown>;
+  const direct = [
+    ...flattenItemText(record.command),
+    ...flattenItemText(record.title),
+    ...flattenItemText(record.name),
+    ...flattenItemText(record.summary)
+  ];
+
+  if (direct.length > 0) {
+    return direct;
+  }
+
+  if (typeof record.text === "string" && record.text.trim()) {
+    const firstLine = record.text
+      .split("\n")
+      .map((line) => line.trim())
+      .find(Boolean);
+
+    return firstLine ? [firstLine] : [];
+  }
+
+  return [];
+}
+
 function summarizeItem(item: Record<string, unknown>): string {
   const text = [...new Set(flattenItemText(item))].join("\n").trim();
+  if (text) {
+    return text;
+  }
+
+  const details: string[] = [];
+  if (typeof item.status === "string") {
+    details.push(`status: ${item.status}`);
+  }
+  if (typeof item.exitCode === "number") {
+    details.push(`exit code: ${item.exitCode}`);
+  }
+  return details.join(" · ");
+}
+
+function summarizeToolItem(item: Record<string, unknown>): string {
+  const text = [...new Set(flattenToolSummaryText(item))].join("\n").trim();
   if (text) {
     return text;
   }
@@ -149,7 +201,9 @@ function humanizeItemType(type: string): string {
   return type
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     .replace(/[_/.-]+/g, " ")
-    .trim();
+    .trim()
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function buildItemStreamKey(context: { turnId: string; itemId?: string }): string | null {
@@ -158,6 +212,10 @@ function buildItemStreamKey(context: { turnId: string; itemId?: string }): strin
   }
 
   return `${context.turnId}:${context.itemId}`;
+}
+
+function isCommandLikeItemType(type: string | undefined): boolean {
+  return Boolean(type?.toLowerCase().includes("command"));
 }
 
 export function classifyItemLifecycle(
@@ -210,6 +268,7 @@ export function classifyItemLifecycle(
   }
 
   if (normalized.includes("command") || normalized.includes("tool")) {
+    const summary = summarizeToolItem(item);
     const metadata: Record<string, string> = {
       itemType: type,
       phase,
@@ -329,6 +388,7 @@ export class CodexAcpRunner implements RunnerAdapter {
     let threadId = "";
     let turnId = "";
     const streamedAgentItems = new Set<string>();
+    const activeCommandOutputContexts: ActiveCommandOutputContext[] = [];
     const capturedText: string[] = [];
 
     const appendCapturedText = (value: string | undefined): void => {
@@ -337,6 +397,20 @@ export class CodexAcpRunner implements RunnerAdapter {
       }
 
       capturedText.push(value);
+    };
+
+    const currentCommandOutputMetadata = (): Record<string, string> | undefined => {
+      const current = activeCommandOutputContexts.at(-1);
+      if (!current) {
+        return undefined;
+      }
+
+      return {
+        groupId: current.groupId,
+        ...(current.itemId ? { itemId: current.itemId } : {}),
+        ...(current.turnId ? { turnId: current.turnId } : {}),
+        ...(current.threadId ? { threadId: current.threadId } : {})
+      };
     };
 
     const finalize = async (result: {
@@ -491,7 +565,8 @@ export class CodexAcpRunner implements RunnerAdapter {
             text: params.delta,
             stream: params.stream ?? "stdout",
             title: "Tool output",
-            source: notification.method
+            source: notification.method,
+            metadata: currentCommandOutputMetadata()
           });
           break;
         }
@@ -503,7 +578,8 @@ export class CodexAcpRunner implements RunnerAdapter {
             text: params.delta,
             stream: "stdout",
             title: "Tool output",
-            source: notification.method
+            source: notification.method,
+            metadata: currentCommandOutputMetadata()
           });
           break;
         }
@@ -513,6 +589,18 @@ export class CodexAcpRunner implements RunnerAdapter {
             threadId: params.threadId,
             turnId: params.turnId
           });
+          if (
+            output?.kind === "tool_call" &&
+            isCommandLikeItemType(output.metadata?.itemType) &&
+            output.metadata?.groupId
+          ) {
+            activeCommandOutputContexts.push({
+              groupId: output.metadata.groupId,
+              itemId: output.metadata.itemId,
+              turnId: output.metadata.turnId,
+              threadId: output.metadata.threadId
+            });
+          }
           if (output) {
             await hooks.onOutput(output);
           }
@@ -533,6 +621,19 @@ export class CodexAcpRunner implements RunnerAdapter {
           if (output) {
             appendCapturedText(output.text);
             await hooks.onOutput(output);
+          }
+          if (output?.kind === "tool_call" && output.metadata?.groupId) {
+            let contextIndex = -1;
+            for (let index = activeCommandOutputContexts.length - 1; index >= 0; index -= 1) {
+              const context = activeCommandOutputContexts[index];
+              if (context?.groupId === output.metadata.groupId) {
+                contextIndex = index;
+                break;
+              }
+            }
+            if (contextIndex >= 0) {
+              activeCommandOutputContexts.splice(contextIndex, 1);
+            }
           }
           if (streamKey) {
             streamedAgentItems.delete(streamKey);

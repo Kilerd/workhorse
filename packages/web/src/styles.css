@@ -810,8 +810,7 @@ pre {
 }
 
 .log-summary-copy h3,
-.log-group-title,
-.log-archive-copy p {
+.log-group-title {
   margin: 0;
 }
 
@@ -842,25 +841,6 @@ pre {
   font-size: 0.64rem;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-}
-
-.log-activity-lane {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 10px;
-}
-
-.log-activity-card {
-  background: var(--panel-strong);
-}
-
-.log-activity-card .log-entry-header {
-  background: linear-gradient(180deg, var(--surface-soft), transparent);
-}
-
-.log-activity-card .log-entry-body {
-  max-height: 11rem;
-  overflow-y: auto;
 }
 
 .log-empty,
@@ -941,6 +921,108 @@ pre {
   overflow-x: auto;
 }
 
+.log-tool-stream-item {
+  display: grid;
+  gap: 10px;
+  padding: 10px 0 10px 10px;
+  border-left: 2px solid rgba(242, 195, 92, 0.42);
+}
+
+.log-tool-stream-summary {
+  display: grid;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.log-tool-stream-summary::-webkit-details-marker {
+  display: none;
+}
+
+.log-tool-stream-item-collapsible > .log-tool-body,
+.log-tool-stream-item-collapsible > .log-tool-output-toggle {
+  display: none;
+}
+
+.log-tool-stream-item-collapsible[open] > .log-tool-body,
+.log-tool-stream-item-collapsible[open] > .log-tool-output-toggle {
+  display: grid;
+}
+
+.log-tool-preview {
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.log-tool-stream-item + .log-console-entry,
+.log-console-entry + .log-tool-stream-item,
+.log-tool-stream-item + .log-tool-stream-item {
+  border-top: 1px solid var(--border);
+}
+
+.log-tool-body .log-entry-details {
+  padding: 0;
+}
+
+.log-tool-body .log-entry-body {
+  padding: 0;
+}
+
+.log-tool-output-toggle {
+  display: grid;
+  gap: 8px;
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
+}
+
+.log-tool-output-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  cursor: pointer;
+  list-style: none;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.log-tool-output-summary::-webkit-details-marker {
+  display: none;
+}
+
+.log-tool-output-list {
+  display: grid;
+  gap: 8px;
+}
+
+.log-tool-output-entry {
+  display: grid;
+  gap: 8px;
+  padding-left: 10px;
+  border-left: 2px solid var(--border);
+}
+
+.log-tool-output-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 0.64rem;
+}
+
+.log-tool-output-entry-tool,
+.log-tool-output-entry-stdout {
+  border-left-color: rgba(242, 195, 92, 0.3);
+}
+
+.log-tool-output-entry-stderr {
+  border-left-color: rgba(240, 113, 113, 0.42);
+}
+
 .log-console-entry-stdout {
   border-left-color: rgba(104, 199, 246, 0.34);
 }
@@ -955,6 +1037,22 @@ pre {
 
 .log-console-label-agent {
   color: var(--accent);
+}
+
+.log-console-entry-plan {
+  border-left-color: rgba(99, 216, 158, 0.44);
+}
+
+.log-console-label-plan {
+  color: var(--success);
+}
+
+.log-console-entry-status {
+  border-left-color: rgba(104, 199, 246, 0.36);
+}
+
+.log-console-label-status {
+  color: var(--info);
 }
 
 .log-console-entry-tool {
@@ -1079,49 +1177,6 @@ pre {
 
 .log-entry-collapsible[open] > .log-entry-content {
   display: block;
-}
-
-.log-archive {
-  border: 1px solid var(--border);
-  background: var(--panel);
-}
-
-.log-archive-summary {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
-  cursor: pointer;
-  list-style: none;
-}
-
-.log-archive-summary::-webkit-details-marker {
-  display: none;
-}
-
-.log-archive-copy {
-  display: grid;
-  gap: 4px;
-}
-
-.log-archive-copy strong {
-  font-size: 0.78rem;
-}
-
-.log-archive-copy p {
-  color: var(--muted);
-  font-size: 0.72rem;
-}
-
-.log-archive-list {
-  display: grid;
-  gap: 8px;
-  padding: 0 12px 12px;
-}
-
-.log-archive-entry {
-  background: var(--surface-faint);
 }
 
 .modal-backdrop {

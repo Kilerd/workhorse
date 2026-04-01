@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { RunLogEntry } from "@workhorse/contracts";
 
 import {
+  buildLiveLogStreamItems,
   getToolStatus,
   isCommandExecutionEntry,
   normalizeToolTitle,
@@ -88,7 +89,7 @@ describe("live log entry aggregation", () => {
     expect(outputEntry.text).toBe("status\ninProgress\n");
   });
 
-  it("splits entries into live stream, active cards, archives and system notices", () => {
+  it("keeps tool, plan and system events in the output stream", () => {
     const groups = partitionLiveLogEntries(
       prepareLiveLogEntries([
         makeEntry({
@@ -140,59 +141,128 @@ describe("live log entry aggregation", () => {
       ])
     );
 
-    expect(groups.streamEntries.map((entry) => entry.id)).toEqual(["stdout"]);
-    expect(groups.activeEntries.map((entry) => entry.id)).toEqual(["tool-active", "plan"]);
-    expect(groups.completedToolEntries.map((entry) => entry.id)).toEqual(["tool-done"]);
-    expect(groups.systemEntries.map((entry) => entry.id)).toEqual(["system"]);
+    expect(groups.streamEntries.map((entry) => entry.id)).toEqual([
+      "stdout",
+      "tool-active",
+      "tool-done",
+      "plan",
+      "system"
+    ]);
   });
 
-  it("keeps only the latest plan card in the active lane", () => {
-    const groups = partitionLiveLogEntries(
+  it("attaches following tool output blocks to the preceding tool entry in stream order", () => {
+    const streamItems = buildLiveLogStreamItems(
       prepareLiveLogEntries([
         makeEntry({
-          id: "plan-start-1",
-          kind: "plan",
-          stream: "system",
-          title: "Plan started",
-          text: "Planning started.",
-          metadata: {
-            itemType: "reasoning",
-            phase: "started",
-            itemId: "reason-1",
-            groupId: "item:turn-1:reason-1"
-          }
-        }),
-        makeEntry({
-          id: "plan-start-2",
-          timestamp: "2026-04-01T01:47:32.000Z",
-          kind: "plan",
-          stream: "system",
-          title: "Plan started",
-          text: "Planning started.",
-          metadata: {
-            itemType: "reasoning",
-            phase: "started",
-            itemId: "reason-2",
-            groupId: "item:turn-1:reason-2"
-          }
-        }),
-        makeEntry({
-          id: "tool-active",
-          timestamp: "2026-04-01T01:47:33.000Z",
-          title: "Command Execution started",
-          text: "npm run build",
+          id: "tool",
+          title: "Command Execution completed",
+          text: "gh auth status",
           metadata: {
             itemType: "commandExecution",
-            phase: "started",
-            status: "inProgress"
+            phase: "completed",
+            status: "completed"
+          }
+        }),
+        makeEntry({
+          id: "tool-output-stdout",
+          timestamp: "2026-04-01T01:47:32.000Z",
+          kind: "tool_output",
+          stream: "stdout",
+          title: "Tool output",
+          text: "github.com\n  Logged in\n"
+        }),
+        makeEntry({
+          id: "tool-output-stderr",
+          timestamp: "2026-04-01T01:47:33.000Z",
+          kind: "tool_output",
+          stream: "stderr",
+          title: "Tool output",
+          text: "warning\n"
+        }),
+        makeEntry({
+          id: "agent",
+          timestamp: "2026-04-01T01:47:34.000Z",
+          kind: "agent",
+          stream: "stdout",
+          title: "Agent output",
+          text: "Done."
+        })
+      ])
+    );
+
+    expect(streamItems).toHaveLength(2);
+    expect(streamItems[0]).toMatchObject({
+      type: "tool",
+      entry: { id: "tool" },
+      outputEntries: [{ id: "tool-output-stdout" }, { id: "tool-output-stderr" }]
+    });
+    expect(streamItems[1]).toMatchObject({
+      type: "entry",
+      entry: { id: "agent" }
+    });
+  });
+
+  it("prefers group metadata when attaching tool output to a tool entry", () => {
+    const streamItems = buildLiveLogStreamItems(
+      prepareLiveLogEntries([
+        makeEntry({
+          id: "tool-a",
+          title: "Command Execution completed",
+          text: "first command",
+          metadata: {
+            itemType: "commandExecution",
+            phase: "completed",
+            status: "completed",
+            groupId: "item:turn-1:item-a"
+          }
+        }),
+        makeEntry({
+          id: "tool-b",
+          timestamp: "2026-04-01T01:47:32.000Z",
+          title: "Command Execution completed",
+          text: "second command",
+          metadata: {
+            itemType: "commandExecution",
+            phase: "completed",
+            status: "completed",
+            groupId: "item:turn-1:item-b"
+          }
+        }),
+        makeEntry({
+          id: "tool-b-output",
+          timestamp: "2026-04-01T01:47:33.000Z",
+          kind: "tool_output",
+          stream: "stdout",
+          title: "Tool output",
+          text: "second output\n",
+          metadata: {
+            groupId: "item:turn-1:item-b"
+          }
+        }),
+        makeEntry({
+          id: "tool-a-output-late",
+          timestamp: "2026-04-01T01:47:34.000Z",
+          kind: "tool_output",
+          stream: "stdout",
+          title: "Tool output",
+          text: "late first output\n",
+          metadata: {
+            groupId: "item:turn-1:item-a"
           }
         })
       ])
     );
 
-    expect(groups.activeEntries.map((entry) => entry.id)).toEqual([
-      "plan-start-2",
-      "tool-active"
-    ]);
+    expect(streamItems).toHaveLength(2);
+    expect(streamItems[0]).toMatchObject({
+      type: "tool",
+      entry: { id: "tool-a" },
+      outputEntries: [{ id: "tool-a-output-late" }]
+    });
+    expect(streamItems[1]).toMatchObject({
+      type: "tool",
+      entry: { id: "tool-b" },
+      outputEntries: [{ id: "tool-b-output" }]
+    });
   });
 });

@@ -252,4 +252,34 @@ describe("classifyItemLifecycle", () => {
       text: "Final response"
     });
   });
+
+  it("keeps command lifecycle summaries focused on the command instead of aggregated output", () => {
+    const output = classifyItemLifecycle(
+      {
+        id: "item-1",
+        type: "commandExecution",
+        command: "/bin/zsh -lc 'gh pr view --json url'",
+        aggregatedOutput: "unknown flag: --head\nUsage: gh pr view ...",
+        status: "failed",
+        exitCode: 1
+      },
+      "completed",
+      {
+        threadId: "thread-1",
+        turnId: "turn-1"
+      }
+    );
+
+    expect(output).toMatchObject({
+      kind: "tool_call",
+      title: "Command Execution completed",
+      text: "/bin/zsh -lc 'gh pr view --json url'",
+      metadata: {
+        itemType: "commandExecution",
+        status: "failed",
+        exitCode: "1"
+      }
+    });
+    expect(output?.text).not.toContain("unknown flag");
+  });
 });
