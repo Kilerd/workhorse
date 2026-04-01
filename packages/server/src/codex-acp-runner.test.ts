@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import type { RunnerStartContext } from "./runners/types.js";
-import { CodexAcpRunner } from "./runners/codex-acp-runner.js";
+import {
+  classifyItemLifecycle,
+  CodexAcpRunner
+} from "./runners/codex-acp-runner.js";
 
 describe("CodexAcpRunner prompt", () => {
   it("tells git-backed tasks to create the PR themselves", () => {
@@ -109,5 +112,65 @@ describe("CodexAcpRunner prompt", () => {
 
     expect(prompt).toContain("Task description:");
     expect(prompt).toContain("Need to update the onboarding flow and keep tests green.");
+  });
+});
+
+describe("classifyItemLifecycle", () => {
+  it("does not emit a placeholder when an agent message starts", () => {
+    const output = classifyItemLifecycle(
+      {
+        id: "item-1",
+        type: "assistantMessage",
+        text: "Draft response"
+      },
+      "started",
+      {
+        threadId: "thread-1",
+        turnId: "turn-1"
+      }
+    );
+
+    expect(output).toBeNull();
+  });
+
+  it("skips duplicate agent lifecycle output after streaming deltas", () => {
+    const output = classifyItemLifecycle(
+      {
+        id: "item-1",
+        type: "assistantMessage",
+        text: "Draft response"
+      },
+      "completed",
+      {
+        threadId: "thread-1",
+        turnId: "turn-1"
+      },
+      {
+        skipAgentLifecycle: true
+      }
+    );
+
+    expect(output).toBeNull();
+  });
+
+  it("keeps completed agent lifecycle output as a fallback when no deltas were streamed", () => {
+    const output = classifyItemLifecycle(
+      {
+        id: "item-1",
+        type: "assistantMessage",
+        text: "Final response"
+      },
+      "completed",
+      {
+        threadId: "thread-1",
+        turnId: "turn-1"
+      }
+    );
+
+    expect(output).toMatchObject({
+      kind: "agent",
+      title: "Agent response",
+      text: "Final response"
+    });
   });
 });

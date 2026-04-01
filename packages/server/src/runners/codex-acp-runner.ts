@@ -151,10 +151,19 @@ function humanizeItemType(type: string): string {
     .trim();
 }
 
-function classifyItemLifecycle(
+function buildItemStreamKey(context: { turnId: string; itemId?: string }): string | null {
+  if (!context.turnId || !context.itemId) {
+    return null;
+  }
+
+  return `${context.turnId}:${context.itemId}`;
+}
+
+export function classifyItemLifecycle(
   item: Record<string, unknown> & { type: string },
   phase: "started" | "completed",
-  context: { threadId: string; turnId: string }
+  context: { threadId: string; turnId: string },
+  options?: { skipAgentLifecycle?: boolean }
 ):
   | {
       kind: "agent" | "tool_call" | "plan" | "status";
@@ -228,6 +237,10 @@ function classifyItemLifecycle(
   }
 
   if (normalized.includes("assistant") || normalized.includes("agent")) {
+    if (phase === "started" || options?.skipAgentLifecycle) {
+      return null;
+    }
+
     return {
       kind: "agent",
       text: summary || "Agent updated the response.",
@@ -314,6 +327,7 @@ export class CodexAcpRunner implements RunnerAdapter {
     let stopRequested = false;
     let threadId = "";
     let turnId = "";
+    const streamedAgentItems = new Set<string>();
 
     const finalize = async (result: {
       status: "succeeded" | "failed" | "canceled";
@@ -408,6 +422,13 @@ export class CodexAcpRunner implements RunnerAdapter {
       switch (notification.method) {
         case "item/agentMessage/delta": {
           const params = notification.params as AgentMessageDeltaNotification;
+          const streamKey = buildItemStreamKey({
+            turnId: params.turnId,
+            itemId: params.itemId
+          });
+          if (streamKey) {
+            streamedAgentItems.add(streamKey);
+          }
           await hooks.onOutput({
             kind: "agent",
             text: params.delta,
@@ -425,6 +446,13 @@ export class CodexAcpRunner implements RunnerAdapter {
         }
         case "item/assistantMessage/delta": {
           const params = notification.params as AgentMessageDeltaNotification;
+          const streamKey = buildItemStreamKey({
+            turnId: params.turnId,
+            itemId: params.itemId
+          });
+          if (streamKey) {
+            streamedAgentItems.add(streamKey);
+          }
           await hooks.onOutput({
             kind: "agent",
             text: params.delta,
@@ -475,12 +503,21 @@ export class CodexAcpRunner implements RunnerAdapter {
         }
         case "item/completed": {
           const params = notification.params as ItemLifecycleNotification;
+          const streamKey = buildItemStreamKey({
+            turnId: params.turnId,
+            itemId: typeof params.item.id === "string" ? params.item.id : undefined
+          });
           const output = classifyItemLifecycle(params.item, "completed", {
             threadId: params.threadId,
             turnId: params.turnId
+          }, {
+            skipAgentLifecycle: streamKey ? streamedAgentItems.has(streamKey) : false
           });
           if (output) {
             await hooks.onOutput(output);
+          }
+          if (streamKey) {
+            streamedAgentItems.delete(streamKey);
           }
           break;
         }
