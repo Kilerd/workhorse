@@ -112,7 +112,14 @@ export function LiveLog({
           ) : null}
           {viewedRun?.status === "canceled" && !activeRun ? (
             <p className="muted">
-              This run was canceled. That usually means it was stopped manually, or the server restarted while the task was running.
+              This run was canceled. That usually means it was stopped manually before completion.
+            </p>
+          ) : null}
+          {viewedRun?.status === "interrupted" && !activeRun ? (
+            <p className="muted">
+              {task.runnerType === "codex"
+                ? "This run was interrupted while Workhorse was offline. Starting the task again will resume the previous Codex session when possible."
+                : "This run was interrupted while Workhorse was offline. Start the task again to continue the work."}
             </p>
           ) : null}
         </section>

@@ -13,6 +13,7 @@ export type RunStatus =
   | "running"
   | "succeeded"
   | "failed"
+  | "interrupted"
   | "canceled";
 
 export type RunLogStream = "stdout" | "stderr" | "system";

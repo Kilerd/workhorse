@@ -301,7 +301,7 @@ export interface components {
             logFile: string;
             metadata?: components["schemas"]["Recordstringstring"];
         };
-        RunStatus: "running" | "queued" | "succeeded" | "failed" | "canceled";
+        RunStatus: "running" | "queued" | "succeeded" | "failed" | "interrupted" | "canceled";
         /** @description Construct a type with a set of properties K of type T */
         Recordstringstring: {
             [key: string]: string;

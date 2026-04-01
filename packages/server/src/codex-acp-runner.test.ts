@@ -6,55 +6,56 @@ import {
   CodexAcpRunner
 } from "./runners/codex-acp-runner.js";
 
+function createCodexContext(overrides: Partial<RunnerStartContext> = {}): RunnerStartContext {
+  return {
+    run: {
+      id: "run-1",
+      taskId: "task-1",
+      status: "queued",
+      runnerType: "codex",
+      command: "",
+      startedAt: new Date().toISOString(),
+      logFile: "/tmp/run-1.log"
+    },
+    task: {
+      id: "task-1",
+      title: "Implement feature",
+      description: "",
+      workspaceId: "workspace-1",
+      column: "todo",
+      order: 1024,
+      runnerType: "codex",
+      runnerConfig: {
+        type: "codex",
+        prompt: "Implement the feature"
+      },
+      worktree: {
+        baseRef: "origin/main",
+        branchName: "task/task-1-implement-feature",
+        path: "/tmp/task-1",
+        status: "ready"
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    },
+    workspace: {
+      id: "workspace-1",
+      name: "Repo",
+      rootPath: "/tmp/task-1",
+      isGitRepo: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    },
+    ...overrides
+  };
+}
+
 describe("CodexAcpRunner prompt", () => {
   it("tells git-backed tasks to create the PR themselves", () => {
     const runner = new CodexAcpRunner() as any;
-
-    const prompt = runner.buildPrompt(
-      {
-        run: {
-          id: "run-1",
-          taskId: "task-1",
-          status: "queued",
-          runnerType: "codex",
-          command: "",
-          startedAt: new Date().toISOString(),
-          logFile: "/tmp/run-1.log"
-        },
-        task: {
-          id: "task-1",
-          title: "Implement feature",
-          description: "",
-          workspaceId: "workspace-1",
-          column: "todo",
-          order: 1024,
-          runnerType: "codex",
-          runnerConfig: {
-            type: "codex",
-            prompt: "Implement the feature"
-          },
-          worktree: {
-            baseRef: "origin/main",
-            branchName: "task/task-1-implement-feature",
-            path: "/tmp/task-1",
-            status: "ready"
-          },
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        },
-        workspace: {
-          id: "workspace-1",
-          name: "Repo",
-          rootPath: "/tmp/task-1",
-          isGitRepo: true,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        }
-      },
-      {
-        prompt: "Implement the feature"
-      }
-    );
+    const prompt = runner.buildPrompt(createCodexContext(), {
+      prompt: "Implement the feature"
+    });
 
     expect(prompt).toContain("opening or updating the GitHub PR yourself");
     expect(prompt).toContain("Use Conventional Commits");
@@ -63,9 +64,8 @@ describe("CodexAcpRunner prompt", () => {
 
   it("includes the task description as prompt context when present", () => {
     const runner = new CodexAcpRunner() as any;
-
     const prompt = runner.buildPrompt(
-      {
+      createCodexContext({
         run: {
           id: "run-2",
           taskId: "task-2",
@@ -76,35 +76,16 @@ describe("CodexAcpRunner prompt", () => {
           logFile: "/tmp/run-2.log"
         },
         task: {
+          ...createCodexContext().task,
           id: "task-2",
-          title: "Implement feature",
-          description: "Need to update the onboarding flow and keep tests green.",
-          workspaceId: "workspace-1",
-          column: "todo",
-          order: 1024,
-          runnerType: "codex",
-          runnerConfig: {
-            type: "codex",
-            prompt: "Implement the feature"
-          },
-          worktree: {
-            baseRef: "origin/main",
-            branchName: "task/task-2-implement-feature",
-            path: "/tmp/task-2",
-            status: "ready"
-          },
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
+          description: "Need to update the onboarding flow and keep tests green."
         },
         workspace: {
-          id: "workspace-1",
-          name: "Repo",
+          ...createCodexContext().workspace,
           rootPath: "/tmp/task-2",
-          isGitRepo: false,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
+          isGitRepo: false
         }
-      },
+      }),
       {
         prompt: "Implement the feature"
       }
@@ -112,6 +93,71 @@ describe("CodexAcpRunner prompt", () => {
 
     expect(prompt).toContain("Task description:");
     expect(prompt).toContain("Need to update the onboarding flow and keep tests green.");
+  });
+
+  it("starts persistent threads so they can be resumed later", () => {
+    const runner = new CodexAcpRunner() as any;
+
+    const params = runner.buildThreadStartParams(createCodexContext(), {
+      prompt: "Implement the feature"
+    });
+
+    expect(params).toMatchObject({
+      approvalPolicy: "never",
+      sandbox: "danger-full-access",
+      ephemeral: false,
+      experimentalRawEvents: false,
+      persistExtendedHistory: true
+    });
+  });
+
+  it("resumes the previous codex thread when a thread id is available", () => {
+    const runner = new CodexAcpRunner() as any;
+
+    const threadId = runner.resolvePreviousThreadId(
+      createCodexContext({
+        previousRun: {
+          id: "run-previous",
+          taskId: "task-1",
+          status: "interrupted",
+          runnerType: "codex",
+          command: "codex app-server --listen ws://127.0.0.1:9000",
+          startedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+          logFile: "/tmp/run-previous.log",
+          metadata: {
+            threadId: "thread-1",
+            turnId: "turn-1"
+          }
+        }
+      })
+    );
+
+    expect(threadId).toBe("thread-1");
+  });
+
+  it("ignores non-codex previous runs when checking for a resumable thread", () => {
+    const runner = new CodexAcpRunner() as any;
+
+    const threadId = runner.resolvePreviousThreadId(
+      createCodexContext({
+        previousRun: {
+          id: "run-previous",
+          taskId: "task-1",
+          status: "succeeded",
+          runnerType: "shell",
+          command: "true",
+          startedAt: new Date().toISOString(),
+          endedAt: new Date().toISOString(),
+          logFile: "/tmp/run-previous.log",
+          metadata: {
+            threadId: "thread-1"
+          }
+        }
+      })
+    );
+
+    expect(threadId).toBeNull();
   });
 });
 

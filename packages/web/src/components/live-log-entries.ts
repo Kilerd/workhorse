@@ -214,7 +214,8 @@ function findToolLifecycleEntryIndex(
   }
 
   for (let index = entries.length - 1; index >= 0; index -= 1) {
-    if (!isToolLifecycleMatch(entries[index], entry)) {
+    const candidate = entries[index];
+    if (!candidate || !isToolLifecycleMatch(candidate, entry)) {
       continue;
     }
 
@@ -228,7 +229,8 @@ export function aggregateEntries(entries: RunLogEntry[]): RunLogEntry[] {
   return entries.reduce<RunLogEntry[]>((acc, entry) => {
     const toolLifecycleIndex = findToolLifecycleEntryIndex(acc, entry);
     if (toolLifecycleIndex >= 0) {
-      const merged = mergeEntries(acc[toolLifecycleIndex], entry);
+      const existing = acc[toolLifecycleIndex];
+      const merged = existing ? mergeEntries(existing, entry) : null;
       if (merged) {
         acc[toolLifecycleIndex] = merged;
         return acc;

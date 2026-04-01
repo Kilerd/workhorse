@@ -9,6 +9,7 @@ import type {
 
 export interface RunnerStartContext {
   run: Run;
+  previousRun?: Run;
   task: Task;
   workspace: Workspace;
 }

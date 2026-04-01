@@ -139,6 +139,11 @@ function ReactAppShell() {
             : 1024;
 
     const body: Record<string, unknown> = { order };
+    if (destinationColumn === "running" && task.column !== "running") {
+      void board.startTask(task.id);
+      return;
+    }
+
     if (destinationColumn !== task.column) {
       body.column = destinationColumn;
     }

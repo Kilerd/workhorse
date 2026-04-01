@@ -67,6 +67,12 @@ describe("live log entry aggregation", () => {
     expect(entries).toHaveLength(2);
 
     const [toolEntry, outputEntry] = entries;
+    expect(toolEntry).toBeDefined();
+    expect(outputEntry).toBeDefined();
+    if (!toolEntry || !outputEntry) {
+      throw new Error("Expected aggregated tool entries");
+    }
+
     expect(toolEntry.kind).toBe("tool_call");
     expect(toolEntry.timestamp).toBe("2026-04-01T01:47:33.000Z");
     expect(toolEntry.text).toContain("exit code: 0");

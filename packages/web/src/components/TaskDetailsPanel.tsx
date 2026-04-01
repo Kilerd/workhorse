@@ -52,8 +52,14 @@ function formatRunStatusCopy(run: Run | null, task: DisplayTask): string {
     return "The latest run failed. Review the log stream before retrying.";
   }
 
+  if (run?.status === "interrupted") {
+    return task.runnerType === "codex"
+      ? "The latest run was interrupted. Starting it again will resume the previous Codex session when possible."
+      : "The latest run was interrupted before completion. Start it again to continue the work.";
+  }
+
   if (run?.status === "canceled") {
-    return "The latest run was canceled or interrupted before completion.";
+    return "The latest run was canceled before completion.";
   }
 
   if (run?.status === "succeeded") {

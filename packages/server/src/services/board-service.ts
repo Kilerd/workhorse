@@ -693,6 +693,10 @@ export class BoardService {
           runnerConfig: options.runnerConfigOverride
         }
       : task;
+    const previousRun =
+      task.lastRunId !== undefined
+        ? this.store.listRuns().find((entry) => entry.id === task.lastRunId)
+        : undefined;
 
     const runId = createId();
     const run: Run = {
@@ -741,6 +745,7 @@ export class BoardService {
             ...run,
             logFile: this.store.createLogPath(run.id)
           },
+          previousRun,
           task: executionTask,
           workspace: executionWorkspace
         },
@@ -1005,7 +1010,7 @@ export class BoardService {
       }
 
       await this.transitionTaskRunToReview(run.taskId, run.id, {
-        status: "canceled"
+        status: this.resolveOrphanedRunStatus(run)
       });
     }
   }
@@ -1128,7 +1133,7 @@ export class BoardService {
 
   private ensureStartableTask(
     task: Task,
-    allowedColumns: Task["column"][] = ["backlog", "todo"]
+    allowedColumns: Task["column"][] = ["backlog", "todo", "review"]
   ): void {
     if (allowedColumns.includes(task.column)) {
       return;
@@ -1175,5 +1180,16 @@ export class BoardService {
 
     const last = columnTasks.at(-1);
     return last ? last.order + 1_024 : 1_024;
+  }
+
+  private resolveOrphanedRunStatus(run: Run): Run["status"] {
+    if (
+      run.runnerType === "codex" &&
+      (run.status === "running" || typeof run.metadata?.threadId === "string")
+    ) {
+      return "interrupted";
+    }
+
+    return "canceled";
   }
 }

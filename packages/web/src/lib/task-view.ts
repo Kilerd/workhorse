@@ -47,6 +47,7 @@ export function getTaskActions(column: DisplayTaskColumn): TaskActionDescriptor[
       return [{ id: "stop", label: "Stop", kind: "secondary" }];
     case "review":
       return [
+        { id: "start", label: "Run Again", shortLabel: "Run", kind: "secondary" },
         { id: "move-to-todo", label: "Move to Todo", shortLabel: "Todo", kind: "secondary" },
         { id: "mark-done", label: "Mark Done", shortLabel: "Done", kind: "primary" }
       ];

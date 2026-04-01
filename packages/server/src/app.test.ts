@@ -55,6 +55,23 @@ async function createShellTask(
   });
 }
 
+async function createCodexTask(
+  service: BoardService,
+  workspaceId: string,
+  column: "backlog" | "todo" | "review" = "backlog"
+) {
+  return service.createTask({
+    title: "Run codex task",
+    workspaceId,
+    column,
+    runnerType: "codex",
+    runnerConfig: {
+      type: "codex",
+      prompt: "Continue the task"
+    }
+  });
+}
+
 async function waitForRunToFinish(
   service: BoardService,
   taskId: string,
@@ -165,7 +182,7 @@ describe("workhorse runtime", () => {
     expect(updatedTask?.column).toBe("review");
   });
 
-  it("marks orphaned runs as canceled during initialization", async () => {
+  it("marks orphaned shell runs as canceled during initialization", async () => {
     const { dataDir, service, workspaceDir } = await createRuntime();
     const workspace = await createWorkspace(service, workspaceDir);
     const task = await createShellTask(service, workspace.id);
@@ -213,6 +230,60 @@ describe("workhorse runtime", () => {
       throw new Error("Expected orphaned run to be recovered");
     }
     expect(recoveredRun.status).toBe("canceled");
+    expect(recoveredRun.endedAt).toBeTruthy();
+    expect(recoveredTask?.column).toBe("review");
+  });
+
+  it("marks orphaned codex runs as interrupted during initialization", async () => {
+    const { dataDir, service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+    const task = await createCodexTask(service, workspace.id, "review");
+    const runId = "run-orphaned-codex";
+
+    const snapshot = service.snapshot();
+
+    const store = new StateStore(dataDir);
+    await store.load();
+    store.setTasks(
+      snapshot.tasks.map((entry) =>
+        entry.id === task.id
+          ? {
+              ...entry,
+              column: "running",
+              lastRunId: runId
+            }
+          : entry
+      )
+    );
+    store.setRuns([
+      {
+        id: runId,
+        taskId: task.id,
+        status: "running",
+        runnerType: "codex",
+        command: "codex app-server --listen ws://127.0.0.1:9123",
+        startedAt: new Date().toISOString(),
+        logFile: store.createLogPath(runId),
+        metadata: {
+          threadId: "thread-1",
+          turnId: "turn-1"
+        }
+      }
+    ]);
+    await store.save();
+
+    const reloadedService = new BoardService(store, new EventBus());
+    await reloadedService.initialize();
+
+    const recoveredRun = reloadedService.listRuns(task.id)[0];
+    const recoveredTask = reloadedService
+      .listTasks({})
+      .find((entry) => entry.id === task.id);
+
+    if (!recoveredRun) {
+      throw new Error("Expected orphaned codex run to be recovered");
+    }
+    expect(recoveredRun.status).toBe("interrupted");
     expect(recoveredRun.endedAt).toBeTruthy();
     expect(recoveredTask?.column).toBe("review");
   });
@@ -265,7 +336,7 @@ describe("workhorse runtime", () => {
     });
   });
 
-  it("rejects starting tasks outside backlog and todo", async () => {
+  it("allows review tasks to be started again but rejects done tasks", async () => {
     const { service, workspaceDir } = await createRuntime();
     const workspace = await createWorkspace(service, workspaceDir);
     const reviewTask = await service.createTask({
@@ -278,6 +349,12 @@ describe("workhorse runtime", () => {
         command: "true"
       }
     });
+
+    const startResult = await service.startTask(reviewTask.id);
+    expect(startResult.run.status).toBe("running");
+    const completedRun = await waitForRunToFinish(service, reviewTask.id);
+    expect(completedRun.status).toBe("succeeded");
+
     const doneTask = await service.createTask({
       title: "Done task",
       workspaceId: workspace.id,
@@ -289,11 +366,6 @@ describe("workhorse runtime", () => {
       }
     });
 
-    await expect(service.startTask(reviewTask.id)).rejects.toMatchObject({
-      status: 409,
-      code: "TASK_NOT_STARTABLE",
-      message: "Tasks in review cannot be started"
-    });
     await expect(service.startTask(doneTask.id)).rejects.toMatchObject({
       status: 409,
       code: "TASK_NOT_STARTABLE",

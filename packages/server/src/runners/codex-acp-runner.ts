@@ -43,7 +43,7 @@ interface InitializeResult {
   userAgent: string;
 }
 
-interface ThreadStartResult {
+interface ThreadSessionResult {
   thread: {
     id: string;
   };
@@ -330,7 +330,7 @@ export class CodexAcpRunner implements RunnerAdapter {
     const streamedAgentItems = new Set<string>();
 
     const finalize = async (result: {
-      status: "succeeded" | "failed" | "canceled";
+      status: "succeeded" | "failed" | "interrupted" | "canceled";
       exitCode?: number;
       metadata?: Record<string, string>;
     }): Promise<void> => {
@@ -374,7 +374,7 @@ export class CodexAcpRunner implements RunnerAdapter {
         title: "Codex ACP error"
       });
       await finalize({
-        status: stopRequested ? "canceled" : "failed",
+        status: stopRequested ? "canceled" : threadId && turnId ? "interrupted" : "failed",
         metadata: threadId && turnId ? { threadId, turnId } : undefined
       });
     });
@@ -524,9 +524,10 @@ export class CodexAcpRunner implements RunnerAdapter {
         case "turn/completed": {
           const params = notification.params as TurnCompletedNotification;
           await finalize({
-            status:
-              stopRequested || params.turn.status === "interrupted"
-                ? "canceled"
+            status: stopRequested
+              ? "canceled"
+              : params.turn.status === "interrupted"
+                ? "interrupted"
                 : params.turn.status === "completed"
                   ? "succeeded"
                   : "failed",
@@ -564,7 +565,7 @@ export class CodexAcpRunner implements RunnerAdapter {
     ws.on("close", async () => {
       if (!finalized) {
         await finalize({
-          status: stopRequested ? "canceled" : "failed",
+          status: stopRequested ? "canceled" : threadId && turnId ? "interrupted" : "failed",
           metadata: threadId && turnId ? { threadId, turnId } : undefined
         });
       }
@@ -573,7 +574,7 @@ export class CodexAcpRunner implements RunnerAdapter {
     child.on("exit", async () => {
       if (!finalized) {
         await finalize({
-          status: stopRequested ? "canceled" : "failed",
+          status: stopRequested ? "canceled" : threadId && turnId ? "interrupted" : "failed",
           metadata: threadId && turnId ? { threadId, turnId } : undefined
         });
       }
@@ -595,28 +596,13 @@ export class CodexAcpRunner implements RunnerAdapter {
       method: "initialized"
     });
 
-    const thread = await request<ThreadStartResult>("thread/start", {
-      model: config.model ?? null,
-      cwd: context.workspace.rootPath,
-      approvalPolicy: "never",
-      sandbox: "danger-full-access",
-      ephemeral: true,
-      experimentalRawEvents: false,
-      persistExtendedHistory: false
-    });
+    const thread = await this.startOrResumeThread(request, context, config, hooks);
+    threadId = thread.threadId;
 
-    threadId = thread.thread.id;
-
-    const turn = await request<TurnStartResult>("turn/start", {
-      threadId,
-      input: [
-        {
-          type: "text",
-          text: this.buildPrompt(context, config),
-          text_elements: []
-        }
-      ]
-    });
+    const turn = await request<TurnStartResult>(
+      "turn/start",
+      this.buildTurnStartParams(context, config, threadId)
+    );
 
     turnId = turn.turn.id;
 
@@ -679,6 +665,106 @@ export class CodexAcpRunner implements RunnerAdapter {
     }
 
     return sections.filter(Boolean).join("\n\n");
+  }
+
+  private resolvePreviousThreadId(context: RunnerStartContext): string | null {
+    if (context.previousRun?.runnerType !== "codex") {
+      return null;
+    }
+
+    const threadId = context.previousRun.metadata?.threadId?.trim();
+    return threadId ? threadId : null;
+  }
+
+  private buildThreadStartParams(context: RunnerStartContext, config: CodexRunnerConfig) {
+    return {
+      model: config.model ?? null,
+      cwd: context.workspace.rootPath,
+      approvalPolicy: "never" as const,
+      sandbox: "danger-full-access" as const,
+      ephemeral: false,
+      experimentalRawEvents: false,
+      persistExtendedHistory: true
+    };
+  }
+
+  private buildThreadResumeParams(
+    context: RunnerStartContext,
+    config: CodexRunnerConfig,
+    threadId: string
+  ) {
+    return {
+      threadId,
+      model: config.model ?? null,
+      cwd: context.workspace.rootPath,
+      approvalPolicy: "never" as const,
+      sandbox: "danger-full-access" as const,
+      persistExtendedHistory: true
+    };
+  }
+
+  private buildTurnStartParams(
+    context: RunnerStartContext,
+    config: CodexRunnerConfig,
+    threadId: string
+  ) {
+    return {
+      threadId,
+      input: [
+        {
+          type: "text",
+          text: this.buildPrompt(context, config),
+          text_elements: []
+        }
+      ]
+    };
+  }
+
+  private async startOrResumeThread(
+    request: <T>(method: string, params?: unknown) => Promise<T>,
+    context: RunnerStartContext,
+    config: CodexRunnerConfig,
+    hooks: RunnerLifecycleHooks
+  ): Promise<{ threadId: string; resumed: boolean }> {
+    const previousThreadId = this.resolvePreviousThreadId(context);
+    if (previousThreadId) {
+      try {
+        const resumed = await request<ThreadSessionResult>(
+          "thread/resume",
+          this.buildThreadResumeParams(context, config, previousThreadId)
+        );
+        await hooks.onOutput({
+          kind: "system",
+          text: `Resumed previous Codex session ${resumed.thread.id}.\n`,
+          stream: "system",
+          title: "Codex ACP"
+        });
+        return {
+          threadId: resumed.thread.id,
+          resumed: true
+        };
+      } catch (error) {
+        await hooks.onOutput({
+          kind: "system",
+          text:
+            `Unable to resume previous Codex session ${previousThreadId}: ` +
+            `${error instanceof Error ? error.message : String(error)}\n` +
+            "Starting a new Codex session instead.\n",
+          stream: "system",
+          title: "Codex ACP"
+        });
+      }
+    }
+
+    const started = await request<ThreadSessionResult>(
+      "thread/start",
+      this.buildThreadStartParams(context, config)
+    );
+
+    return {
+      threadId: started.thread.id,
+      resumed: false
+    };
   }
 
   private async connect(url: string): Promise<WebSocket> {

@@ -1122,6 +1122,11 @@
           },
           {
             "enum": [
+              "interrupted"
+            ]
+          },
+          {
+            "enum": [
               "canceled"
             ]
           }
