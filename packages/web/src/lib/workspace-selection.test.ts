@@ -9,6 +9,10 @@ const WORKSPACES: Workspace[] = [
     name: "Alpha",
     rootPath: "/tmp/alpha",
     isGitRepo: false,
+    codexSettings: {
+      approvalPolicy: "on-request",
+      sandboxMode: "workspace-write"
+    },
     createdAt: "2026-04-01T00:00:00.000Z",
     updatedAt: "2026-04-01T00:00:00.000Z"
   },
@@ -17,6 +21,10 @@ const WORKSPACES: Workspace[] = [
     name: "Beta",
     rootPath: "/tmp/beta",
     isGitRepo: true,
+    codexSettings: {
+      approvalPolicy: "on-request",
+      sandboxMode: "workspace-write"
+    },
     createdAt: "2026-04-01T00:00:00.000Z",
     updatedAt: "2026-04-01T00:00:00.000Z"
   }

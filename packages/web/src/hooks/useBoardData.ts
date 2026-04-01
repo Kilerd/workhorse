@@ -10,6 +10,7 @@ import type {
   RunLogEntry,
   ServerEvent,
   Task,
+  UpdateWorkspaceBody,
   Workspace
 } from "@workhorse/contracts";
 
@@ -46,6 +47,7 @@ export function useBoardData() {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [liveLogByRunId, setLiveLogByRunId] = useState<Record<string, RunLogEntry[]>>({});
   const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
+  const [workspaceSettingsModalOpen, setWorkspaceSettingsModalOpen] = useState(false);
   const [taskModalOpen, setTaskModalOpen] = useState(false);
 
   const workspacesQuery = useQuery({
@@ -132,6 +134,22 @@ export function useBoardData() {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
       setSelectedTaskId(task.id);
       setTaskModalOpen(false);
+    }
+  });
+
+  const updateWorkspaceMutation = useMutation({
+    mutationFn: async ({
+      workspaceId,
+      body
+    }: {
+      workspaceId: string;
+      body: UpdateWorkspaceBody;
+    }) => {
+      const response = await api.updateWorkspace(workspaceId, body);
+      return unwrap(response).workspace;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKey("workspaces") });
     }
   });
 
@@ -343,8 +361,10 @@ export function useBoardData() {
     selectedRunId,
     liveLogByRunId,
     workspaceModalOpen,
+    workspaceSettingsModalOpen,
     taskModalOpen,
     setWorkspaceModalOpen,
+    setWorkspaceSettingsModalOpen,
     setTaskModalOpen,
     setWorkspaceSelection,
     setTaskSelection,
@@ -352,6 +372,7 @@ export function useBoardData() {
     recordLiveOutput,
     clearLiveOutput,
     createWorkspace: createWorkspaceMutation.mutateAsync,
+    updateWorkspace: updateWorkspaceMutation.mutateAsync,
     createTask: createTaskMutation.mutateAsync,
     startTask: startTaskMutation.mutateAsync,
     stopTask: stopTaskMutation.mutateAsync,
@@ -366,6 +387,7 @@ export function useBoardData() {
     deleteTask: deleteTaskMutation.mutateAsync,
     isBusy:
       createWorkspaceMutation.isPending ||
+      updateWorkspaceMutation.isPending ||
       createTaskMutation.isPending ||
       startTaskMutation.isPending ||
       stopTaskMutation.isPending ||

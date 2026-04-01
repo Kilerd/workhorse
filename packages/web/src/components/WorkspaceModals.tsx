@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { Workspace } from "@workhorse/contracts";
+import type {
+  Workspace,
+  WorkspaceCodexSettings
+} from "@workhorse/contracts";
 
 import { api } from "@/lib/api";
 import type { DisplayTaskColumn, TaskFormValues } from "@/lib/task-view";
@@ -8,10 +11,67 @@ import { resolveTaskWorkspaceId } from "@/lib/workspace-selection";
 
 const DEFAULT_CODEX_PROMPT = "请完成用户请求的任务。";
 
+const APPROVAL_POLICY_OPTIONS: Array<{
+  value: WorkspaceCodexSettings["approvalPolicy"];
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "untrusted",
+    label: "untrusted",
+    description: "Ask before running commands outside the trusted set."
+  },
+  {
+    value: "on-request",
+    label: "on-request",
+    description: "Let Codex decide when to ask for approval."
+  },
+  {
+    value: "on-failure",
+    label: "on-failure",
+    description: "Run first, and only escalate after a sandbox failure."
+  },
+  {
+    value: "never",
+    label: "never",
+    description: "Never ask for approval."
+  }
+];
+
+const SANDBOX_MODE_OPTIONS: Array<{
+  value: WorkspaceCodexSettings["sandboxMode"];
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "read-only",
+    label: "read-only",
+    description: "Inspect files without modifying the workspace."
+  },
+  {
+    value: "workspace-write",
+    label: "workspace-write",
+    description: "Allow edits inside the workspace while keeping stronger limits elsewhere."
+  },
+  {
+    value: "danger-full-access",
+    label: "danger-full-access",
+    description: "Bypass sandbox protections completely."
+  }
+];
+
 interface WorkspaceModalProps {
   open: boolean;
   onClose(): void;
   onSubmit(values: { name: string; rootPath: string }): void;
+}
+
+interface WorkspaceSettingsModalProps {
+  open: boolean;
+  workspace: Workspace | null;
+  taskCount: number;
+  onClose(): void;
+  onSubmit(values: { name: string; codexSettings: WorkspaceCodexSettings }): void;
 }
 
 interface TaskModalProps {
@@ -49,6 +109,22 @@ function slugifyBranchPreview(value: string): string {
     .slice(0, 40);
 
   return slug || "task";
+}
+
+function describeApprovalPolicy(
+  value: WorkspaceCodexSettings["approvalPolicy"]
+): string {
+  return (
+    APPROVAL_POLICY_OPTIONS.find((option) => option.value === value)?.description ??
+    value
+  );
+}
+
+function describeSandboxMode(value: WorkspaceCodexSettings["sandboxMode"]): string {
+  return (
+    SANDBOX_MODE_OPTIONS.find((option) => option.value === value)?.description ??
+    value
+  );
 }
 
 export function WorkspaceModal({ open, onClose, onSubmit }: WorkspaceModalProps) {
@@ -97,6 +173,136 @@ export function WorkspaceModal({ open, onClose, onSubmit }: WorkspaceModalProps)
           </button>
           <button type="submit" className="button">
             Create
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+export function WorkspaceSettingsModal({
+  open,
+  workspace,
+  taskCount,
+  onClose,
+  onSubmit
+}: WorkspaceSettingsModalProps) {
+  const [name, setName] = useState("");
+  const [approvalPolicy, setApprovalPolicy] =
+    useState<WorkspaceCodexSettings["approvalPolicy"]>("on-request");
+  const [sandboxMode, setSandboxMode] =
+    useState<WorkspaceCodexSettings["sandboxMode"]>("workspace-write");
+
+  useCloseOnEscape(open, onClose);
+
+  useEffect(() => {
+    if (!open || !workspace) {
+      setName("");
+      setApprovalPolicy("on-request");
+      setSandboxMode("workspace-write");
+      return;
+    }
+
+    setName(workspace.name);
+    setApprovalPolicy(workspace.codexSettings.approvalPolicy);
+    setSandboxMode(workspace.codexSettings.sandboxMode);
+  }, [open, workspace]);
+
+  if (!open || !workspace) {
+    return null;
+  }
+
+  const canSubmit = Boolean(name.trim());
+
+  return (
+    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+      <form
+        className="modal modal-wide"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit({
+            name,
+            codexSettings: {
+              approvalPolicy,
+              sandboxMode
+            }
+          });
+        }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <h2>Workspace settings</h2>
+        <div className="modal-grid">
+          <label>
+            <span>Name</span>
+            <input value={name} onChange={(event) => setName(event.target.value)} />
+          </label>
+          <div className="modal-note">
+            <span>Root path</span>
+            <p>
+              <code>{workspace.rootPath}</code>
+            </p>
+          </div>
+          <label>
+            <span>Approval policy</span>
+            <select
+              value={approvalPolicy}
+              onChange={(event) =>
+                setApprovalPolicy(
+                  event.target.value as WorkspaceCodexSettings["approvalPolicy"]
+                )
+              }
+            >
+              {APPROVAL_POLICY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="modal-note">
+            <span>Approval behavior</span>
+            <p>{describeApprovalPolicy(approvalPolicy)}</p>
+          </div>
+          <label>
+            <span>Sandbox</span>
+            <select
+              value={sandboxMode}
+              onChange={(event) =>
+                setSandboxMode(event.target.value as WorkspaceCodexSettings["sandboxMode"])
+              }
+            >
+              {SANDBOX_MODE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="modal-note">
+            <span>Sandbox access</span>
+            <p>{describeSandboxMode(sandboxMode)}</p>
+          </div>
+          <div className="modal-note span-2">
+            <span>Applies to future Codex runs</span>
+            <p>
+              Codex tasks in this workspace will use <code>{approvalPolicy}</code> and{" "}
+              <code>{sandboxMode}</code>. Shell tasks are unchanged.
+            </p>
+          </div>
+          <div className="modal-note span-2">
+            <span>Workspace context</span>
+            <p>
+              {workspace.isGitRepo ? "Git repository" : "Non-Git directory"} with {taskCount}{" "}
+              {taskCount === 1 ? "task" : "tasks"}.
+            </p>
+          </div>
+        </div>
+        <div className="modal-actions">
+          <button type="button" className="button button-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="button" disabled={!canSubmit}>
+            Save settings
           </button>
         </div>
       </form>
@@ -300,15 +506,27 @@ export function TaskModal({
               <input value={shellCommand} onChange={(event) => setShellCommand(event.target.value)} placeholder="npm test" />
             </label>
           ) : (
-            <label className="span-2">
-              <span>Prompt</span>
-              <textarea
-                rows={5}
-                value={prompt}
-                onChange={(event) => setPrompt(event.target.value)}
-                placeholder={DEFAULT_CODEX_PROMPT}
-              />
-            </label>
+            <>
+              <label className="span-2">
+                <span>Prompt</span>
+                <textarea
+                  rows={5}
+                  value={prompt}
+                  onChange={(event) => setPrompt(event.target.value)}
+                  placeholder={DEFAULT_CODEX_PROMPT}
+                />
+              </label>
+              {selectedWorkspace ? (
+                <div className="modal-note span-2">
+                  <span>Workspace Codex settings</span>
+                  <p>
+                    This task will use <code>{selectedWorkspace.codexSettings.approvalPolicy}</code>{" "}
+                    approval with <code>{selectedWorkspace.codexSettings.sandboxMode}</code>{" "}
+                    sandboxing.
+                  </p>
+                </div>
+              ) : null}
+            </>
           )}
           {selectedWorkspace?.isGitRepo && gitRefsQuery.isLoading ? (
             <p className="muted span-2">Loading Git refs…</p>

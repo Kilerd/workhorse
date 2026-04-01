@@ -44,6 +44,10 @@ function createCodexContext(overrides: Partial<RunnerStartContext> = {}): Runner
       name: "Repo",
       rootPath: "/tmp/task-1",
       isGitRepo: true,
+      codexSettings: {
+        approvalPolicy: "on-request",
+        sandboxMode: "workspace-write"
+      },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     },
@@ -123,11 +127,35 @@ describe("CodexAcpRunner prompt", () => {
     });
 
     expect(params).toMatchObject({
-      approvalPolicy: "never",
-      sandbox: "danger-full-access",
+      approvalPolicy: "on-request",
+      sandbox: "workspace-write",
       ephemeral: false,
       experimentalRawEvents: false,
       persistExtendedHistory: true
+    });
+  });
+
+  it("uses workspace codex settings when starting a thread", () => {
+    const runner = new CodexAcpRunner() as any;
+
+    const params = runner.buildThreadStartParams(
+      createCodexContext({
+        workspace: {
+          ...createCodexContext().workspace,
+          codexSettings: {
+            approvalPolicy: "untrusted",
+            sandboxMode: "read-only"
+          }
+        }
+      }),
+      {
+        prompt: "Implement the feature"
+      }
+    );
+
+    expect(params).toMatchObject({
+      approvalPolicy: "untrusted",
+      sandbox: "read-only"
     });
   });
 

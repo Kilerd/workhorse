@@ -14,6 +14,8 @@ import type {
   RunnerConfig,
   TaskInputBody,
   Task,
+  TaskPullRequest,
+  TaskPullRequestChecks,
   TaskWorktree,
   UpdateTaskBody,
   UpdateWorkspaceBody,
@@ -25,9 +27,11 @@ import { AppError, ensure } from "../lib/errors.js";
 import {
   GhCliPullRequestProvider,
   type GitHubCheckBucket,
+  type GitHubPullRequestCheck,
   type GitHubPullRequestProvider,
   type GitHubPullRequestSummary
 } from "../lib/github.js";
+import { resolveWorkspaceCodexSettings } from "../lib/codex-settings.js";
 import { createId } from "../lib/id.js";
 import { createRunLogEntry } from "../lib/run-log.js";
 import { createTaskWorktree } from "../lib/task-worktree.js";
@@ -85,6 +89,15 @@ const COLUMN_ORDER: Record<Task["column"], number> = {
   done: 4,
   archived: 5
 };
+
+function toOptionalNumber(value?: string): number | undefined {
+  if (value === undefined || value === "") {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
 
 export class BoardService {
   private readonly store: StateStore;
@@ -176,6 +189,9 @@ export class BoardService {
       name,
       rootPath,
       isGitRepo: await this.detectGitRepo(rootPath),
+      codexSettings: resolveWorkspaceCodexSettings({
+        codexSettings: input.codexSettings
+      }),
       createdAt: now,
       updatedAt: now
     };
@@ -210,6 +226,11 @@ export class BoardService {
         throw new AppError(400, "INVALID_WORKSPACE", "Workspace name is required");
       }
       workspace.name = name;
+    }
+    if (input.codexSettings !== undefined) {
+      workspace.codexSettings = resolveWorkspaceCodexSettings({
+        codexSettings: input.codexSettings
+      });
     }
     workspace.updatedAt = new Date().toISOString();
 
@@ -373,6 +394,7 @@ export class BoardService {
       task.workspaceId = nextWorkspace.id;
       task.worktree = await this.resetTaskWorktree(task, nextWorkspace, input.worktreeBaseRef);
       task.pullRequestUrl = undefined;
+      task.pullRequest = undefined;
     } else if (input.worktreeBaseRef !== undefined) {
       if (!nextWorkspace.isGitRepo) {
         throw new AppError(
@@ -396,6 +418,7 @@ export class BoardService {
         status: "not_created"
       };
       task.pullRequestUrl = undefined;
+      task.pullRequest = undefined;
     }
 
     task.description = input.description?.trim() ?? task.description;
@@ -538,6 +561,9 @@ export class BoardService {
           );
 
           if (!openPr) {
+            await this.syncTaskPullRequestSnapshot(task.id, {
+              pullRequest: null
+            });
             const mergedPr = await this.githubPullRequests.findMergedPullRequest(
               repositoryFullName,
               task.worktree.branchName
@@ -555,6 +581,10 @@ export class BoardService {
             repositoryFullName,
             openPr.number
           );
+          await this.syncTaskPullRequestSnapshot(task.id, {
+            pullRequestUrl: openPr.url,
+            pullRequest: this.buildTaskPullRequestSummary(openPr, checks)
+          });
           const ciStatus = this.summarizeRequiredChecks(checks);
           const monitorReasons = this.collectMonitorReasons(task, runsById, openPr, ciStatus);
           if (monitorReasons.length === 0) {
@@ -572,7 +602,7 @@ export class BoardService {
               ciStatus,
               monitorReasons
             ),
-            runMetadata: this.buildMonitorRunMetadata(openPr, ciStatus)
+            runMetadata: this.buildMonitorRunMetadata(openPr, ciStatus, checks)
           });
           resumedTaskIds.push(task.id);
         } catch {
@@ -1194,8 +1224,11 @@ export class BoardService {
 
   private buildMonitorRunMetadata(
     pullRequest: GitHubPullRequestSummary,
-    ciStatus: MonitorCiStatus
+    ciStatus: MonitorCiStatus,
+    checks: GitHubPullRequestCheck[]
   ): Record<string, string> {
+    const checkSummary = this.summarizeTaskPullRequestChecks(checks);
+
     return {
       trigger: "gh_pr_monitor",
       monitorPrNumber: String(pullRequest.number),
@@ -1210,8 +1243,136 @@ export class BoardService {
       monitorPrStatusCheckRollupState: pullRequest.statusCheckRollupState ?? "",
       monitorPrFeedbackCount: String(pullRequest.feedbackCount ?? 0),
       monitorPrFeedbackUpdatedAt: pullRequest.feedbackUpdatedAt ?? "",
-      monitorPrReviewDecision: pullRequest.reviewDecision ?? ""
+      monitorPrReviewDecision: pullRequest.reviewDecision ?? "",
+      monitorPrRequiredChecksTotal: String(checkSummary?.total ?? 0),
+      monitorPrRequiredChecksPassed: String(checkSummary?.passed ?? 0),
+      monitorPrRequiredChecksFailed: String(checkSummary?.failed ?? 0),
+      monitorPrRequiredChecksPending: String(checkSummary?.pending ?? 0)
     };
+  }
+
+  private buildTaskPullRequestSummary(
+    pullRequest: GitHubPullRequestSummary,
+    checks: GitHubPullRequestCheck[]
+  ): TaskPullRequest {
+    return {
+      number: pullRequest.number,
+      mergeable: pullRequest.mergeable,
+      mergeStateStatus: pullRequest.mergeStateStatus,
+      reviewDecision: pullRequest.reviewDecision,
+      statusCheckRollupState: pullRequest.statusCheckRollupState,
+      checks: this.summarizeTaskPullRequestChecks(checks)
+    };
+  }
+
+  private summarizeTaskPullRequestChecks(
+    checks: GitHubPullRequestCheck[]
+  ): TaskPullRequestChecks | undefined {
+    if (checks.length === 0) {
+      return undefined;
+    }
+
+    let passed = 0;
+    let failed = 0;
+    let pending = 0;
+
+    for (const check of checks) {
+      if (check.bucket === "pass") {
+        passed += 1;
+        continue;
+      }
+
+      if (check.bucket === "fail" || check.bucket === "cancel") {
+        failed += 1;
+        continue;
+      }
+
+      if (check.bucket === "pending" || check.bucket === "skipping") {
+        pending += 1;
+      }
+    }
+
+    return {
+      total: checks.length,
+      passed,
+      failed,
+      pending
+    };
+  }
+
+  private async syncTaskPullRequestSnapshot(
+    taskId: string,
+    next: {
+      pullRequestUrl?: string | null;
+      pullRequest?: TaskPullRequest | null;
+    }
+  ): Promise<void> {
+    const tasks = this.store.listTasks();
+    const task = tasks.find((entry) => entry.id === taskId);
+    if (!task) {
+      return;
+    }
+
+    const nextPullRequestUrl =
+      next.pullRequestUrl === undefined
+        ? task.pullRequestUrl
+        : next.pullRequestUrl?.trim() || undefined;
+    const nextPullRequest =
+      next.pullRequest === undefined ? task.pullRequest : next.pullRequest ?? undefined;
+
+    if (
+      task.pullRequestUrl === nextPullRequestUrl &&
+      this.taskPullRequestSummaryEquals(task.pullRequest, nextPullRequest)
+    ) {
+      return;
+    }
+
+    task.pullRequestUrl = nextPullRequestUrl;
+    task.pullRequest = nextPullRequest;
+    task.updatedAt = new Date().toISOString();
+
+    this.store.setTasks(tasks);
+    await this.store.save();
+    this.events.publish({
+      type: "task.updated",
+      action: "updated",
+      taskId: task.id,
+      task
+    });
+  }
+
+  private taskPullRequestSummaryEquals(
+    left?: TaskPullRequest,
+    right?: TaskPullRequest
+  ): boolean {
+    if (left === right) {
+      return true;
+    }
+
+    return (
+      left?.number === right?.number &&
+      left?.mergeable === right?.mergeable &&
+      left?.mergeStateStatus === right?.mergeStateStatus &&
+      left?.reviewDecision === right?.reviewDecision &&
+      left?.statusCheckRollupState === right?.statusCheckRollupState &&
+      this.taskPullRequestChecksEqual(left?.checks, right?.checks)
+    );
+  }
+
+  private taskPullRequestChecksEqual(
+    left?: TaskPullRequestChecks,
+    right?: TaskPullRequestChecks
+  ): boolean {
+    if (left === right) {
+      return true;
+    }
+
+    return (
+      left?.total === right?.total &&
+      left?.passed === right?.passed &&
+      left?.failed === right?.failed &&
+      left?.pending === right?.pending
+    );
   }
 
   private summarizeRequiredChecks(checks: { bucket: GitHubCheckBucket }[]): MonitorCiStatus {
@@ -1421,16 +1582,17 @@ export class BoardService {
           ...result.metadata
         }
       : runEntry.metadata;
+    this.activeRuns.delete(taskId);
 
     taskEntry.column = "review";
     taskEntry.order = this.topOrder("review", taskId);
     taskEntry.pullRequestUrl = this.resolveTaskPullRequestUrl(taskEntry, runEntry);
+    taskEntry.pullRequest = this.resolveTaskPullRequestSummary(runEntry);
     taskEntry.updatedAt = new Date().toISOString();
 
     this.store.setRuns(currentRuns);
     this.store.setTasks(currentTasks);
     await this.store.save();
-    this.activeRuns.delete(taskId);
     this.events.publish({
       type: "task.updated",
       action: "updated",
@@ -1464,6 +1626,49 @@ export class BoardService {
 
     const existingPullRequestUrl = task.pullRequestUrl?.trim();
     return existingPullRequestUrl || undefined;
+  }
+
+  private resolveTaskPullRequestSummary(run: Run): TaskPullRequest | undefined {
+    const metadata = run.metadata;
+    if (!metadata) {
+      return undefined;
+    }
+
+    const number = toOptionalNumber(metadata.monitorPrNumber);
+    const checksTotal = toOptionalNumber(metadata.monitorPrRequiredChecksTotal);
+    const checksPassed = toOptionalNumber(metadata.monitorPrRequiredChecksPassed);
+    const checksFailed = toOptionalNumber(metadata.monitorPrRequiredChecksFailed);
+    const checksPending = toOptionalNumber(metadata.monitorPrRequiredChecksPending);
+    const hasMonitorData =
+      number !== undefined ||
+      Boolean(metadata.monitorPrMergeable) ||
+      Boolean(metadata.monitorPrMergeState) ||
+      Boolean(metadata.monitorPrStatusCheckRollupState) ||
+      Boolean(metadata.monitorPrReviewDecision) ||
+      checksTotal !== undefined;
+
+    if (!hasMonitorData) {
+      return undefined;
+    }
+
+    const checks =
+      checksTotal !== undefined && checksTotal > 0
+        ? {
+            total: checksTotal,
+            passed: checksPassed ?? 0,
+            failed: checksFailed ?? 0,
+            pending: checksPending ?? 0
+          }
+        : undefined;
+
+    return {
+      number,
+      mergeable: metadata.monitorPrMergeable || undefined,
+      mergeStateStatus: metadata.monitorPrMergeState || undefined,
+      reviewDecision: metadata.monitorPrReviewDecision || undefined,
+      statusCheckRollupState: metadata.monitorPrStatusCheckRollupState || undefined,
+      checks
+    };
   }
 
   private async ensureReadableDirectory(path: string): Promise<void> {

@@ -13,7 +13,11 @@ import type { RunLogEntry, ServerEvent, Workspace } from "@workhorse/contracts";
 
 import { Board } from "@/components/Board";
 import { TaskDetailsPanel } from "@/components/TaskDetailsPanel";
-import { TaskModal, WorkspaceModal } from "@/components/WorkspaceModals";
+import {
+  TaskModal,
+  WorkspaceModal,
+  WorkspaceSettingsModal
+} from "@/components/WorkspaceModals";
 import { TopBar } from "@/components/TopBar";
 import { useBoardData } from "@/hooks/useBoardData";
 import { api } from "@/lib/api";
@@ -133,6 +137,20 @@ function ReactAppShell() {
       "All workspaces"
     );
   }, [board.selectedWorkspaceId, workspaces]);
+  const selectedWorkspace = useMemo(() => {
+    if (board.selectedWorkspaceId === "all") {
+      return null;
+    }
+
+    return workspaces.find((workspace) => workspace.id === board.selectedWorkspaceId) ?? null;
+  }, [board.selectedWorkspaceId, workspaces]);
+  const selectedWorkspaceTaskCount = useMemo(() => {
+    if (!selectedWorkspace) {
+      return 0;
+    }
+
+    return allTasks.filter((task) => task.workspaceId === selectedWorkspace.id).length;
+  }, [allTasks, selectedWorkspace]);
 
   const reviewMonitor = useMemo(
     () => ({
@@ -217,6 +235,7 @@ function ReactAppShell() {
           onSearchChange={setSearchQuery}
           onWorkspaceChange={board.setWorkspaceSelection}
           onCreateWorkspace={() => board.setWorkspaceModalOpen(true)}
+          onOpenWorkspaceSettings={() => board.setWorkspaceSettingsModalOpen(true)}
           onCreateTask={() => board.setTaskModalOpen(true)}
           onRefresh={() => {
             void queryClient.invalidateQueries({ queryKey: ["workspaces"] });
@@ -272,6 +291,26 @@ function ReactAppShell() {
           void board.createWorkspace(values).then(() => {
             board.setWorkspaceModalOpen(false);
           });
+        }}
+      />
+      <WorkspaceSettingsModal
+        open={board.workspaceSettingsModalOpen}
+        workspace={selectedWorkspace}
+        taskCount={selectedWorkspaceTaskCount}
+        onClose={() => board.setWorkspaceSettingsModalOpen(false)}
+        onSubmit={(values) => {
+          if (!selectedWorkspace) {
+            return;
+          }
+
+          void board
+            .updateWorkspace({
+              workspaceId: selectedWorkspace.id,
+              body: values
+            })
+            .then(() => {
+              board.setWorkspaceSettingsModalOpen(false);
+            });
         }}
       />
 

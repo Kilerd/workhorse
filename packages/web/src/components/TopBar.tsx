@@ -16,6 +16,7 @@ interface Props {
   onSearchChange(value: string): void;
   onWorkspaceChange(value: string | "all"): void;
   onCreateWorkspace(): void;
+  onOpenWorkspaceSettings(): void;
   onCreateTask(): void;
   onRefresh(): void;
   theme: ThemeMode;
@@ -99,6 +100,7 @@ export function TopBar({
   onSearchChange,
   onWorkspaceChange,
   onCreateWorkspace,
+  onOpenWorkspaceSettings,
   onCreateTask,
   onRefresh,
   theme,
@@ -204,6 +206,14 @@ export function TopBar({
 
         <button type="button" className="button button-secondary" onClick={onRefresh}>
           Refresh
+        </button>
+        <button
+          type="button"
+          className="button button-secondary"
+          onClick={onOpenWorkspaceSettings}
+          disabled={selectedWorkspaceId === "all"}
+        >
+          Workspace settings
         </button>
         <button type="button" className="button button-secondary" onClick={onCreateWorkspace}>
           Add workspace

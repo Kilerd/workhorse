@@ -538,8 +538,17 @@ pre {
 }
 
 .task-card-pr {
+  display: grid;
+  gap: 6px;
   align-items: center;
   min-width: 0;
+}
+
+.task-card-pr-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
 }
 
 .task-card-review-monitor {
@@ -581,6 +590,25 @@ pre {
 
 .status-review {
   color: var(--accent-strong);
+}
+
+.status-pr-mergeable,
+.status-pr-checks-pass {
+  color: var(--success);
+}
+
+.status-pr-behind,
+.status-pr-checks-pending {
+  color: var(--warning);
+}
+
+.status-pr-conflicting,
+.status-pr-checks-fail {
+  color: #e76a6a;
+}
+
+.status-pr-checking {
+  color: var(--muted);
 }
 
 .task-pr-link {

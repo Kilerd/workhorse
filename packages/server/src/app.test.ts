@@ -128,6 +128,10 @@ describe("workhorse runtime", () => {
     expect(workspaceResponse.status).toBe(201);
     const workspacePayload = await workspaceResponse.json();
     expect(workspacePayload.ok).toBe(true);
+    expect(workspacePayload.data.workspace.codexSettings).toEqual({
+      approvalPolicy: "on-request",
+      sandboxMode: "workspace-write"
+    });
 
     const taskResponse = await app.request("/api/tasks", {
       method: "POST",
@@ -655,6 +659,23 @@ describe("workhorse runtime", () => {
       status: 400,
       code: "INVALID_WORKSPACE",
       message: "Workspace name is required"
+    });
+  });
+
+  it("updates workspace codex settings", async () => {
+    const { service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+
+    const updated = await service.updateWorkspace(workspace.id, {
+      codexSettings: {
+        approvalPolicy: "untrusted",
+        sandboxMode: "read-only"
+      }
+    });
+
+    expect(updated.codexSettings).toEqual({
+      approvalPolicy: "untrusted",
+      sandboxMode: "read-only"
     });
   });
 

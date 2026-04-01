@@ -1,6 +1,7 @@
 import type { CodexRunnerConfig } from "@workhorse/contracts";
 import WebSocket from "ws";
 
+import { resolveWorkspaceCodexSettings } from "../lib/codex-settings.js";
 import { AppError } from "../lib/errors.js";
 import { extractGitHubPullRequestUrl } from "../lib/github.js";
 import {
@@ -827,11 +828,13 @@ export class CodexAcpRunner implements RunnerAdapter {
   }
 
   private buildThreadStartParams(context: RunnerStartContext, config: CodexRunnerConfig) {
+    const settings = resolveWorkspaceCodexSettings(context.workspace);
+
     return {
       model: config.model ?? null,
       cwd: context.workspace.rootPath,
-      approvalPolicy: "never" as const,
-      sandbox: "danger-full-access" as const,
+      approvalPolicy: settings.approvalPolicy,
+      sandbox: settings.sandboxMode,
       ephemeral: false,
       experimentalRawEvents: false,
       persistExtendedHistory: true
@@ -843,12 +846,14 @@ export class CodexAcpRunner implements RunnerAdapter {
     config: CodexRunnerConfig,
     threadId: string
   ) {
+    const settings = resolveWorkspaceCodexSettings(context.workspace);
+
     return {
       threadId,
       model: config.model ?? null,
       cwd: context.workspace.rootPath,
-      approvalPolicy: "never" as const,
-      sandbox: "danger-full-access" as const,
+      approvalPolicy: settings.approvalPolicy,
+      sandbox: settings.sandboxMode,
       persistExtendedHistory: true
     };
   }

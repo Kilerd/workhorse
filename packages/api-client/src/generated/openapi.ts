@@ -252,9 +252,16 @@ export interface components {
             name: string;
             rootPath: string;
             isGitRepo: boolean;
+            codexSettings: components["schemas"]["WorkspaceCodexSettings"];
             createdAt: string;
             updatedAt: string;
         };
+        WorkspaceCodexSettings: {
+            approvalPolicy: components["schemas"]["CodexApprovalPolicy"];
+            sandboxMode: components["schemas"]["CodexSandboxMode"];
+        };
+        CodexApprovalPolicy: "untrusted" | "on-failure" | "on-request" | "never";
+        CodexSandboxMode: "read-only" | "workspace-write" | "danger-full-access";
         WorkspaceGitRef: {
             name: string;
             kind: components["schemas"]["WorkspaceGitRefKind"];
@@ -282,6 +289,7 @@ export interface components {
             worktree: components["schemas"]["TaskWorktree"];
             lastRunId?: string;
             pullRequestUrl?: string;
+            pullRequest?: components["schemas"]["TaskPullRequest"];
             createdAt: string;
             updatedAt: string;
         };
@@ -306,6 +314,20 @@ export interface components {
             model?: string;
             approvalMode?: "default" | "auto";
         };
+        TaskPullRequest: {
+            number?: number;
+            mergeable?: string;
+            mergeStateStatus?: string;
+            reviewDecision?: string;
+            statusCheckRollupState?: string;
+            checks?: components["schemas"]["TaskPullRequestChecks"];
+        };
+        TaskPullRequestChecks: {
+            total: number;
+            passed: number;
+            failed: number;
+            pending: number;
+        };
         Run: {
             id: string;
             taskId: string;
@@ -327,12 +349,14 @@ export interface components {
         CreateWorkspaceBody: {
             name: string;
             rootPath: string;
+            codexSettings?: components["schemas"]["WorkspaceCodexSettings"];
         };
         ListWorkspaceGitRefsParams: {
             workspaceId: string;
         };
         UpdateWorkspaceBody: {
             name?: string;
+            codexSettings?: components["schemas"]["WorkspaceCodexSettings"];
         };
         UpdateWorkspaceParams: {
             workspaceId: string;

@@ -8,12 +8,19 @@ import {
   parseRunLogEntries,
   serializeRunLogEntry
 } from "../lib/run-log.js";
+import { resolveWorkspaceCodexSettings } from "../lib/codex-settings.js";
 import { createTaskWorktree } from "../lib/task-worktree.js";
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 function migrateState(state: AppState): AppState {
-  const workspaces = Array.isArray(state.workspaces) ? state.workspaces : [];
+  const workspaces = (Array.isArray(state.workspaces) ? state.workspaces : []).map(
+    (workspace) =>
+      ({
+        ...workspace,
+        codexSettings: resolveWorkspaceCodexSettings(workspace)
+      }) satisfies Workspace
+  );
   const workspaceById = new Map(workspaces.map((workspace) => [workspace.id, workspace]));
   const tasks = (Array.isArray(state.tasks) ? state.tasks : []).map((task) => {
     if ("worktree" in task && task.worktree) {

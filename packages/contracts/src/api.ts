@@ -1,5 +1,6 @@
 import type {
   AppState,
+  WorkspaceCodexSettings,
   Run,
   RunLogEntry,
   RunnerConfig,
@@ -49,6 +50,7 @@ export interface WorkspaceGitRefsData {
 export interface CreateWorkspaceBody {
   name: string;
   rootPath: string;
+  codexSettings?: WorkspaceCodexSettings;
 }
 
 export interface ListWorkspaceGitRefsParams {
@@ -61,6 +63,7 @@ export interface UpdateWorkspaceParams {
 
 export interface UpdateWorkspaceBody {
   name?: string;
+  codexSettings?: WorkspaceCodexSettings;
 }
 
 export interface DeleteWorkspaceParams {

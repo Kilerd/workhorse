@@ -67,6 +67,86 @@ function getReviewCountdown(reviewMonitor: ReviewMonitor, nowMs: number) {
   };
 }
 
+function getPullRequestMergeBadge(task: DisplayTask) {
+  const pullRequest = task.pullRequest;
+  if (!pullRequest) {
+    return null;
+  }
+
+  const mergeable = pullRequest.mergeable?.toUpperCase();
+  const mergeStateStatus = pullRequest.mergeStateStatus?.toUpperCase();
+
+  if (mergeable === "CONFLICTING" || mergeStateStatus === "DIRTY") {
+    return {
+      label: "Conflicts",
+      className: "status-pr-conflicting"
+    };
+  }
+
+  if (mergeStateStatus === "BEHIND") {
+    return {
+      label: "Behind",
+      className: "status-pr-behind"
+    };
+  }
+
+  if (mergeable === "MERGEABLE") {
+    return {
+      label: "Mergeable",
+      className: "status-pr-mergeable"
+    };
+  }
+
+  if (mergeable === "UNKNOWN") {
+    return {
+      label: "Checking",
+      className: "status-pr-checking"
+    };
+  }
+
+  if (mergeStateStatus) {
+    return {
+      label: titleCase(mergeStateStatus.toLowerCase()),
+      className: "status-pr-checking"
+    };
+  }
+
+  if (mergeable) {
+    return {
+      label: titleCase(mergeable.toLowerCase()),
+      className: "status-pr-checking"
+    };
+  }
+
+  return null;
+}
+
+function getPullRequestChecksBadge(task: DisplayTask) {
+  const checks = task.pullRequest?.checks;
+  if (!checks || checks.total < 1) {
+    return null;
+  }
+
+  if (checks.failed > 0) {
+    return {
+      label: `Checks ${checks.passed}/${checks.total}`,
+      className: "status-pr-checks-fail"
+    };
+  }
+
+  if (checks.pending > 0) {
+    return {
+      label: `Checks ${checks.passed}/${checks.total}`,
+      className: "status-pr-checks-pending"
+    };
+  }
+
+  return {
+    label: `Checks ${checks.passed}/${checks.total}`,
+    className: "status-pr-checks-pass"
+  };
+}
+
 export function Board({
   tasks,
   workspaces,
@@ -138,6 +218,8 @@ export function Board({
                     task.column === "review" && task.pullRequestUrl
                       ? getReviewCountdown(reviewMonitor, nowMs)
                       : null;
+                  const pullRequestMergeBadge = getPullRequestMergeBadge(task);
+                  const pullRequestChecksBadge = getPullRequestChecksBadge(task);
 
                   return (
                     <Draggable draggableId={task.id} index={index} key={task.id}>
@@ -200,7 +282,23 @@ export function Board({
 
                           {task.column === "review" && task.pullRequestUrl ? (
                             <div className="task-card-pr">
-                              <span className="meta-token">PR</span>
+                              <div className="task-card-pr-row">
+                                <span className="meta-token">PR</span>
+                                {pullRequestMergeBadge ? (
+                                  <span
+                                    className={`status ${pullRequestMergeBadge.className}`}
+                                  >
+                                    {pullRequestMergeBadge.label}
+                                  </span>
+                                ) : null}
+                                {pullRequestChecksBadge ? (
+                                  <span
+                                    className={`status ${pullRequestChecksBadge.className}`}
+                                  >
+                                    {pullRequestChecksBadge.label}
+                                  </span>
+                                ) : null}
+                              </div>
                               <a
                                 className="task-pr-link"
                                 href={task.pullRequestUrl}

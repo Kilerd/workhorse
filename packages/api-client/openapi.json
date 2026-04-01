@@ -841,6 +841,9 @@
           "isGitRepo": {
             "type": "boolean"
           },
+          "codexSettings": {
+            "$ref": "#/components/schemas/WorkspaceCodexSettings"
+          },
           "createdAt": {
             "type": "string"
           },
@@ -853,8 +856,67 @@
           "name",
           "rootPath",
           "isGitRepo",
+          "codexSettings",
           "createdAt",
           "updatedAt"
+        ]
+      },
+      "WorkspaceCodexSettings": {
+        "type": "object",
+        "properties": {
+          "approvalPolicy": {
+            "$ref": "#/components/schemas/CodexApprovalPolicy"
+          },
+          "sandboxMode": {
+            "$ref": "#/components/schemas/CodexSandboxMode"
+          }
+        },
+        "required": [
+          "approvalPolicy",
+          "sandboxMode"
+        ]
+      },
+      "CodexApprovalPolicy": {
+        "oneOf": [
+          {
+            "enum": [
+              "untrusted"
+            ]
+          },
+          {
+            "enum": [
+              "on-failure"
+            ]
+          },
+          {
+            "enum": [
+              "on-request"
+            ]
+          },
+          {
+            "enum": [
+              "never"
+            ]
+          }
+        ]
+      },
+      "CodexSandboxMode": {
+        "oneOf": [
+          {
+            "enum": [
+              "read-only"
+            ]
+          },
+          {
+            "enum": [
+              "workspace-write"
+            ]
+          },
+          {
+            "enum": [
+              "danger-full-access"
+            ]
+          }
         ]
       },
       "WorkspaceGitRef": {
@@ -977,6 +1039,9 @@
           },
           "pullRequestUrl": {
             "type": "string"
+          },
+          "pullRequest": {
+            "$ref": "#/components/schemas/TaskPullRequest"
           },
           "createdAt": {
             "type": "string"
@@ -1115,6 +1180,53 @@
           "prompt"
         ]
       },
+      "TaskPullRequest": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "number"
+          },
+          "mergeable": {
+            "type": "string"
+          },
+          "mergeStateStatus": {
+            "type": "string"
+          },
+          "reviewDecision": {
+            "type": "string"
+          },
+          "statusCheckRollupState": {
+            "type": "string"
+          },
+          "checks": {
+            "$ref": "#/components/schemas/TaskPullRequestChecks"
+          }
+        },
+        "required": []
+      },
+      "TaskPullRequestChecks": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "number"
+          },
+          "passed": {
+            "type": "number"
+          },
+          "failed": {
+            "type": "number"
+          },
+          "pending": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "total",
+          "passed",
+          "failed",
+          "pending"
+        ]
+      },
       "Run": {
         "type": "object",
         "properties": {
@@ -1213,6 +1325,9 @@
           },
           "rootPath": {
             "type": "string"
+          },
+          "codexSettings": {
+            "$ref": "#/components/schemas/WorkspaceCodexSettings"
           }
         },
         "required": [
@@ -1236,6 +1351,9 @@
         "properties": {
           "name": {
             "type": "string"
+          },
+          "codexSettings": {
+            "$ref": "#/components/schemas/WorkspaceCodexSettings"
           }
         },
         "required": []

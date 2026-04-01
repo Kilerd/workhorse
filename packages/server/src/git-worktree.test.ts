@@ -260,7 +260,11 @@ describe("git worktree lifecycle", () => {
     await store.load();
     const snapshot = store.snapshot();
 
-    expect(snapshot.schemaVersion).toBe(2);
+    expect(snapshot.schemaVersion).toBe(3);
+    expect(snapshot.workspaces[0]?.codexSettings).toEqual({
+      approvalPolicy: "on-request",
+      sandboxMode: "workspace-write"
+    });
     expect(snapshot.tasks[0]?.worktree.baseRef).toBe("origin/main");
     expect(snapshot.tasks[0]?.worktree.status).toBe("not_created");
     expect(snapshot.tasks[0]?.worktree.branchName).toContain("task-1");
@@ -417,6 +421,77 @@ describe("git worktree lifecycle", () => {
     ).rejects.toMatchObject({
       status: 400,
       code: "INVALID_TASK_WORKTREE_BASE_REF"
+    });
+  });
+
+  it("stores PR mergeability and required check counts on review tasks", async () => {
+    const github = createFakeGitHubProvider();
+    const { service, seedDir, workspaceDir } = await createGitRuntimeWithProvider(github.provider);
+    const workspace = await createGitWorkspace(service, workspaceDir);
+    const task = await createGitTask(service, workspace.id, {
+      title: "Show PR status"
+    });
+
+    await service.startTask(task.id);
+    await waitForRunToFinish(service, task.id);
+
+    const taskWorktree = service.listTasks({}).find((entry) => entry.id === task.id)?.worktree.path;
+    if (!taskWorktree) {
+      throw new Error("Expected task to have a worktree");
+    }
+
+    const taskHeadSha = await commitAndPushTaskBranch(
+      taskWorktree,
+      "feature-status.txt",
+      "status ready",
+      "feat: add status branch change"
+    );
+    const baseSha = await runGit(["-C", seedDir, "rev-parse", "HEAD"]);
+
+    const repositoryFullName = "workhorse-git-test/remote";
+    const pullRequestUrl = "https://github.com/workhorse-git-test/remote/pull/91";
+    github.setOpenPullRequest(repositoryFullName, task.worktree.branchName, {
+      number: 91,
+      url: pullRequestUrl,
+      headRef: task.worktree.branchName,
+      baseRef: "main",
+      headSha: taskHeadSha,
+      baseSha,
+      mergeable: "MERGEABLE",
+      mergeStateStatus: "CLEAN",
+      reviewDecision: "APPROVED",
+      statusCheckRollupState: "PENDING"
+    });
+    github.setChecks(repositoryFullName, 91, [
+      {
+        bucket: "pass",
+        state: "SUCCESS",
+        name: "lint"
+      },
+      {
+        bucket: "pending",
+        state: "PENDING",
+        name: "test"
+      }
+    ]);
+
+    const poll = await service.pollGitReviewTasksForBaseUpdates();
+    expect(poll.resumedTaskIds).toEqual([]);
+
+    const updatedTask = service.listTasks({}).find((entry) => entry.id === task.id);
+    expect(updatedTask?.pullRequestUrl).toBe(pullRequestUrl);
+    expect(updatedTask?.pullRequest).toEqual({
+      number: 91,
+      mergeable: "MERGEABLE",
+      mergeStateStatus: "CLEAN",
+      reviewDecision: "APPROVED",
+      statusCheckRollupState: "PENDING",
+      checks: {
+        total: 2,
+        passed: 1,
+        failed: 0,
+        pending: 1
+      }
     });
   });
 

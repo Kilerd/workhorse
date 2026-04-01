@@ -43,6 +43,22 @@ export interface TaskWorktree {
   lastSyncedBaseAt?: string;
 }
 
+export interface TaskPullRequestChecks {
+  total: number;
+  passed: number;
+  failed: number;
+  pending: number;
+}
+
+export interface TaskPullRequest {
+  number?: number;
+  mergeable?: string;
+  mergeStateStatus?: string;
+  reviewDecision?: string;
+  statusCheckRollupState?: string;
+  checks?: TaskPullRequestChecks;
+}
+
 export type WorkspaceGitRefKind = "remote" | "local";
 
 export interface WorkspaceGitRef {
@@ -51,11 +67,28 @@ export interface WorkspaceGitRef {
   isDefault: boolean;
 }
 
+export type CodexApprovalPolicy =
+  | "untrusted"
+  | "on-failure"
+  | "on-request"
+  | "never";
+
+export type CodexSandboxMode =
+  | "read-only"
+  | "workspace-write"
+  | "danger-full-access";
+
+export interface WorkspaceCodexSettings {
+  approvalPolicy: CodexApprovalPolicy;
+  sandboxMode: CodexSandboxMode;
+}
+
 export interface Workspace {
   id: string;
   name: string;
   rootPath: string;
   isGitRepo: boolean;
+  codexSettings: WorkspaceCodexSettings;
   createdAt: string;
   updatedAt: string;
 }
@@ -86,6 +119,7 @@ export interface Task {
   worktree: TaskWorktree;
   lastRunId?: string;
   pullRequestUrl?: string;
+  pullRequest?: TaskPullRequest;
   createdAt: string;
   updatedAt: string;
 }
