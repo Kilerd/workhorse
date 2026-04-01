@@ -424,6 +424,16 @@ describe("git worktree lifecycle", () => {
     const github = createFakeGitHubProvider();
     const { service, seedDir, workspaceDir } = await createGitRuntimeWithProvider(github.provider);
     const workspace = await createGitWorkspace(service, workspaceDir);
+    const doneTask = await service.createTask({
+      title: "Already done",
+      workspaceId: workspace.id,
+      column: "done",
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "true"
+      }
+    });
     const taskA = await createGitTask(service, workspace.id, {
       title: "Feature A",
       command: "node -e \"console.log('task a')\""
@@ -501,6 +511,7 @@ describe("git worktree lifecycle", () => {
     const rerun = await waitForRunToFinish(service, taskB.id);
     const updatedTaskA = service.listTasks({}).find((entry) => entry.id === taskA.id);
     const updatedTaskB = service.listTasks({}).find((entry) => entry.id === taskB.id);
+    const doneTasks = service.listTasks({}).filter((entry) => entry.column === "done");
 
     expect(rerun.status).toBe("succeeded");
     expect(rerun.metadata?.trigger).toBe("gh_pr_monitor");
@@ -508,6 +519,7 @@ describe("git worktree lifecycle", () => {
     expect(updatedTaskA?.column).toBe("done");
     expect(updatedTaskA?.worktree.status).toBe("removed");
     expect(updatedTaskB?.column).toBe("review");
+    expect(doneTasks.map((task) => task.id)).toEqual([taskA.id, doneTask.id]);
     await expect(
       runGit(["-C", taskBWorktree, "merge-base", "--is-ancestor", "origin/main", "HEAD"])
     ).resolves.toBe("");

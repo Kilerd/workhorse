@@ -450,6 +450,122 @@ describe("workhorse runtime", () => {
     expect(payload.data.task.description).toContain("Need a rollout.");
   });
 
+  it("places planned tasks at the top of todo", async () => {
+    const { service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+
+    const todoOne = await service.createTask({
+      title: "Todo one",
+      workspaceId: workspace.id,
+      column: "todo",
+      runnerType: "codex",
+      runnerConfig: {
+        type: "codex",
+        prompt: "Continue the task"
+      }
+    });
+    const todoTwo = await service.createTask({
+      title: "Todo two",
+      workspaceId: workspace.id,
+      column: "todo",
+      runnerType: "codex",
+      runnerConfig: {
+        type: "codex",
+        prompt: "Continue the task"
+      }
+    });
+    const backlogTask = await service.createTask({
+      title: "Plan me next",
+      workspaceId: workspace.id,
+      runnerType: "codex",
+      runnerConfig: {
+        type: "codex",
+        prompt: "Continue the task"
+      }
+    });
+
+    const result = await service.planTask(backlogTask.id);
+    const todoTasks = service.listTasks({}).filter((task) => task.column === "todo");
+
+    expect(result.task.order).toBeLessThan(todoOne.order);
+    expect(todoTasks.map((task) => task.id)).toEqual([
+      result.task.id,
+      todoOne.id,
+      todoTwo.id
+    ]);
+  });
+
+  it("places started tasks at the top of running and completed tasks at the top of review", async () => {
+    const { service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+
+    const runningOne = await service.createTask({
+      title: "Running one",
+      workspaceId: workspace.id,
+      column: "running",
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "true"
+      }
+    });
+    const runningTwo = await service.createTask({
+      title: "Running two",
+      workspaceId: workspace.id,
+      column: "running",
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "true"
+      }
+    });
+    const reviewOne = await service.createTask({
+      title: "Review one",
+      workspaceId: workspace.id,
+      column: "review",
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "true"
+      }
+    });
+    const reviewTwo = await service.createTask({
+      title: "Review two",
+      workspaceId: workspace.id,
+      column: "review",
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "true"
+      }
+    });
+    const task = await createShellTask(
+      service,
+      workspace.id,
+      "node -e \"setInterval(() => {}, 50)\""
+    );
+
+    await service.startTask(task.id);
+
+    const runningTasks = service.listTasks({}).filter((entry) => entry.column === "running");
+    expect(runningTasks.map((entry) => entry.id)).toEqual([
+      task.id,
+      runningOne.id,
+      runningTwo.id
+    ]);
+
+    await service.stopTask(task.id);
+    const completedRun = await waitForRunToFinish(service, task.id);
+    expect(completedRun.status).toBe("canceled");
+
+    const reviewTasks = service.listTasks({}).filter((entry) => entry.column === "review");
+    expect(reviewTasks.map((entry) => entry.id)).toEqual([
+      task.id,
+      reviewOne.id,
+      reviewTwo.id
+    ]);
+  });
+
   it("moves tasks to the end of the destination column by default", async () => {
     const { service, workspaceDir } = await createRuntime();
     const workspace = await createWorkspace(service, workspaceDir);
