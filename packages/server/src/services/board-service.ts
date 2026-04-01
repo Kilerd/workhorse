@@ -484,30 +484,40 @@ export class BoardService {
 
       for (const task of tasks) {
         try {
-          const pr = await this.githubPullRequests.findOpenPullRequest(
+          const openPr = await this.githubPullRequests.findOpenPullRequest(
             repositoryFullName,
             task.worktree.branchName
           );
-          if (!pr) {
+
+          if (!openPr) {
+            const mergedPr = await this.githubPullRequests.findMergedPullRequest(
+              repositoryFullName,
+              task.worktree.branchName
+            );
+            if (mergedPr && this.baseRefMatches(task.worktree.baseRef, mergedPr.baseRef)) {
+              await this.updateTask(task.id, {
+                column: "done"
+              });
+            }
             continue;
           }
 
           const checks = await this.githubPullRequests.listRequiredChecks(
             repositoryFullName,
-            pr.number
+            openPr.number
           );
           const ciStatus = this.summarizeRequiredChecks(checks);
-          if (!this.shouldAutoResumePullRequest(task, pr)) {
+          if (!this.shouldAutoResumePullRequest(task, openPr)) {
             continue;
           }
-          if (this.wasMonitorRunAlreadyAttempted(task, runsById, pr)) {
+          if (this.wasMonitorRunAlreadyAttempted(task, runsById, openPr)) {
             continue;
           }
 
           await this.startTaskInternal(task.id, {
             allowedColumns: ["review"],
-            runnerConfigOverride: this.buildMonitorRunnerConfig(task, pr, ciStatus),
-            runMetadata: this.buildMonitorRunMetadata(pr, ciStatus)
+            runnerConfigOverride: this.buildMonitorRunnerConfig(task, openPr, ciStatus),
+            runMetadata: this.buildMonitorRunMetadata(openPr, ciStatus)
           });
           resumedTaskIds.push(task.id);
         } catch {

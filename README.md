@@ -59,6 +59,7 @@ By default Workhorse stores local state under `~/.workhorse`:
 - Codex tasks use ACP over WebSocket by launching `codex app-server --listen ...`.
 - Git-backed Codex tasks are instructed to commit, push, and open a GitHub PR before they finish.
 - Review tasks can be polled in the background with `gh` to detect whether their PR is behind/conflicting and whether required CI checks are passing.
+- When a review PR is merged, Workhorse automatically moves the task from `review` to `done`.
 - When a review PR is reported as `BEHIND` or conflicting, Workhorse can automatically restart the task, rebase onto its configured base ref, and move it back to `review` once the rerun finishes.
 - Authenticate `gh` locally with `gh auth login` before relying on PR polling.
 - Use `WORKHORSE_GIT_REVIEW_MONITOR_INTERVAL_MS=0` to disable the background poller, or set it to a custom interval in milliseconds.

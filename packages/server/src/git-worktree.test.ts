@@ -176,7 +176,8 @@ async function mergeBranchIntoMain(
 }
 
 function createFakeGitHubProvider() {
-  const pullRequests = new Map<string, GitHubPullRequestSummary>();
+  const openPullRequests = new Map<string, GitHubPullRequestSummary>();
+  const mergedPullRequests = new Map<string, GitHubPullRequestSummary>();
   const checks = new Map<string, GitHubPullRequestCheck[]>();
 
   const provider: GitHubPullRequestProvider = {
@@ -184,7 +185,10 @@ function createFakeGitHubProvider() {
       return true;
     },
     async findOpenPullRequest(repositoryFullName, headRef) {
-      return pullRequests.get(`${repositoryFullName}:${headRef}`) ?? null;
+      return openPullRequests.get(`${repositoryFullName}:${headRef}`) ?? null;
+    },
+    async findMergedPullRequest(repositoryFullName, headRef) {
+      return mergedPullRequests.get(`${repositoryFullName}:${headRef}`) ?? null;
     },
     async listRequiredChecks(repositoryFullName, pullRequest) {
       return checks.get(`${repositoryFullName}:${String(pullRequest)}`) ?? [];
@@ -193,11 +197,19 @@ function createFakeGitHubProvider() {
 
   return {
     provider,
-    setPullRequest(repositoryFullName: string, headRef: string, pr: GitHubPullRequestSummary) {
-      pullRequests.set(`${repositoryFullName}:${headRef}`, pr);
+    setOpenPullRequest(
+      repositoryFullName: string,
+      headRef: string,
+      pr: GitHubPullRequestSummary
+    ) {
+      openPullRequests.set(`${repositoryFullName}:${headRef}`, pr);
     },
-    clearPullRequest(repositoryFullName: string, headRef: string) {
-      pullRequests.delete(`${repositoryFullName}:${headRef}`);
+    setMergedPullRequest(
+      repositoryFullName: string,
+      headRef: string,
+      pr: GitHubPullRequestSummary
+    ) {
+      mergedPullRequests.set(`${repositoryFullName}:${headRef}`, pr);
     },
     setChecks(repositoryFullName: string, pullRequestNumber: number, value: GitHubPullRequestCheck[]) {
       checks.set(`${repositoryFullName}:${String(pullRequestNumber)}`, value);
@@ -408,7 +420,7 @@ describe("git worktree lifecycle", () => {
     });
   });
 
-  it("restarts review tasks when gh reports the PR is behind and skips merged branches", async () => {
+  it("moves merged review tasks to done and restarts review tasks when gh reports the PR is behind", async () => {
     const github = createFakeGitHubProvider();
     const { service, seedDir, workspaceDir } = await createGitRuntimeWithProvider(github.provider);
     const workspace = await createGitWorkspace(service, workspaceDir);
@@ -438,6 +450,7 @@ describe("git worktree lifecycle", () => {
       "feature-a",
       "feat: update feature a"
     );
+    const taskAHeadSha = await runGit(["-C", taskAWorktree, "rev-parse", "HEAD"]);
     const taskBHeadSha = await commitAndPushTaskBranch(
       taskBWorktree,
       "feature-b.txt",
@@ -451,8 +464,17 @@ describe("git worktree lifecycle", () => {
     );
 
     const repositoryFullName = "workhorse-git-test/remote";
-    github.clearPullRequest(repositoryFullName, taskA.worktree.branchName);
-    github.setPullRequest(repositoryFullName, taskB.worktree.branchName, {
+    github.setMergedPullRequest(repositoryFullName, taskA.worktree.branchName, {
+      number: 41,
+      url: "https://github.com/workhorse-git-test/remote/pull/41",
+      headRef: taskA.worktree.branchName,
+      baseRef: "main",
+      headSha: taskAHeadSha,
+      baseSha: mergedBaseSha,
+      mergeable: "MERGEABLE",
+      mergeStateStatus: "CLEAN"
+    });
+    github.setOpenPullRequest(repositoryFullName, taskB.worktree.branchName, {
       number: 42,
       url: "https://github.com/workhorse-git-test/remote/pull/42",
       headRef: taskB.worktree.branchName,
@@ -475,11 +497,14 @@ describe("git worktree lifecycle", () => {
     expect(firstPoll.resumedTaskIds).toEqual([taskB.id]);
 
     const rerun = await waitForRunToFinish(service, taskB.id);
+    const updatedTaskA = service.listTasks({}).find((entry) => entry.id === taskA.id);
     const updatedTaskB = service.listTasks({}).find((entry) => entry.id === taskB.id);
 
     expect(rerun.status).toBe("succeeded");
     expect(rerun.metadata?.trigger).toBe("gh_pr_monitor");
     expect(rerun.metadata?.monitorPrCiStatus).toBe("pass");
+    expect(updatedTaskA?.column).toBe("done");
+    expect(updatedTaskA?.worktree.status).toBe("removed");
     expect(updatedTaskB?.column).toBe("review");
     await expect(
       runGit(["-C", taskBWorktree, "merge-base", "--is-ancestor", "origin/main", "HEAD"])
