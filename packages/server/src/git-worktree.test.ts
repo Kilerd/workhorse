@@ -10,6 +10,11 @@ import { describe, expect, it } from "vitest";
 import type { Run } from "@workhorse/contracts";
 
 import { createApp } from "./app.js";
+import type {
+  GitHubPullRequestCheck,
+  GitHubPullRequestProvider,
+  GitHubPullRequestSummary
+} from "./lib/github.js";
 import { StateStore } from "./persistence/state-store.js";
 import { BoardService } from "./services/board-service.js";
 import { EventBus } from "./ws/event-bus.js";
@@ -42,6 +47,16 @@ async function createGitRepository(rootDir: string) {
   await runGit(["-C", seedDir, "push", "-u", "origin", "main"]);
 
   await runGit(["clone", remoteDir, workspaceDir]);
+  await runGit(["-C", workspaceDir, "config", "user.name", "Workhorse Test"]);
+  await runGit(["-C", workspaceDir, "config", "user.email", "workhorse@example.com"]);
+  await runGit([
+    "-C",
+    workspaceDir,
+    "remote",
+    "add",
+    "github",
+    "git@github.com:workhorse-git-test/remote.git"
+  ]);
 
   return {
     remoteDir,
@@ -61,6 +76,22 @@ async function createGitRuntime() {
   const dataDir = await mkdtemp(join(tmpdir(), "workhorse-git-test-"));
   const gitRepo = await createGitRepository(dataDir);
   const service = new BoardService(new StateStore(dataDir), new EventBus());
+  await service.initialize();
+
+  return {
+    app: createApp(service),
+    dataDir,
+    service,
+    ...gitRepo
+  };
+}
+
+async function createGitRuntimeWithProvider(githubPullRequests: GitHubPullRequestProvider) {
+  const dataDir = await mkdtemp(join(tmpdir(), "workhorse-git-test-"));
+  const gitRepo = await createGitRepository(dataDir);
+  const service = new BoardService(new StateStore(dataDir), new EventBus(), {
+    githubPullRequests
+  });
   await service.initialize();
 
   return {
@@ -117,6 +148,61 @@ async function waitForRunToFinish(
   }
 
   throw new Error(`Timed out waiting for run ${taskId} to finish`);
+}
+
+async function commitAndPushTaskBranch(
+  worktreePath: string,
+  fileName: string,
+  content: string,
+  message: string
+): Promise<string> {
+  await writeFile(join(worktreePath, fileName), `${content}\n`, "utf8");
+  await runGit(["-C", worktreePath, "add", fileName]);
+  await runGit(["-C", worktreePath, "commit", "-m", message]);
+  await runGit(["-C", worktreePath, "push", "-u", "origin", "HEAD"]);
+  return runGit(["-C", worktreePath, "rev-parse", "HEAD"]);
+}
+
+async function mergeBranchIntoMain(
+  seedDir: string,
+  branchName: string,
+  message: string
+): Promise<string> {
+  await runGit(["-C", seedDir, "fetch", "origin", branchName]);
+  await runGit(["-C", seedDir, "checkout", "main"]);
+  await runGit(["-C", seedDir, "merge", "--no-ff", `origin/${branchName}`, "-m", message]);
+  await runGit(["-C", seedDir, "push", "origin", "main"]);
+  return runGit(["-C", seedDir, "rev-parse", "HEAD"]);
+}
+
+function createFakeGitHubProvider() {
+  const pullRequests = new Map<string, GitHubPullRequestSummary>();
+  const checks = new Map<string, GitHubPullRequestCheck[]>();
+
+  const provider: GitHubPullRequestProvider = {
+    async isAvailable() {
+      return true;
+    },
+    async findOpenPullRequest(repositoryFullName, headRef) {
+      return pullRequests.get(`${repositoryFullName}:${headRef}`) ?? null;
+    },
+    async listRequiredChecks(repositoryFullName, pullRequest) {
+      return checks.get(`${repositoryFullName}:${String(pullRequest)}`) ?? [];
+    }
+  };
+
+  return {
+    provider,
+    setPullRequest(repositoryFullName: string, headRef: string, pr: GitHubPullRequestSummary) {
+      pullRequests.set(`${repositoryFullName}:${headRef}`, pr);
+    },
+    clearPullRequest(repositoryFullName: string, headRef: string) {
+      pullRequests.delete(`${repositoryFullName}:${headRef}`);
+    },
+    setChecks(repositoryFullName: string, pullRequestNumber: number, value: GitHubPullRequestCheck[]) {
+      checks.set(`${repositoryFullName}:${String(pullRequestNumber)}`, value);
+    }
+  };
 }
 
 describe("git worktree lifecycle", () => {
@@ -320,5 +406,86 @@ describe("git worktree lifecycle", () => {
       status: 400,
       code: "INVALID_TASK_WORKTREE_BASE_REF"
     });
+  });
+
+  it("restarts review tasks when gh reports the PR is behind and skips merged branches", async () => {
+    const github = createFakeGitHubProvider();
+    const { service, seedDir, workspaceDir } = await createGitRuntimeWithProvider(github.provider);
+    const workspace = await createGitWorkspace(service, workspaceDir);
+    const taskA = await createGitTask(service, workspace.id, {
+      title: "Feature A",
+      command: "node -e \"console.log('task a')\""
+    });
+    const taskB = await createGitTask(service, workspace.id, {
+      title: "Feature B",
+      command: "node -e \"console.log('task b')\""
+    });
+
+    await service.startTask(taskA.id);
+    await waitForRunToFinish(service, taskA.id);
+    await service.startTask(taskB.id);
+    await waitForRunToFinish(service, taskB.id);
+
+    const taskAWorktree = service.listTasks({}).find((entry) => entry.id === taskA.id)?.worktree.path;
+    const taskBWorktree = service.listTasks({}).find((entry) => entry.id === taskB.id)?.worktree.path;
+    if (!taskAWorktree || !taskBWorktree) {
+      throw new Error("Expected both tasks to have worktrees");
+    }
+
+    await commitAndPushTaskBranch(
+      taskAWorktree,
+      "feature-a.txt",
+      "feature-a",
+      "feat: update feature a"
+    );
+    const taskBHeadSha = await commitAndPushTaskBranch(
+      taskBWorktree,
+      "feature-b.txt",
+      "feature-b",
+      "feat: update feature b"
+    );
+    const mergedBaseSha = await mergeBranchIntoMain(
+      seedDir,
+      taskA.worktree.branchName,
+      "feat: merge feature a"
+    );
+
+    const repositoryFullName = "workhorse-git-test/remote";
+    github.clearPullRequest(repositoryFullName, taskA.worktree.branchName);
+    github.setPullRequest(repositoryFullName, taskB.worktree.branchName, {
+      number: 42,
+      url: "https://github.com/workhorse-git-test/remote/pull/42",
+      headRef: taskB.worktree.branchName,
+      baseRef: "main",
+      headSha: taskBHeadSha,
+      baseSha: mergedBaseSha,
+      mergeable: "MERGEABLE",
+      mergeStateStatus: "BEHIND"
+    });
+    github.setChecks(repositoryFullName, 42, [
+      {
+        bucket: "pass",
+        state: "SUCCESS",
+        name: "ci"
+      }
+    ]);
+
+    const firstPoll = await service.pollGitReviewTasksForBaseUpdates();
+    expect(firstPoll.available).toBe(true);
+    expect(firstPoll.resumedTaskIds).toEqual([taskB.id]);
+
+    const rerun = await waitForRunToFinish(service, taskB.id);
+    const updatedTaskB = service.listTasks({}).find((entry) => entry.id === taskB.id);
+
+    expect(rerun.status).toBe("succeeded");
+    expect(rerun.metadata?.trigger).toBe("gh_pr_monitor");
+    expect(rerun.metadata?.monitorPrCiStatus).toBe("pass");
+    expect(updatedTaskB?.column).toBe("review");
+    await expect(
+      runGit(["-C", taskBWorktree, "merge-base", "--is-ancestor", "origin/main", "HEAD"])
+    ).resolves.toBe("");
+
+    const secondPoll = await service.pollGitReviewTasksForBaseUpdates();
+    expect(secondPoll.resumedTaskIds).toEqual([]);
   });
 });

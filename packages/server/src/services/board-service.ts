@@ -19,6 +19,12 @@ import type {
 } from "@workhorse/contracts";
 
 import { AppError, ensure } from "../lib/errors.js";
+import {
+  GhCliPullRequestProvider,
+  type GitHubCheckBucket,
+  type GitHubPullRequestProvider,
+  type GitHubPullRequestSummary
+} from "../lib/github.js";
 import { createId } from "../lib/id.js";
 import { createRunLogEntry } from "../lib/run-log.js";
 import { createTaskWorktree } from "../lib/task-worktree.js";
@@ -32,6 +38,25 @@ import { GitWorktreeService } from "./git-worktree-service.js";
 interface ActiveRun {
   control: RunnerControl;
   stopRequested: boolean;
+}
+
+interface StartTaskOptions {
+  allowedColumns?: Task["column"][];
+  runnerConfigOverride?: RunnerConfig;
+  runMetadata?: Record<string, string>;
+}
+
+type MonitorCiStatus = GitHubCheckBucket | "not_required";
+
+interface BoardServiceDependencies {
+  gitWorktrees?: GitWorktreeService;
+  githubPullRequests?: GitHubPullRequestProvider;
+}
+
+export interface GitReviewMonitorResult {
+  available: boolean;
+  resumedTaskIds: string[];
+  skippedTaskIds: string[];
 }
 
 const COLUMN_ORDER: Record<Task["column"], number> = {
@@ -52,16 +77,24 @@ export class BoardService {
 
   private readonly gitWorktrees: GitWorktreeService;
 
+  private readonly githubPullRequests: GitHubPullRequestProvider;
+
   private readonly activeRuns = new Map<string, ActiveRun>();
 
-  public constructor(store: StateStore, events: EventBus) {
+  public constructor(
+    store: StateStore,
+    events: EventBus,
+    dependencies: BoardServiceDependencies = {}
+  ) {
     this.store = store;
     this.events = events;
     this.runners = {
       shell: new ShellRunner(),
       codex: new CodexAcpRunner()
     };
-    this.gitWorktrees = new GitWorktreeService();
+    this.gitWorktrees = dependencies.gitWorktrees ?? new GitWorktreeService();
+    this.githubPullRequests =
+      dependencies.githubPullRequests ?? new GhCliPullRequestProvider();
   }
 
   public async initialize(): Promise<void> {
@@ -394,167 +427,100 @@ export class BoardService {
   }
 
   public async startTask(taskId: string): Promise<{ task: Task; run: Run }> {
-    if (this.activeRuns.has(taskId)) {
-      throw new AppError(409, "TASK_ALREADY_RUNNING", "Task already has an active run");
-    }
+    return this.startTaskInternal(taskId);
+  }
 
-    const tasks = this.store.listTasks();
-    const task = ensure(
-      tasks.find((entry) => entry.id === taskId),
-      404,
-      "TASK_NOT_FOUND",
-      "Task not found"
-    );
-    this.ensureStartableTask(task);
-    const workspace = ensure(
-      this.store.listWorkspaces().find((entry) => entry.id === task.workspaceId),
-      404,
-      "WORKSPACE_NOT_FOUND",
-      "Workspace not found"
-    );
-    let executionWorkspace = workspace;
-
-    if (workspace.isGitRepo) {
-      task.worktree = await this.gitWorktrees.ensureTaskWorktree(workspace, task);
-      executionWorkspace = {
-        ...workspace,
-        rootPath: task.worktree.path ?? workspace.rootPath
-      };
-    }
-
-    const runId = createId();
-    const run: Run = {
-      id: runId,
-      taskId: task.id,
-      status: "queued",
-      runnerType: task.runnerType,
-      command: "",
-      startedAt: new Date().toISOString(),
-      logFile: this.store.createLogPath(runId)
-    };
-
-    const runs = [...this.store.listRuns(), run];
-    const taskIndex = tasks.findIndex((entry) => entry.id === task.id);
-    tasks[taskIndex] = {
-      ...task,
-      column: "running",
-      lastRunId: run.id,
-      updatedAt: new Date().toISOString()
-    };
-
-    this.store.setRuns(runs);
-    this.store.setTasks(tasks);
-    await this.store.save();
-    this.events.publish({
-      type: "task.updated",
-      action: "updated",
-      taskId: tasks[taskIndex].id,
-      task: tasks[taskIndex]
-    });
-
-    const runner = this.runners[task.runnerType];
-    if (!runner) {
-      throw new AppError(
-        400,
-        "RUNNER_NOT_SUPPORTED",
-        `No runner available for ${task.runnerType}`
-      );
-    }
-
-    try {
-      const control = await runner.start(
-        {
-          run: {
-            ...run,
-            logFile: this.store.createLogPath(run.id)
-          },
-          task,
-          workspace: executionWorkspace
-        },
-        {
-          onOutput: async (output) => {
-            const entry = createRunLogEntry(run.id, output);
-            await this.store.appendLogEntry(run.id, entry);
-            this.events.publish({
-              type: "run.output",
-              taskId: task.id,
-              runId: run.id,
-              entry
-            });
-          },
-          onExit: async (result) => {
-            await this.transitionTaskRunToReview(task.id, run.id, {
-              status: this.activeRuns.get(task.id)?.stopRequested
-                ? "canceled"
-                : result.status,
-              exitCode: result.exitCode,
-              metadata: result.metadata
-            });
-          }
-        }
-      );
-
-      run.status = "running";
-      run.command = control.command;
-      run.pid = control.pid;
-      run.logFile = this.store.createLogPath(run.id);
-      run.metadata = control.metadata;
-      this.store.setRuns(runs);
-      await this.store.save();
-
-      this.activeRuns.set(task.id, {
-        control,
-        stopRequested: false
-      });
-
-      this.events.publish({
-        type: "run.started",
-        taskId: task.id,
-        run
-      });
-
+  public async pollGitReviewTasksForBaseUpdates(): Promise<GitReviewMonitorResult> {
+    if (!(await this.githubPullRequests.isAvailable())) {
       return {
-        task: tasks[taskIndex],
-        run
+        available: false,
+        resumedTaskIds: [],
+        skippedTaskIds: []
       };
-    } catch (error) {
-      run.status = "failed";
-      run.endedAt = new Date().toISOString();
-      const entry = createRunLogEntry(run.id, {
-        kind: "system",
-        stream: "system",
-        text: `${error instanceof Error ? error.message : String(error)}\n`,
-        title: "Runner error"
-      });
-      await this.store.appendLogEntry(run.id, entry);
-      this.events.publish({
-        type: "run.output",
-        taskId: task.id,
-        runId: run.id,
-        entry
-      });
-      tasks[taskIndex] = {
-        ...tasks[taskIndex],
-        column: "review",
-        updatedAt: new Date().toISOString()
-      };
-      this.store.setRuns(runs);
-      this.store.setTasks(tasks);
-      await this.store.save();
-      this.events.publish({
-        type: "task.updated",
-        action: "updated",
-        taskId: tasks[taskIndex].id,
-        task: tasks[taskIndex]
-      });
-      this.events.publish({
-        type: "run.finished",
-        taskId: tasks[taskIndex].id,
-        run,
-        task: tasks[taskIndex]
-      });
-      throw error;
     }
+
+    const workspaces = this.store.listWorkspaces();
+    const workspaceById = new Map(workspaces.map((workspace) => [workspace.id, workspace]));
+    const runsById = new Map(this.store.listRuns().map((run) => [run.id, run]));
+    const reviewTasksByWorkspace = new Map<string, Task[]>();
+
+    for (const task of this.store.listTasks()) {
+      if (task.column !== "review" || this.activeRuns.has(task.id)) {
+        continue;
+      }
+
+      const workspace = workspaceById.get(task.workspaceId);
+      if (!workspace?.isGitRepo || task.worktree.status === "removed") {
+        continue;
+      }
+
+      const current = reviewTasksByWorkspace.get(workspace.id) ?? [];
+      current.push(task);
+      reviewTasksByWorkspace.set(workspace.id, current);
+    }
+
+    const resumedTaskIds: string[] = [];
+    const skippedTaskIds: string[] = [];
+
+    for (const [workspaceId, tasks] of reviewTasksByWorkspace.entries()) {
+      const workspace = workspaceById.get(workspaceId);
+      if (!workspace) {
+        continue;
+      }
+
+      const repositoryFullName = await this.gitWorktrees.getGitHubRepositoryFullName(workspace);
+      if (!repositoryFullName) {
+        continue;
+      }
+
+      try {
+        for (const remoteName of new Set(tasks.map((task) => this.extractRemoteName(task.worktree.baseRef)))) {
+          await this.gitWorktrees.fetchWorkspace(workspace, remoteName);
+        }
+      } catch {
+        skippedTaskIds.push(...tasks.map((task) => task.id));
+        continue;
+      }
+
+      for (const task of tasks) {
+        try {
+          const pr = await this.githubPullRequests.findOpenPullRequest(
+            repositoryFullName,
+            task.worktree.branchName
+          );
+          if (!pr) {
+            continue;
+          }
+
+          const checks = await this.githubPullRequests.listRequiredChecks(
+            repositoryFullName,
+            pr.number
+          );
+          const ciStatus = this.summarizeRequiredChecks(checks);
+          if (!this.shouldAutoResumePullRequest(task, pr)) {
+            continue;
+          }
+          if (this.wasMonitorRunAlreadyAttempted(task, runsById, pr)) {
+            continue;
+          }
+
+          await this.startTaskInternal(task.id, {
+            allowedColumns: ["review"],
+            runnerConfigOverride: this.buildMonitorRunnerConfig(task, pr, ciStatus),
+            runMetadata: this.buildMonitorRunMetadata(pr, ciStatus)
+          });
+          resumedTaskIds.push(task.id);
+        } catch {
+          skippedTaskIds.push(task.id);
+        }
+      }
+    }
+
+    return {
+      available: true,
+      resumedTaskIds,
+      skippedTaskIds
+    };
   }
 
   public async stopTask(taskId: string): Promise<{ task: Task; run: Run }> {
@@ -686,6 +652,328 @@ export class BoardService {
     }
 
     return this.store.readLogEntries(runId);
+  }
+
+  private async startTaskInternal(
+    taskId: string,
+    options: StartTaskOptions = {}
+  ): Promise<{ task: Task; run: Run }> {
+    if (this.activeRuns.has(taskId)) {
+      throw new AppError(409, "TASK_ALREADY_RUNNING", "Task already has an active run");
+    }
+
+    const tasks = this.store.listTasks();
+    const task = ensure(
+      tasks.find((entry) => entry.id === taskId),
+      404,
+      "TASK_NOT_FOUND",
+      "Task not found"
+    );
+    this.ensureStartableTask(task, options.allowedColumns);
+    const workspace = ensure(
+      this.store.listWorkspaces().find((entry) => entry.id === task.workspaceId),
+      404,
+      "WORKSPACE_NOT_FOUND",
+      "Workspace not found"
+    );
+    let executionWorkspace = workspace;
+
+    if (workspace.isGitRepo) {
+      task.worktree = await this.gitWorktrees.ensureTaskWorktree(workspace, task);
+      executionWorkspace = {
+        ...workspace,
+        rootPath: task.worktree.path ?? workspace.rootPath
+      };
+    }
+
+    const executionTask = options.runnerConfigOverride
+      ? {
+          ...task,
+          runnerType: options.runnerConfigOverride.type,
+          runnerConfig: options.runnerConfigOverride
+        }
+      : task;
+
+    const runId = createId();
+    const run: Run = {
+      id: runId,
+      taskId: task.id,
+      status: "queued",
+      runnerType: executionTask.runnerType,
+      command: "",
+      startedAt: new Date().toISOString(),
+      logFile: this.store.createLogPath(runId),
+      metadata: options.runMetadata
+    };
+
+    const runs = [...this.store.listRuns(), run];
+    const taskIndex = tasks.findIndex((entry) => entry.id === task.id);
+    tasks[taskIndex] = {
+      ...task,
+      column: "running",
+      lastRunId: run.id,
+      updatedAt: new Date().toISOString()
+    };
+
+    this.store.setRuns(runs);
+    this.store.setTasks(tasks);
+    await this.store.save();
+    this.events.publish({
+      type: "task.updated",
+      action: "updated",
+      taskId: tasks[taskIndex].id,
+      task: tasks[taskIndex]
+    });
+
+    const runner = this.runners[executionTask.runnerType];
+    if (!runner) {
+      throw new AppError(
+        400,
+        "RUNNER_NOT_SUPPORTED",
+        `No runner available for ${executionTask.runnerType}`
+      );
+    }
+
+    try {
+      const control = await runner.start(
+        {
+          run: {
+            ...run,
+            logFile: this.store.createLogPath(run.id)
+          },
+          task: executionTask,
+          workspace: executionWorkspace
+        },
+        {
+          onOutput: async (output) => {
+            const entry = createRunLogEntry(run.id, output);
+            await this.store.appendLogEntry(run.id, entry);
+            this.events.publish({
+              type: "run.output",
+              taskId: task.id,
+              runId: run.id,
+              entry
+            });
+          },
+          onExit: async (result) => {
+            await this.transitionTaskRunToReview(task.id, run.id, {
+              status: this.activeRuns.get(task.id)?.stopRequested
+                ? "canceled"
+                : result.status,
+              exitCode: result.exitCode,
+              metadata: result.metadata
+            });
+          }
+        }
+      );
+
+      run.status = "running";
+      run.command = control.command;
+      run.pid = control.pid;
+      run.logFile = this.store.createLogPath(run.id);
+      run.metadata = {
+        ...(run.metadata ?? {}),
+        ...(control.metadata ?? {})
+      };
+      this.store.setRuns(runs);
+      await this.store.save();
+
+      this.activeRuns.set(task.id, {
+        control,
+        stopRequested: false
+      });
+
+      this.events.publish({
+        type: "run.started",
+        taskId: task.id,
+        run
+      });
+
+      return {
+        task: tasks[taskIndex],
+        run
+      };
+    } catch (error) {
+      run.status = "failed";
+      run.endedAt = new Date().toISOString();
+      const entry = createRunLogEntry(run.id, {
+        kind: "system",
+        stream: "system",
+        text: `${error instanceof Error ? error.message : String(error)}\n`,
+        title: "Runner error"
+      });
+      await this.store.appendLogEntry(run.id, entry);
+      this.events.publish({
+        type: "run.output",
+        taskId: task.id,
+        runId: run.id,
+        entry
+      });
+      tasks[taskIndex] = {
+        ...tasks[taskIndex],
+        column: "review",
+        updatedAt: new Date().toISOString()
+      };
+      this.store.setRuns(runs);
+      this.store.setTasks(tasks);
+      await this.store.save();
+      this.events.publish({
+        type: "task.updated",
+        action: "updated",
+        taskId: tasks[taskIndex].id,
+        task: tasks[taskIndex]
+      });
+      this.events.publish({
+        type: "run.finished",
+        taskId: tasks[taskIndex].id,
+        run,
+        task: tasks[taskIndex]
+      });
+      throw error;
+    }
+  }
+
+  private shouldAutoResumePullRequest(
+    task: Task,
+    pullRequest: GitHubPullRequestSummary
+  ): boolean {
+    if (!this.baseRefMatches(task.worktree.baseRef, pullRequest.baseRef)) {
+      return false;
+    }
+
+    const mergeable = pullRequest.mergeable?.toUpperCase();
+    const mergeStateStatus = pullRequest.mergeStateStatus?.toUpperCase();
+    return (
+      mergeable === "CONFLICTING" ||
+      mergeStateStatus === "DIRTY" ||
+      mergeStateStatus === "BEHIND"
+    );
+  }
+
+  private wasMonitorRunAlreadyAttempted(
+    task: Task,
+    runsById: Map<string, Run>,
+    pullRequest: GitHubPullRequestSummary
+  ): boolean {
+    if (!task.lastRunId) {
+      return false;
+    }
+
+    const run = runsById.get(task.lastRunId);
+    if (!run?.metadata || run.metadata.trigger !== "gh_pr_monitor") {
+      return false;
+    }
+
+    return (
+      run.metadata.monitorPrNumber === String(pullRequest.number) &&
+      run.metadata.monitorPrHeadSha === (pullRequest.headSha ?? "") &&
+      run.metadata.monitorPrBaseSha === (pullRequest.baseSha ?? "") &&
+      run.metadata.monitorPrMergeState === (pullRequest.mergeStateStatus ?? "")
+    );
+  }
+
+  private buildMonitorRunnerConfig(
+    task: Task,
+    pullRequest: GitHubPullRequestSummary,
+    ciStatus: MonitorCiStatus
+  ): RunnerConfig {
+    const reason = this.describeMonitorReason(pullRequest);
+
+    if (task.runnerConfig.type === "shell") {
+      return {
+        ...task.runnerConfig,
+        command: [
+          "set -eu",
+          `git fetch ${this.quoteShell(this.extractRemoteName(task.worktree.baseRef))} --prune`,
+          `git rebase ${this.quoteShell(task.worktree.baseRef)}`,
+          task.runnerConfig.command.trim()
+        ].join("\n")
+      };
+    }
+
+    return {
+      ...task.runnerConfig,
+      prompt: [
+        task.runnerConfig.prompt.trim(),
+        "GitHub PR monitor update:",
+        `- PR #${pullRequest.number} (${pullRequest.url}) is ${reason}.`,
+        `- Required CI status is currently \`${ciStatus}\`.`,
+        `- Continue from the existing branch \`${task.worktree.branchName}\`.`,
+        `- Fetch the latest \`${task.worktree.baseRef}\`, rebase onto it, resolve any conflicts, rerun the smallest useful verification, and push the updated branch.`,
+        "- Keep the PR up to date and mention the PR URL in your final response."
+      ].join("\n\n")
+    };
+  }
+
+  private buildMonitorRunMetadata(
+    pullRequest: GitHubPullRequestSummary,
+    ciStatus: MonitorCiStatus
+  ): Record<string, string> {
+    return {
+      trigger: "gh_pr_monitor",
+      monitorPrNumber: String(pullRequest.number),
+      monitorPrUrl: pullRequest.url,
+      monitorPrHeadRef: pullRequest.headRef,
+      monitorPrBaseRef: pullRequest.baseRef,
+      monitorPrHeadSha: pullRequest.headSha ?? "",
+      monitorPrBaseSha: pullRequest.baseSha ?? "",
+      monitorPrMergeState: pullRequest.mergeStateStatus ?? "",
+      monitorPrMergeable: pullRequest.mergeable ?? "",
+      monitorPrCiStatus: ciStatus
+    };
+  }
+
+  private summarizeRequiredChecks(checks: { bucket: GitHubCheckBucket }[]): MonitorCiStatus {
+    if (checks.length === 0) {
+      return "not_required";
+    }
+
+    if (checks.some((check) => check.bucket === "fail" || check.bucket === "cancel")) {
+      return "fail";
+    }
+    if (checks.some((check) => check.bucket === "pending")) {
+      return "pending";
+    }
+    if (checks.some((check) => check.bucket === "pass")) {
+      return "pass";
+    }
+    if (checks.some((check) => check.bucket === "skipping")) {
+      return "skipping";
+    }
+
+    return "not_required";
+  }
+
+  private describeMonitorReason(pullRequest: GitHubPullRequestSummary): string {
+    const mergeable = pullRequest.mergeable?.toUpperCase();
+    const mergeStateStatus = pullRequest.mergeStateStatus?.toUpperCase();
+    if (mergeable === "CONFLICTING" || mergeStateStatus === "DIRTY") {
+      return "currently conflicting with its base branch";
+    }
+    if (mergeStateStatus === "BEHIND") {
+      return "behind its base branch";
+    }
+
+    return "no longer cleanly mergeable";
+  }
+
+  private baseRefMatches(baseRef: string, branchName: string): boolean {
+    const trimmed = baseRef.trim();
+    return trimmed === branchName || trimmed.endsWith(`/${branchName}`);
+  }
+
+  private quoteShell(value: string): string {
+    return `'${value.replace(/'/g, `'\"'\"'`)}'`;
+  }
+
+  private extractRemoteName(baseRef: string): string {
+    const trimmed = baseRef.trim();
+    if (!trimmed.includes("/")) {
+      return "origin";
+    }
+
+    const [remoteName] = trimmed.split("/", 1);
+    return remoteName || "origin";
   }
 
   private async resetTaskWorktree(
@@ -838,8 +1126,11 @@ export class BoardService {
     throw new AppError(400, "INVALID_RUNNER_CONFIG", "Unsupported runner configuration");
   }
 
-  private ensureStartableTask(task: Task): void {
-    if (task.column === "backlog" || task.column === "todo") {
+  private ensureStartableTask(
+    task: Task,
+    allowedColumns: Task["column"][] = ["backlog", "todo"]
+  ): void {
+    if (allowedColumns.includes(task.column)) {
       return;
     }
 

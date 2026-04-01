@@ -2,7 +2,7 @@ import { createServer, type Server } from "node:http";
 
 import { getRequestListener } from "@hono/node-server";
 
-import { DEFAULT_PORT, DATA_DIR } from "./config.js";
+import { DEFAULT_PORT, DATA_DIR, getGitReviewMonitorIntervalMs } from "./config.js";
 import { createApp } from "./app.js";
 import { createFrontendHandler } from "./frontend.js";
 import { StateStore } from "./persistence/state-store.js";
@@ -14,11 +14,26 @@ async function main(): Promise<void> {
   const events = new EventBus();
   const service = new BoardService(store, events);
   await service.initialize();
+  await service.pollGitReviewTasksForBaseUpdates().catch((error) => {
+    console.error("Initial Git review monitor poll failed");
+    console.error(error);
+  });
 
   const app = createApp(service);
   const honoListener = getRequestListener(app.fetch);
   const server = createServer();
   const frontend = await createFrontendHandler(server);
+  const reviewMonitorIntervalMs = getGitReviewMonitorIntervalMs();
+
+  if (reviewMonitorIntervalMs > 0) {
+    const timer = setInterval(() => {
+      void service.pollGitReviewTasksForBaseUpdates().catch((error) => {
+        console.error("Git review monitor poll failed");
+        console.error(error);
+      });
+    }, reviewMonitorIntervalMs);
+    timer.unref();
+  }
 
   server.on("request", async (req, res) => {
     try {

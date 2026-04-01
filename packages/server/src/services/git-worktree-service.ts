@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import type { Task, TaskWorktree, Workspace, WorkspaceGitRef } from "@workhorse/contracts";
 
 import { AppError } from "../lib/errors.js";
+import { normalizeGitHubRepositoryFullName } from "../lib/github.js";
 import {
   createTaskWorktree,
   deriveTaskWorktreePath,
@@ -64,6 +65,32 @@ async function normalizePath(path: string): Promise<string> {
 }
 
 export class GitWorktreeService {
+  public async getGitHubRepositoryFullName(
+    workspace: Workspace
+  ): Promise<string | undefined> {
+    this.ensureGitWorkspace(workspace);
+
+    try {
+      const { stdout } = await this.runGit(workspace.rootPath, ["remote", "-v"]);
+      for (const line of stdout.split("\n")) {
+        const parts = line.trim().split(/\s+/);
+        const remoteUrl = parts[1];
+        if (!remoteUrl) {
+          continue;
+        }
+
+        const fullName = normalizeGitHubRepositoryFullName(remoteUrl);
+        if (fullName) {
+          return fullName;
+        }
+      }
+
+      return undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   public async listRefs(workspace: Workspace): Promise<WorkspaceGitRef[]> {
     this.ensureGitWorkspace(workspace);
 
@@ -315,6 +342,20 @@ export class GitWorktreeService {
         status: "cleanup_pending",
         cleanupReason: normalizeMessage(error as GitCommandError) || "Cleanup failed"
       };
+    }
+  }
+
+  public async fetchWorkspace(workspace: Workspace, remoteName = "origin"): Promise<void> {
+    this.ensureGitWorkspace(workspace);
+
+    try {
+      await this.runGit(workspace.rootPath, ["fetch", remoteName, "--prune"]);
+    } catch (error) {
+      throw this.toAppError(
+        error,
+        "TASK_WORKTREE_FETCH_FAILED",
+        "Failed to fetch the workspace remotes"
+      );
     }
   }
 
