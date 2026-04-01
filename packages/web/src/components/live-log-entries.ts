@@ -271,19 +271,26 @@ export function aggregateEntries(entries: RunLogEntry[]): RunLogEntry[] {
 
 export function prepareLiveLogEntries(entries: RunLogEntry[]): RunLogEntry[] {
   const seen = new Set<string>();
+  const deduplicatedEntries = entries.filter((entry) => {
+    if (seen.has(entry.id)) {
+      return false;
+    }
+
+    seen.add(entry.id);
+    return true;
+  });
 
   return aggregateEntries(
-    entries
-      .filter((entry) => {
-        if (seen.has(entry.id)) {
-          return false;
-        }
-
-        seen.add(entry.id);
-        return true;
+    deduplicatedEntries
+      .map((entry, index) => ({
+        entry,
+        index
+      }))
+      .sort((left, right) => {
+        const timestampOrder = left.entry.timestamp.localeCompare(right.entry.timestamp);
+        return timestampOrder !== 0 ? timestampOrder : left.index - right.index;
       })
-      .sort((left, right) => left.timestamp.localeCompare(right.timestamp))
-      .map((entry) => ({
+      .map(({ entry }) => ({
         ...entry,
         metadata: entry.metadata ? { ...entry.metadata } : undefined
       }))

@@ -763,6 +763,13 @@ export class BoardService {
       );
     }
 
+    let outputChain = Promise.resolve();
+    const queueOutput = (work: () => Promise<void>) => {
+      const next = outputChain.then(work);
+      outputChain = next.catch(() => {});
+      return next;
+    };
+
     try {
       const control = await runner.start(
         {
@@ -776,16 +783,19 @@ export class BoardService {
         },
         {
           onOutput: async (output) => {
-            const entry = createRunLogEntry(run.id, output);
-            await this.store.appendLogEntry(run.id, entry);
-            this.events.publish({
-              type: "run.output",
-              taskId: task.id,
-              runId: run.id,
-              entry
+            await queueOutput(async () => {
+              const entry = createRunLogEntry(run.id, output);
+              await this.store.appendLogEntry(run.id, entry);
+              this.events.publish({
+                type: "run.output",
+                taskId: task.id,
+                runId: run.id,
+                entry
+              });
             });
           },
           onExit: async (result) => {
+            await outputChain;
             await this.transitionTaskRunToReview(task.id, run.id, {
               status: this.activeRuns.get(task.id)?.stopRequested
                 ? "canceled"

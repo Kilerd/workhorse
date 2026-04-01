@@ -265,4 +265,42 @@ describe("live log entry aggregation", () => {
       outputEntries: [{ id: "tool-b-output" }]
     });
   });
+
+  it("keeps same-timestamp entries in their original input order", () => {
+    const entries = prepareLiveLogEntries([
+      makeEntry({
+        id: "agent-late",
+        timestamp: "2026-04-01T01:47:31.000Z",
+        kind: "agent",
+        stream: "stdout",
+        title: "Agent output",
+        text: "later in input"
+      }),
+      makeEntry({
+        id: "agent-earlier",
+        timestamp: "2026-04-01T01:47:31.000Z",
+        kind: "agent",
+        stream: "stdout",
+        title: "Agent output",
+        text: "still same timestamp",
+        metadata: {
+          groupId: "agent:turn-1:item-2"
+        }
+      }),
+      makeEntry({
+        id: "agent-last",
+        timestamp: "2026-04-01T01:47:32.000Z",
+        kind: "agent",
+        stream: "stdout",
+        title: "Agent output",
+        text: "last"
+      })
+    ]);
+
+    expect(entries.map((entry) => entry.id)).toEqual([
+      "agent-late",
+      "agent-earlier",
+      "agent-last"
+    ]);
+  });
 });
