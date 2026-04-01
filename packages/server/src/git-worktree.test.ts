@@ -518,4 +518,197 @@ describe("git worktree lifecycle", () => {
       Date.parse(firstPolledAt ?? "")
     );
   });
+
+  it("restarts review tasks when required CI checks fail on the PR", async () => {
+    const github = createFakeGitHubProvider();
+    const { service, seedDir, workspaceDir } = await createGitRuntimeWithProvider(github.provider);
+    const workspace = await createGitWorkspace(service, workspaceDir);
+    const task = await createGitTask(service, workspace.id, {
+      title: "Fix failing CI",
+      command: "node -e \"console.log('rerun for ci')\""
+    });
+
+    await service.startTask(task.id);
+    await waitForRunToFinish(service, task.id);
+
+    const taskWorktree = service.listTasks({}).find((entry) => entry.id === task.id)?.worktree.path;
+    if (!taskWorktree) {
+      throw new Error("Expected task to have a worktree");
+    }
+
+    const taskHeadSha = await commitAndPushTaskBranch(
+      taskWorktree,
+      "feature-ci.txt",
+      "ci needs help",
+      "feat: add ci branch change"
+    );
+    const baseSha = await runGit(["-C", seedDir, "rev-parse", "HEAD"]);
+
+    const repositoryFullName = "workhorse-git-test/remote";
+    github.setOpenPullRequest(repositoryFullName, task.worktree.branchName, {
+      number: 56,
+      url: "https://github.com/workhorse-git-test/remote/pull/56",
+      headRef: task.worktree.branchName,
+      baseRef: "main",
+      headSha: taskHeadSha,
+      baseSha,
+      mergeable: "MERGEABLE",
+      mergeStateStatus: "CLEAN"
+    });
+    github.setChecks(repositoryFullName, 56, [
+      {
+        bucket: "fail",
+        state: "FAILURE",
+        name: "ci"
+      }
+    ]);
+
+    const firstPoll = await service.pollGitReviewTasksForBaseUpdates();
+    expect(firstPoll.resumedTaskIds).toEqual([task.id]);
+
+    const rerun = await waitForRunToFinish(service, task.id);
+    expect(rerun.status).toBe("succeeded");
+    expect(rerun.metadata?.trigger).toBe("gh_pr_monitor");
+    expect(rerun.metadata?.monitorPrCiStatus).toBe("fail");
+
+    const secondPoll = await service.pollGitReviewTasksForBaseUpdates();
+    expect(secondPoll.resumedTaskIds).toEqual([]);
+  });
+
+  it("restarts review tasks when the PR receives new feedback comments", async () => {
+    const github = createFakeGitHubProvider();
+    const { service, seedDir, workspaceDir } = await createGitRuntimeWithProvider(github.provider);
+    const workspace = await createGitWorkspace(service, workspaceDir);
+    const task = await createGitTask(service, workspace.id, {
+      title: "Address review feedback",
+      command: "node -e \"console.log('rerun for feedback')\""
+    });
+
+    await service.startTask(task.id);
+    const firstRun = await waitForRunToFinish(service, task.id);
+
+    const taskWorktree = service.listTasks({}).find((entry) => entry.id === task.id)?.worktree.path;
+    if (!taskWorktree) {
+      throw new Error("Expected task to have a worktree");
+    }
+
+    const taskHeadSha = await commitAndPushTaskBranch(
+      taskWorktree,
+      "feature-feedback.txt",
+      "feedback target",
+      "feat: add feedback branch change"
+    );
+    const baseSha = await runGit(["-C", seedDir, "rev-parse", "HEAD"]);
+    const feedbackAt = new Date(Date.parse(firstRun.endedAt ?? firstRun.startedAt) + 60_000).toISOString();
+
+    const repositoryFullName = "workhorse-git-test/remote";
+    github.setOpenPullRequest(repositoryFullName, task.worktree.branchName, {
+      number: 64,
+      url: "https://github.com/workhorse-git-test/remote/pull/64",
+      headRef: task.worktree.branchName,
+      baseRef: "main",
+      headSha: taskHeadSha,
+      baseSha,
+      mergeable: "MERGEABLE",
+      mergeStateStatus: "CLEAN",
+      feedbackCount: 1,
+      feedbackUpdatedAt: feedbackAt,
+      feedbackItems: [
+        {
+          source: "comment",
+          author: "reviewer",
+          body: "Please rename this helper and add a quick regression test.",
+          createdAt: feedbackAt,
+          updatedAt: feedbackAt,
+          url: "https://github.com/workhorse-git-test/remote/pull/64#issuecomment-1"
+        }
+      ]
+    });
+    github.setChecks(repositoryFullName, 64, [
+      {
+        bucket: "pass",
+        state: "SUCCESS",
+        name: "ci"
+      }
+    ]);
+
+    const firstPoll = await service.pollGitReviewTasksForBaseUpdates();
+    expect(firstPoll.resumedTaskIds).toEqual([task.id]);
+
+    const rerun = await waitForRunToFinish(service, task.id);
+    expect(rerun.status).toBe("succeeded");
+    expect(rerun.metadata?.trigger).toBe("gh_pr_monitor");
+    expect(rerun.metadata?.monitorPrFeedbackCount).toBe("1");
+    expect(rerun.metadata?.monitorPrFeedbackUpdatedAt).toBe(feedbackAt);
+
+    const secondPoll = await service.pollGitReviewTasksForBaseUpdates();
+    expect(secondPoll.resumedTaskIds).toEqual([]);
+  });
+
+  it("retries conflicting review tasks after a prior monitor rerun failed", async () => {
+    const github = createFakeGitHubProvider();
+    const { service, seedDir, workspaceDir } = await createGitRuntimeWithProvider(github.provider);
+    const workspace = await createGitWorkspace(service, workspaceDir);
+    const task = await createGitTask(service, workspace.id, {
+      title: "Conflicting feature",
+      command: "git rebase origin/main"
+    });
+
+    await service.startTask(task.id);
+    await waitForRunToFinish(service, task.id);
+
+    const taskWorktree = service.listTasks({}).find((entry) => entry.id === task.id)?.worktree.path;
+    if (!taskWorktree) {
+      throw new Error("Expected task to have a worktree");
+    }
+
+    await writeFile(join(taskWorktree, "marker.txt"), "feature change\n", "utf8");
+    await runGit(["-C", taskWorktree, "add", "marker.txt"]);
+    await runGit(["-C", taskWorktree, "commit", "-m", "feat: update feature marker"]);
+    await runGit(["-C", taskWorktree, "push", "-u", "origin", "HEAD"]);
+    const taskHeadSha = await runGit(["-C", taskWorktree, "rev-parse", "HEAD"]);
+
+    await writeFile(join(seedDir, "marker.txt"), "main change\n", "utf8");
+    await runGit(["-C", seedDir, "add", "marker.txt"]);
+    await runGit(["-C", seedDir, "commit", "-m", "feat: update main marker"]);
+    await runGit(["-C", seedDir, "push", "origin", "main"]);
+    const baseSha = await runGit(["-C", seedDir, "rev-parse", "HEAD"]);
+
+    const repositoryFullName = "workhorse-git-test/remote";
+    github.setOpenPullRequest(repositoryFullName, task.worktree.branchName, {
+      number: 77,
+      url: "https://github.com/workhorse-git-test/remote/pull/77",
+      headRef: task.worktree.branchName,
+      baseRef: "main",
+      headSha: taskHeadSha,
+      baseSha,
+      mergeable: "CONFLICTING",
+      mergeStateStatus: "DIRTY"
+    });
+    github.setChecks(repositoryFullName, 77, [
+      {
+        bucket: "pass",
+        state: "SUCCESS",
+        name: "ci"
+      }
+    ]);
+
+    const firstPoll = await service.pollGitReviewTasksForBaseUpdates();
+    expect(firstPoll.resumedTaskIds).toEqual([task.id]);
+
+    const firstMonitorRun = await waitForRunToFinish(service, task.id);
+    expect(firstMonitorRun.status).toBe("failed");
+    expect(firstMonitorRun.metadata?.trigger).toBe("gh_pr_monitor");
+
+    const taskAfterFailure = service.listTasks({}).find((entry) => entry.id === task.id);
+    expect(taskAfterFailure?.column).toBe("review");
+
+    const secondPoll = await service.pollGitReviewTasksForBaseUpdates();
+    expect(secondPoll.resumedTaskIds).toEqual([task.id]);
+
+    const secondMonitorRun = await waitForRunToFinish(service, task.id);
+    expect(secondMonitorRun.id).not.toBe(firstMonitorRun.id);
+    expect(secondMonitorRun.status).toBe("failed");
+    expect(secondMonitorRun.metadata?.trigger).toBe("gh_pr_monitor");
+  });
 });

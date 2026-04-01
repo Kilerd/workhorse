@@ -62,5 +62,5 @@ By default Workhorse stores local state under `~/.workhorse`:
 - When a review PR is merged, Workhorse automatically moves the task from `review` to `done`.
 - When a review PR is reported as `BEHIND` or conflicting, Workhorse can automatically restart the task, rebase onto its configured base ref, and move it back to `review` once the rerun finishes.
 - Authenticate `gh` locally with `gh auth login` before relying on PR polling.
-- Use `WORKHORSE_GIT_REVIEW_MONITOR_INTERVAL_MS=0` to disable the background poller, or set it to a custom interval in milliseconds.
+- The review poller defaults to `15000` milliseconds. Use `WORKHORSE_GIT_REVIEW_MONITOR_INTERVAL_MS=0` to disable it, or set it to a custom interval in milliseconds.
 - If the runtime restarts while a task is active, the previous run is marked as `canceled` and the task moves to `review`.

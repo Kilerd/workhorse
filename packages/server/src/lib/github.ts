@@ -9,6 +9,16 @@ const GITHUB_PULL_REQUEST_URL_PATTERN =
 
 export type GitHubCheckBucket = "pass" | "fail" | "pending" | "skipping" | "cancel";
 
+export interface GitHubPullRequestFeedbackItem {
+  source: "comment" | "review";
+  author?: string;
+  body?: string;
+  url?: string;
+  state?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface GitHubPullRequestSummary {
   number: number;
   url: string;
@@ -18,6 +28,11 @@ export interface GitHubPullRequestSummary {
   baseSha?: string;
   mergeable?: string;
   mergeStateStatus?: string;
+  reviewDecision?: string;
+  statusCheckRollupState?: string;
+  feedbackCount?: number;
+  feedbackUpdatedAt?: string;
+  feedbackItems?: GitHubPullRequestFeedbackItem[];
 }
 
 export interface GitHubPullRequestCheck {
@@ -88,6 +103,74 @@ function readNumberField(
 ): number | undefined {
   const value = record[key];
   return typeof value === "number" ? value : undefined;
+}
+
+function readNodeArrayField(record: Record<string, unknown>, key: string): unknown[] {
+  const value = record[key];
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  const valueRecord = asRecord(value);
+  const nodes = valueRecord?.nodes;
+  return Array.isArray(nodes) ? nodes : [];
+}
+
+function parseFeedbackItem(
+  payload: unknown,
+  source: GitHubPullRequestFeedbackItem["source"]
+): GitHubPullRequestFeedbackItem | null {
+  const record = asRecord(payload);
+  if (!record) {
+    return null;
+  }
+
+  const author = readStringField(asRecord(record.author) ?? {}, "login");
+  const createdAt =
+    source === "review"
+      ? readStringField(record, "submittedAt") ??
+        readStringField(record, "createdAt") ??
+        readStringField(record, "updatedAt")
+      : readStringField(record, "createdAt") ?? readStringField(record, "updatedAt");
+  const updatedAt = readStringField(record, "updatedAt") ?? createdAt;
+
+  return {
+    source,
+    author,
+    body: readStringField(record, "body"),
+    url: readStringField(record, "url"),
+    state: readStringField(record, "state"),
+    createdAt,
+    updatedAt
+  };
+}
+
+function compareOptionalTimestamps(left?: string, right?: string): number {
+  const leftMs = left ? Date.parse(left) : Number.NaN;
+  const rightMs = right ? Date.parse(right) : Number.NaN;
+
+  const leftValid = Number.isFinite(leftMs);
+  const rightValid = Number.isFinite(rightMs);
+  if (leftValid && rightValid) {
+    return rightMs - leftMs;
+  }
+  if (leftValid) {
+    return -1;
+  }
+  if (rightValid) {
+    return 1;
+  }
+
+  return 0;
+}
+
+function pickLatestTimestamp(values: Array<string | undefined>): string | undefined {
+  const timestamps = values.filter((value): value is string => Boolean(value));
+  if (timestamps.length === 0) {
+    return undefined;
+  }
+
+  return timestamps.sort(compareOptionalTimestamps)[0];
 }
 
 export function normalizeGitHubRepositoryFullName(
@@ -223,6 +306,83 @@ function parseCheckList(payload: unknown): GitHubPullRequestCheck[] {
   });
 }
 
+function parseStatusCheckRollupState(payload: unknown): string | undefined {
+  if (Array.isArray(payload)) {
+    const states = payload
+      .map((item) => readStringField(asRecord(item) ?? {}, "state"))
+      .filter((value): value is string => Boolean(value));
+    return states[0];
+  }
+
+  const record = asRecord(payload);
+  if (!record) {
+    return undefined;
+  }
+
+  const directState = readStringField(record, "state");
+  if (directState) {
+    return directState;
+  }
+
+  const contexts = readNodeArrayField(record, "contexts");
+  const contextState = contexts
+    .map((item) => readStringField(asRecord(item) ?? {}, "state"))
+    .find((value): value is string => Boolean(value));
+  return contextState;
+}
+
+function parsePullRequestDetail(payload: unknown): GitHubPullRequestSummary {
+  const record = asRecord(payload);
+  if (!record) {
+    throw new AppError(
+      502,
+      "GITHUB_MONITOR_RESPONSE_INVALID",
+      "gh pr view returned an unexpected payload"
+    );
+  }
+
+  const number = readNumberField(record, "number");
+  const url = readStringField(record, "url");
+  const headRef = readStringField(record, "headRefName");
+  const baseRef = readStringField(record, "baseRefName");
+  if (number === undefined || !url || !headRef || !baseRef) {
+    throw new AppError(
+      502,
+      "GITHUB_MONITOR_RESPONSE_INVALID",
+      "gh pr view omitted required pull request fields"
+    );
+  }
+
+  const feedbackItems = [
+    ...readNodeArrayField(record, "comments")
+      .map((item) => parseFeedbackItem(item, "comment"))
+      .filter((item): item is GitHubPullRequestFeedbackItem => Boolean(item)),
+    ...readNodeArrayField(record, "latestReviews")
+      .map((item) => parseFeedbackItem(item, "review"))
+      .filter((item): item is GitHubPullRequestFeedbackItem => Boolean(item))
+  ].sort((left, right) =>
+    compareOptionalTimestamps(left.updatedAt ?? left.createdAt, right.updatedAt ?? right.createdAt)
+  );
+
+  return {
+    number,
+    url,
+    headRef,
+    baseRef,
+    headSha: readStringField(record, "headRefOid"),
+    baseSha: readStringField(record, "baseRefOid"),
+    mergeable: readStringField(record, "mergeable"),
+    mergeStateStatus: readStringField(record, "mergeStateStatus"),
+    reviewDecision: readStringField(record, "reviewDecision"),
+    statusCheckRollupState: parseStatusCheckRollupState(record.statusCheckRollup),
+    feedbackCount: feedbackItems.length,
+    feedbackUpdatedAt: pickLatestTimestamp(
+      feedbackItems.map((item) => item.updatedAt ?? item.createdAt)
+    ),
+    feedbackItems
+  };
+}
+
 export class GhCliPullRequestProvider implements GitHubPullRequestProvider {
   private availability?: boolean;
 
@@ -245,7 +405,12 @@ export class GhCliPullRequestProvider implements GitHubPullRequestProvider {
     repositoryFullName: string,
     headRef: string
   ): Promise<GitHubPullRequestSummary | null> {
-    return this.findPullRequestByState(repositoryFullName, headRef, "open");
+    const summary = await this.findPullRequestByState(repositoryFullName, headRef, "open");
+    if (!summary) {
+      return null;
+    }
+
+    return this.loadPullRequestDetail(repositoryFullName, summary.number);
   }
 
   public async findMergedPullRequest(
@@ -295,6 +460,53 @@ export class GhCliPullRequestProvider implements GitHubPullRequestProvider {
     }
   }
 
+  private async loadPullRequestDetail(
+    repositoryFullName: string,
+    pullRequest: number | string
+  ): Promise<GitHubPullRequestSummary> {
+    const repository = normalizeGitHubRepositoryFullName(repositoryFullName);
+    if (!repository) {
+      throw new AppError(
+        400,
+        "GITHUB_REPOSITORY_INVALID",
+        `Invalid GitHub repository: ${repositoryFullName}`
+      );
+    }
+
+    try {
+      const { stdout } = await runGh([
+        "pr",
+        "view",
+        "--repo",
+        repository,
+        String(pullRequest),
+        "--json",
+        [
+          "number",
+          "url",
+          "headRefName",
+          "baseRefName",
+          "headRefOid",
+          "baseRefOid",
+          "mergeable",
+          "mergeStateStatus",
+          "reviewDecision",
+          "statusCheckRollup",
+          "comments",
+          "latestReviews"
+        ].join(",")
+      ]);
+
+      return parsePullRequestDetail(JSON.parse(stdout));
+    } catch (error) {
+      throw new AppError(
+        502,
+        "GITHUB_MONITOR_REQUEST_FAILED",
+        `gh pr view failed for ${repository}#${pullRequest}: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
   public async listRequiredChecks(
     repositoryFullName: string,
     pullRequest: number | string
@@ -322,6 +534,13 @@ export class GhCliPullRequestProvider implements GitHubPullRequestProvider {
 
       return parseCheckList(JSON.parse(stdout));
     } catch (error) {
+      if (error instanceof GhCommandError) {
+        const combinedOutput = `${error.stdout}\n${error.stderr}`.trim();
+        if (/no checks reported/i.test(combinedOutput)) {
+          return [];
+        }
+      }
+
       if (error instanceof GhCommandError && error.exitCode === 8 && error.stdout.trim()) {
         return parseCheckList(JSON.parse(error.stdout));
       }

@@ -48,6 +48,13 @@ interface StartTaskOptions {
 
 type MonitorCiStatus = GitHubCheckBucket | "not_required";
 
+type MonitorReasonCode = "behind" | "conflict" | "ci_failed" | "new_feedback";
+
+interface MonitorReason {
+  code: MonitorReasonCode;
+  description: string;
+}
+
 interface BoardServiceDependencies {
   gitWorktrees?: GitWorktreeService;
   githubPullRequests?: GitHubPullRequestProvider;
@@ -522,16 +529,22 @@ export class BoardService {
             openPr.number
           );
           const ciStatus = this.summarizeRequiredChecks(checks);
-          if (!this.shouldAutoResumePullRequest(task, openPr)) {
+          const monitorReasons = this.collectMonitorReasons(task, runsById, openPr, ciStatus);
+          if (monitorReasons.length === 0) {
             continue;
           }
-          if (this.wasMonitorRunAlreadyAttempted(task, runsById, openPr)) {
+          if (this.wasMonitorRunAlreadyAttempted(task, runsById, openPr, ciStatus)) {
             continue;
           }
 
           await this.startTaskInternal(task.id, {
             allowedColumns: ["review"],
-            runnerConfigOverride: this.buildMonitorRunnerConfig(task, openPr, ciStatus),
+            runnerConfigOverride: this.buildMonitorRunnerConfig(
+              task,
+              openPr,
+              ciStatus,
+              monitorReasons
+            ),
             runMetadata: this.buildMonitorRunMetadata(openPr, ciStatus)
           });
           resumedTaskIds.push(task.id);
@@ -873,27 +886,53 @@ export class BoardService {
     }
   }
 
-  private shouldAutoResumePullRequest(
+  private collectMonitorReasons(
     task: Task,
-    pullRequest: GitHubPullRequestSummary
-  ): boolean {
+    runsById: Map<string, Run>,
+    pullRequest: GitHubPullRequestSummary,
+    ciStatus: MonitorCiStatus
+  ): MonitorReason[] {
     if (!this.baseRefMatches(task.worktree.baseRef, pullRequest.baseRef)) {
-      return false;
+      return [];
     }
 
+    const reasons: MonitorReason[] = [];
     const mergeable = pullRequest.mergeable?.toUpperCase();
     const mergeStateStatus = pullRequest.mergeStateStatus?.toUpperCase();
-    return (
-      mergeable === "CONFLICTING" ||
-      mergeStateStatus === "DIRTY" ||
-      mergeStateStatus === "BEHIND"
-    );
+    if (mergeable === "CONFLICTING" || mergeStateStatus === "DIRTY") {
+      reasons.push({
+        code: "conflict",
+        description: "the PR conflicts with its base branch"
+      });
+    } else if (mergeStateStatus === "BEHIND") {
+      reasons.push({
+        code: "behind",
+        description: "the PR is behind its base branch"
+      });
+    }
+
+    if (this.hasFailingPullRequestCi(pullRequest, ciStatus)) {
+      reasons.push({
+        code: "ci_failed",
+        description: "the PR has failing CI checks"
+      });
+    }
+
+    if (this.hasNewPullRequestFeedback(task, runsById, pullRequest)) {
+      reasons.push({
+        code: "new_feedback",
+        description: "the PR has new comments or review feedback"
+      });
+    }
+
+    return reasons;
   }
 
   private wasMonitorRunAlreadyAttempted(
     task: Task,
     runsById: Map<string, Run>,
-    pullRequest: GitHubPullRequestSummary
+    pullRequest: GitHubPullRequestSummary,
+    ciStatus: MonitorCiStatus
   ): boolean {
     if (!task.lastRunId) {
       return false;
@@ -904,21 +943,30 @@ export class BoardService {
       return false;
     }
 
+    if (run.status !== "succeeded") {
+      return false;
+    }
+
     return (
       run.metadata.monitorPrNumber === String(pullRequest.number) &&
       run.metadata.monitorPrHeadSha === (pullRequest.headSha ?? "") &&
       run.metadata.monitorPrBaseSha === (pullRequest.baseSha ?? "") &&
-      run.metadata.monitorPrMergeState === (pullRequest.mergeStateStatus ?? "")
+      run.metadata.monitorPrMergeState === (pullRequest.mergeStateStatus ?? "") &&
+      run.metadata.monitorPrMergeable === (pullRequest.mergeable ?? "") &&
+      run.metadata.monitorPrCiStatus === ciStatus &&
+      run.metadata.monitorPrStatusCheckRollupState ===
+        (pullRequest.statusCheckRollupState ?? "") &&
+      run.metadata.monitorPrFeedbackCount === String(pullRequest.feedbackCount ?? 0) &&
+      run.metadata.monitorPrFeedbackUpdatedAt === (pullRequest.feedbackUpdatedAt ?? "")
     );
   }
 
   private buildMonitorRunnerConfig(
     task: Task,
     pullRequest: GitHubPullRequestSummary,
-    ciStatus: MonitorCiStatus
+    ciStatus: MonitorCiStatus,
+    reasons: MonitorReason[]
   ): RunnerConfig {
-    const reason = this.describeMonitorReason(pullRequest);
-
     if (task.runnerConfig.type === "shell") {
       return {
         ...task.runnerConfig,
@@ -931,17 +979,28 @@ export class BoardService {
       };
     }
 
+    const feedbackLines = this.formatMonitorFeedback(pullRequest);
     return {
       ...task.runnerConfig,
       prompt: [
         task.runnerConfig.prompt.trim(),
         "GitHub PR monitor update:",
-        `- PR #${pullRequest.number} (${pullRequest.url}) is ${reason}.`,
+        `- PR #${pullRequest.number} (${pullRequest.url}) needs attention because ${this.joinMonitorReasonDescriptions(reasons)}.`,
         `- Required CI status is currently \`${ciStatus}\`.`,
+        pullRequest.statusCheckRollupState
+          ? `- Overall PR check rollup is \`${pullRequest.statusCheckRollupState}\`.`
+          : undefined,
+        pullRequest.reviewDecision
+          ? `- Review decision is \`${pullRequest.reviewDecision}\`.`
+          : undefined,
+        feedbackLines.length > 0 ? "- Recent PR feedback to address:" : undefined,
+        ...feedbackLines.map((line) => `  - ${line}`),
         `- Continue from the existing branch \`${task.worktree.branchName}\`.`,
         `- Fetch the latest \`${task.worktree.baseRef}\`, rebase onto it, resolve any conflicts, rerun the smallest useful verification, and push the updated branch.`,
         "- Keep the PR up to date and mention the PR URL in your final response."
-      ].join("\n\n")
+      ]
+        .filter((line): line is string => Boolean(line))
+        .join("\n\n")
     };
   }
 
@@ -959,7 +1018,11 @@ export class BoardService {
       monitorPrBaseSha: pullRequest.baseSha ?? "",
       monitorPrMergeState: pullRequest.mergeStateStatus ?? "",
       monitorPrMergeable: pullRequest.mergeable ?? "",
-      monitorPrCiStatus: ciStatus
+      monitorPrCiStatus: ciStatus,
+      monitorPrStatusCheckRollupState: pullRequest.statusCheckRollupState ?? "",
+      monitorPrFeedbackCount: String(pullRequest.feedbackCount ?? 0),
+      monitorPrFeedbackUpdatedAt: pullRequest.feedbackUpdatedAt ?? "",
+      monitorPrReviewDecision: pullRequest.reviewDecision ?? ""
     };
   }
 
@@ -984,17 +1047,104 @@ export class BoardService {
     return "not_required";
   }
 
-  private describeMonitorReason(pullRequest: GitHubPullRequestSummary): string {
-    const mergeable = pullRequest.mergeable?.toUpperCase();
-    const mergeStateStatus = pullRequest.mergeStateStatus?.toUpperCase();
-    if (mergeable === "CONFLICTING" || mergeStateStatus === "DIRTY") {
-      return "currently conflicting with its base branch";
-    }
-    if (mergeStateStatus === "BEHIND") {
-      return "behind its base branch";
+  private hasFailingPullRequestCi(
+    pullRequest: GitHubPullRequestSummary,
+    ciStatus: MonitorCiStatus
+  ): boolean {
+    if (ciStatus === "fail" || ciStatus === "cancel") {
+      return true;
     }
 
-    return "no longer cleanly mergeable";
+    const rollupState = pullRequest.statusCheckRollupState?.toUpperCase();
+    return (
+      rollupState === "FAILURE" ||
+      rollupState === "ERROR" ||
+      rollupState === "CANCELLED" ||
+      rollupState === "TIMED_OUT"
+    );
+  }
+
+  private hasNewPullRequestFeedback(
+    task: Task,
+    runsById: Map<string, Run>,
+    pullRequest: GitHubPullRequestSummary
+  ): boolean {
+    const feedbackUpdatedAt = pullRequest.feedbackUpdatedAt?.trim();
+    const feedbackCount = pullRequest.feedbackCount ?? 0;
+    if (!feedbackUpdatedAt || feedbackCount === 0) {
+      return false;
+    }
+
+    if (!task.lastRunId) {
+      return true;
+    }
+
+    const run = runsById.get(task.lastRunId);
+    if (!run) {
+      return true;
+    }
+
+    if (run.metadata?.trigger === "gh_pr_monitor") {
+      return (
+        run.metadata.monitorPrFeedbackCount !== String(feedbackCount) ||
+        run.metadata.monitorPrFeedbackUpdatedAt !== feedbackUpdatedAt
+      );
+    }
+
+    return this.didTimestampOccurAfter(run.endedAt ?? run.startedAt, feedbackUpdatedAt);
+  }
+
+  private didTimestampOccurAfter(referenceTime?: string, candidateTime?: string): boolean {
+    const referenceMs = referenceTime ? Date.parse(referenceTime) : Number.NaN;
+    const candidateMs = candidateTime ? Date.parse(candidateTime) : Number.NaN;
+    if (!Number.isFinite(candidateMs)) {
+      return false;
+    }
+    if (!Number.isFinite(referenceMs)) {
+      return true;
+    }
+
+    return candidateMs > referenceMs;
+  }
+
+  private joinMonitorReasonDescriptions(reasons: MonitorReason[]): string {
+    const descriptions = reasons.map((reason) => reason.description);
+    if (descriptions.length === 0) {
+      return "the PR needs attention";
+    }
+    if (descriptions.length === 1) {
+      return descriptions[0]!;
+    }
+    if (descriptions.length === 2) {
+      return `${descriptions[0]} and ${descriptions[1]}`;
+    }
+
+    return `${descriptions.slice(0, -1).join(", ")}, and ${descriptions.at(-1)}`;
+  }
+
+  private formatMonitorFeedback(pullRequest: GitHubPullRequestSummary): string[] {
+    return (pullRequest.feedbackItems ?? [])
+      .slice(0, 5)
+      .map((item) => {
+        const author = item.author ? `@${item.author}` : "someone";
+        const state = item.source === "review" && item.state ? ` (${item.state})` : "";
+        const body = this.summarizeMonitorFeedbackBody(item.body);
+        const when = item.updatedAt ?? item.createdAt;
+        return `${author}${state}${when ? ` at ${when}` : ""}: ${body}`;
+      });
+  }
+
+  private summarizeMonitorFeedbackBody(body?: string): string {
+    const normalized = body?.replace(/\s+/g, " ").trim();
+    if (!normalized) {
+      return "No text included.";
+    }
+
+    if (normalized.length <= 160) {
+      return normalized;
+    }
+
+    return `${normalized.slice(0, 157)}...`;
   }
 
   private baseRefMatches(baseRef: string, branchName: string): boolean {
