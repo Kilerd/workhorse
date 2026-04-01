@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Run, RunLogEntry, Task } from "@workhorse/contracts";
+import type { LiveLogCommandExecutionGroupStreamItem } from "./live-log-entries";
 
 import {
   buildLiveLogStreamItems,
   ENTRY_LABELS,
   getToolStatus,
+  groupLiveLogStreamItems,
   isCommandExecutionEntry,
   parseStickyPlanContent,
   partitionLiveLogEntries,
@@ -216,6 +218,16 @@ function summarizeToolPreview(text: string): string {
     .find(Boolean) ?? "";
 }
 
+function formatTimestampRange(start: string, end: string): string {
+  const startLabel = formatTimestamp(start);
+  const endLabel = formatTimestamp(end);
+  if (!startLabel || !endLabel || startLabel === endLabel) {
+    return endLabel || startLabel;
+  }
+
+  return `${startLabel} - ${endLabel}`;
+}
+
 function renderToolStreamItem(entry: RunLogEntry, outputEntries: RunLogEntry[]) {
   const toolStatus = getToolStatus(entry);
   const isCommandExecution = isCommandExecutionEntry(entry);
@@ -289,6 +301,44 @@ function renderToolStreamItem(entry: RunLogEntry, outputEntries: RunLogEntry[]) 
   );
 }
 
+function renderCommandExecutionGroup(item: LiveLogCommandExecutionGroupStreamItem) {
+  const firstEntry = item.items[0]?.entry;
+  const lastEntry = item.items.at(-1)?.entry;
+  if (!firstEntry || !lastEntry) {
+    return null;
+  }
+
+  const commandLabel =
+    item.items.length === 1
+      ? "1 Command Execution"
+      : `${item.items.length} Command Executions`;
+
+  return (
+    <details
+      key={`${firstEntry.id}-${lastEntry.id}`}
+      className="log-command-execution-group"
+    >
+      <summary className="log-command-execution-group-summary">
+        <div className="log-console-entry-meta">
+          <div className="log-console-entry-heading">
+            <span className="log-console-label log-console-label-tool">tool</span>
+            <strong>{commandLabel}</strong>
+          </div>
+          <span className="log-command-execution-group-range">
+            {formatTimestampRange(firstEntry.timestamp, lastEntry.timestamp)}
+          </span>
+        </div>
+      </summary>
+
+      <div className="log-command-execution-group-body">
+        {item.items.map(({ entry, outputEntries }) =>
+          renderToolStreamItem(entry, outputEntries)
+        )}
+      </div>
+    </details>
+  );
+}
+
 export function LiveLog({
   task,
   activeRun,
@@ -310,6 +360,9 @@ export function LiveLog({
   const streamItems = useMemo(() => {
     return buildLiveLogStreamItems(streamEntries);
   }, [streamEntries]);
+  const displayItems = useMemo(() => {
+    return groupLiveLogStreamItems(streamItems);
+  }, [streamItems]);
   const streamRef = useRef<HTMLDivElement>(null);
   const [isPinnedToBottom, setIsPinnedToBottom] = useState(true);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
@@ -471,11 +524,15 @@ export function LiveLog({
                   {stickyPlanEntry && stickyPlan ? (
                     <StickyPlanCard entry={stickyPlanEntry} plan={stickyPlan} />
                   ) : null}
-                  {streamItems.map((item) =>
-                    item.type === "tool"
+                  {displayItems.map((item) => {
+                    if (item.type === "command_execution_group") {
+                      return renderCommandExecutionGroup(item);
+                    }
+
+                    return item.type === "tool"
                       ? renderToolStreamItem(item.entry, item.outputEntries)
-                      : renderConsoleEntry(item.entry)
-                  )}
+                      : renderConsoleEntry(item.entry);
+                  })}
                 </div>
               ) : (
                 <div className="log-console">
