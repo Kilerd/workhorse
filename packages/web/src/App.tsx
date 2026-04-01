@@ -286,9 +286,14 @@ function TaskDetailsRoute({
         >
           Back to board
         </button>
-        <div className="details-page-meta">
+      <div className="details-page-meta">
           <span className="meta-chip">Workspace {workspaceName}</span>
           <span className={`status status-${task.column}`}>{task.column}</span>
+          {workspaces.find((workspace) => workspace.id === task.workspaceId)?.isGitRepo ? (
+            <span className={`status status-worktree-${task.worktree.status}`}>
+              {task.worktree.status.replaceAll("_", " ")}
+            </span>
+          ) : null}
         </div>
       </div>
 
@@ -307,6 +312,7 @@ function TaskDetailsRoute({
         onMoveToTodo={() => board.moveToTodo(task.id)}
         onMarkDone={() => board.markDone(task.id)}
         onArchive={() => board.archiveTask(task.id)}
+        onCleanupWorktree={() => board.cleanupTaskWorktree(task.id)}
         onDelete={async () => {
           await board.deleteTask(task.id);
           navigate("/");

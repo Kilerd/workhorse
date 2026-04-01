@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import type { Workspace } from "@workhorse/contracts";
 
+import { api } from "@/lib/api";
 import type { DisplayTaskColumn, TaskFormValues } from "@/lib/task-view";
 
 interface WorkspaceModalProps {
@@ -14,6 +16,16 @@ interface TaskModalProps {
   workspaces: Workspace[];
   onClose(): void;
   onSubmit(values: TaskFormValues): void;
+}
+
+function slugifyBranchPreview(value: string): string {
+  const slug = value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+
+  return slug || "task";
 }
 
 export function WorkspaceModal({ open, onClose, onSubmit }: WorkspaceModalProps) {
@@ -75,6 +87,22 @@ export function TaskModal({ open, workspaces, onClose, onSubmit }: TaskModalProp
   const [shellCommand, setShellCommand] = useState("npm test");
   const [prompt, setPrompt] = useState("Implement the requested task.");
   const [column, setColumn] = useState<TaskFormValues["column"]>("backlog");
+  const [worktreeBaseRef, setWorktreeBaseRef] = useState("");
+  const selectedWorkspace = useMemo(
+    () => workspaces.find((workspace) => workspace.id === workspaceId),
+    [workspaceId, workspaces]
+  );
+  const gitRefsQuery = useQuery({
+    queryKey: ["workspace-git-refs", selectedWorkspace?.id ?? ""],
+    queryFn: async () => {
+      if (!selectedWorkspace?.id) {
+        return [];
+      }
+      const response = await api.listWorkspaceGitRefs(selectedWorkspace.id);
+      return response.data.items;
+    },
+    enabled: open && Boolean(selectedWorkspace?.isGitRepo && selectedWorkspace.id)
+  });
 
   useEffect(() => {
     if (!open) {
@@ -85,6 +113,7 @@ export function TaskModal({ open, workspaces, onClose, onSubmit }: TaskModalProp
       setShellCommand("npm test");
       setPrompt("Implement the requested task.");
       setColumn("backlog");
+      setWorktreeBaseRef("");
     }
   }, [open, workspaces]);
 
@@ -94,11 +123,37 @@ export function TaskModal({ open, workspaces, onClose, onSubmit }: TaskModalProp
     }
   }, [workspaceId, workspaces]);
 
+  useEffect(() => {
+    if (!selectedWorkspace?.isGitRepo) {
+      setWorktreeBaseRef("");
+      return;
+    }
+
+    const refs = gitRefsQuery.data ?? [];
+    if (refs.length === 0) {
+      return;
+    }
+
+    if (refs.some((ref) => ref.name === worktreeBaseRef)) {
+      return;
+    }
+
+    const defaultRef = refs.find((ref) => ref.isDefault)?.name ?? refs[0]?.name ?? "";
+    if (defaultRef) {
+      setWorktreeBaseRef(defaultRef);
+    }
+  }, [gitRefsQuery.data, selectedWorkspace?.isGitRepo, worktreeBaseRef]);
+
   if (!open) {
     return null;
   }
 
-  const canSubmit = workspaces.length > 0 && Boolean(title.trim()) && Boolean(workspaceId);
+  const canSubmit =
+    workspaces.length > 0 &&
+    Boolean(title.trim()) &&
+    Boolean(workspaceId) &&
+    (!selectedWorkspace?.isGitRepo || Boolean(worktreeBaseRef));
+  const branchPreview = `task/<generated-id>-${slugifyBranchPreview(title)}`;
 
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
@@ -115,7 +170,11 @@ export function TaskModal({ open, workspaces, onClose, onSubmit }: TaskModalProp
               runnerType === "shell"
                 ? { type: "shell", command: shellCommand }
                 : { type: "codex", prompt },
-            column
+            column,
+            worktreeBaseRef:
+              selectedWorkspace?.isGitRepo && worktreeBaseRef
+                ? worktreeBaseRef
+                : undefined
           });
         }}
         onClick={(event) => event.stopPropagation()}
@@ -169,6 +228,30 @@ export function TaskModal({ open, workspaces, onClose, onSubmit }: TaskModalProp
               <option value="archived">archived</option>
             </select>
           </label>
+          {selectedWorkspace?.isGitRepo ? (
+            <>
+              <label>
+                <span>Base ref</span>
+                <select
+                  value={worktreeBaseRef}
+                  onChange={(event) => setWorktreeBaseRef(event.target.value)}
+                  disabled={gitRefsQuery.isLoading || (gitRefsQuery.data?.length ?? 0) === 0}
+                >
+                  {(gitRefsQuery.data ?? []).map((ref) => (
+                    <option key={ref.name} value={ref.name}>
+                      {ref.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="modal-note">
+                <span>Task branch</span>
+                <p>
+                  Workhorse will generate a stable branch like <code>{branchPreview}</code>.
+                </p>
+              </div>
+            </>
+          ) : null}
           {runnerType === "shell" ? (
             <label className="span-2">
               <span>Command</span>
@@ -185,6 +268,12 @@ export function TaskModal({ open, workspaces, onClose, onSubmit }: TaskModalProp
               />
             </label>
           )}
+          {selectedWorkspace?.isGitRepo && gitRefsQuery.isLoading ? (
+            <p className="muted span-2">Loading Git refs…</p>
+          ) : null}
+          {selectedWorkspace?.isGitRepo && gitRefsQuery.isError ? (
+            <p className="muted span-2">Git refs could not be loaded right now.</p>
+          ) : null}
         </div>
         <div className="modal-actions">
           <button type="button" className="button button-secondary" onClick={onClose}>

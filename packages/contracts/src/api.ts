@@ -6,6 +6,7 @@ import type {
   RunnerType,
   Task,
   TaskColumn,
+  WorkspaceGitRef,
   Workspace
 } from "./domain.js";
 
@@ -41,9 +42,17 @@ export interface WorkspaceData {
   workspace: Workspace;
 }
 
+export interface WorkspaceGitRefsData {
+  items: WorkspaceGitRef[];
+}
+
 export interface CreateWorkspaceBody {
   name: string;
   rootPath: string;
+}
+
+export interface ListWorkspaceGitRefsParams {
+  workspaceId: string;
 }
 
 export interface UpdateWorkspaceParams {
@@ -74,6 +83,7 @@ export interface CreateTaskBody {
   title: string;
   description?: string;
   workspaceId: string;
+  worktreeBaseRef?: string;
   column?: TaskColumn;
   order?: number;
   runnerType: RunnerType;
@@ -88,6 +98,7 @@ export interface UpdateTaskBody {
   title?: string;
   description?: string;
   workspaceId?: string;
+  worktreeBaseRef?: string;
   column?: TaskColumn;
   order?: number;
   runnerType?: RunnerType;
@@ -125,6 +136,14 @@ export interface PlanTaskData {
   plan: string;
 }
 
+export interface CleanupTaskWorktreeParams {
+  taskId: string;
+}
+
+export interface CleanupTaskWorktreeData {
+  task: Task;
+}
+
 export interface ListRunsParams {
   taskId: string;
 }
@@ -148,6 +167,7 @@ export interface HealthData {
 
 export type WorkspacesResponse = ApiSuccess<ListWorkspacesData>;
 export type WorkspaceResponse = ApiSuccess<WorkspaceData>;
+export type WorkspaceGitRefsResponse = ApiSuccess<WorkspaceGitRefsData>;
 export type DeleteWorkspaceResponse = ApiSuccess<DeleteResult>;
 export type TasksResponse = ApiSuccess<ListTasksData>;
 export type TaskResponse = ApiSuccess<TaskData>;
@@ -155,6 +175,7 @@ export type DeleteTaskResponse = ApiSuccess<DeleteResult>;
 export type StartTaskResponse = ApiSuccess<StartTaskData>;
 export type StopTaskResponse = ApiSuccess<StopTaskData>;
 export type PlanTaskResponse = ApiSuccess<PlanTaskData>;
+export type CleanupTaskWorktreeResponse = ApiSuccess<CleanupTaskWorktreeData>;
 export type RunsResponse = ApiSuccess<ListRunsData>;
 export type RunLogResponse = ApiSuccess<RunLogData>;
 export type HealthResponse = ApiSuccess<HealthData>;
@@ -182,9 +203,11 @@ export interface EndpointSpec {
 export type SchemaName =
   | "ApiError"
   | "Workspace"
+  | "WorkspaceGitRef"
   | "Task"
   | "Run"
   | "CreateWorkspaceBody"
+  | "ListWorkspaceGitRefsParams"
   | "UpdateWorkspaceBody"
   | "UpdateWorkspaceParams"
   | "DeleteWorkspaceParams"
@@ -196,10 +219,12 @@ export type SchemaName =
   | "StartTaskParams"
   | "StopTaskParams"
   | "PlanTaskParams"
+  | "CleanupTaskWorktreeParams"
   | "ListRunsParams"
   | "RunLogParams"
   | "WorkspacesResponse"
   | "WorkspaceResponse"
+  | "WorkspaceGitRefsResponse"
   | "DeleteWorkspaceResponse"
   | "TasksResponse"
   | "TaskResponse"
@@ -207,6 +232,7 @@ export type SchemaName =
   | "StartTaskResponse"
   | "StopTaskResponse"
   | "PlanTaskResponse"
+  | "CleanupTaskWorktreeResponse"
   | "RunsResponse"
   | "RunLogResponse"
   | "HealthResponse";
@@ -278,6 +304,26 @@ export const endpointRegistry: EndpointSpec[] = [
         status: 400,
         description: "Validation error",
         schema: "ApiError"
+      },
+      {
+        status: 404,
+        description: "Workspace not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "listWorkspaceGitRefs",
+    method: "get",
+    path: "/api/workspaces/{workspaceId}/git/refs",
+    summary: "List Git refs for a workspace",
+    tag: "Workspaces",
+    paramsSchema: "ListWorkspaceGitRefsParams",
+    responses: [
+      {
+        status: 200,
+        description: "Workspace Git refs",
+        schema: "WorkspaceGitRefsResponse"
       },
       {
         status: 404,
@@ -379,6 +425,31 @@ export const endpointRegistry: EndpointSpec[] = [
         status: 200,
         description: "Deleted task id",
         schema: "DeleteTaskResponse"
+      },
+      {
+        status: 404,
+        description: "Task not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "cleanupTaskWorktree",
+    method: "post",
+    path: "/api/tasks/{taskId}/worktree/cleanup",
+    summary: "Cleanup a task worktree",
+    tag: "Tasks",
+    paramsSchema: "CleanupTaskWorktreeParams",
+    responses: [
+      {
+        status: 200,
+        description: "Cleaned up task worktree",
+        schema: "CleanupTaskWorktreeResponse"
+      },
+      {
+        status: 400,
+        description: "Unable to cleanup task worktree",
+        schema: "ApiError"
       },
       {
         status: 404,

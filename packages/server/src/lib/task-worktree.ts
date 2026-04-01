@@ -1,0 +1,77 @@
+import { dirname, join } from "node:path";
+
+import type { Task, TaskWorktree, Workspace, WorkspaceGitRef } from "@workhorse/contracts";
+
+const DEFAULT_GIT_BASE_REF = "origin/main";
+
+function slugifySegment(value: string, fallback = "task"): string {
+  const slug = value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+
+  return slug || fallback;
+}
+
+export function deriveTaskBranchName(taskId: string, title: string): string {
+  return `task/${taskId}-${slugifySegment(title, taskId)}`;
+}
+
+function branchSegment(branchName: string, taskId: string, title: string): string {
+  const shortName = branchName.split("/").at(-1)?.trim();
+  return slugifySegment(shortName || `${taskId}-${title}`, taskId);
+}
+
+export function deriveTaskWorktreePath(
+  workspace: Workspace,
+  task: Pick<Task, "id" | "title" | "worktree">
+): string {
+  const existingPath = task.worktree.path?.trim();
+  if (existingPath) {
+    return existingPath;
+  }
+
+  const segment = branchSegment(task.worktree.branchName, task.id, task.title);
+
+  return join(
+    dirname(workspace.rootPath),
+    ".workhorse-worktrees",
+    workspace.id,
+    segment
+  );
+}
+
+export function pickDefaultGitRef(refs: WorkspaceGitRef[]): WorkspaceGitRef | undefined {
+  return (
+    refs.find((ref) => ref.name === "origin/main") ??
+    refs.find((ref) => ref.name === "origin/master") ??
+    refs.find((ref) => ref.kind === "remote") ??
+    refs.find((ref) => ref.kind === "local")
+  );
+}
+
+interface CreateTaskWorktreeOptions {
+  workspace?: Workspace;
+  baseRef?: string;
+  branchName?: string;
+  status?: TaskWorktree["status"];
+}
+
+export function createTaskWorktree(
+  taskId: string,
+  title: string,
+  options: CreateTaskWorktreeOptions = {}
+): TaskWorktree {
+  const branchName = options.branchName?.trim() || deriveTaskBranchName(taskId, title);
+  const isGitRepo = options.workspace?.isGitRepo ?? false;
+  const baseRef = isGitRepo
+    ? options.baseRef?.trim() || DEFAULT_GIT_BASE_REF
+    : "";
+
+  return {
+    baseRef,
+    branchName,
+    status: options.status ?? (isGitRepo ? "not_created" : "removed")
+  };
+}

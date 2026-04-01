@@ -26,6 +26,29 @@ export type RunLogKind =
   | "system"
   | "status";
 
+export type TaskWorktreeStatus =
+  | "not_created"
+  | "ready"
+  | "cleanup_pending"
+  | "removed";
+
+export interface TaskWorktree {
+  baseRef: string;
+  branchName: string;
+  path?: string;
+  status: TaskWorktreeStatus;
+  cleanupReason?: string;
+  lastSyncedBaseAt?: string;
+}
+
+export type WorkspaceGitRefKind = "remote" | "local";
+
+export interface WorkspaceGitRef {
+  name: string;
+  kind: WorkspaceGitRefKind;
+  isDefault: boolean;
+}
+
 export interface Workspace {
   id: string;
   name: string;
@@ -58,6 +81,7 @@ export interface Task {
   order: number;
   runnerType: RunnerType;
   runnerConfig: RunnerConfig;
+  worktree: TaskWorktree;
   lastRunId?: string;
   createdAt: string;
   updatedAt: string;

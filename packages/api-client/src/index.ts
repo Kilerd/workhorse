@@ -1,11 +1,13 @@
 import { Fetcher, type Middleware } from "openapi-typescript-fetch";
 
 import type {
+  CleanupTaskWorktreeResponse,
   CreateTaskBody,
   CreateWorkspaceBody,
   DeleteTaskResponse,
   DeleteWorkspaceResponse,
   HealthResponse,
+  WorkspaceGitRefsResponse,
   PlanTaskResponse,
   RunLogResponse,
   RunsResponse,
@@ -45,6 +47,10 @@ export function createApiClient(baseUrl: string) {
     .path("/api/workspaces/{workspaceId}")
     .method("patch")
     .create();
+  const listWorkspaceGitRefs = fetcher
+    .path("/api/workspaces/{workspaceId}/git/refs")
+    .method("get")
+    .create();
   const deleteWorkspace = fetcher
     .path("/api/workspaces/{workspaceId}")
     .method("delete")
@@ -69,6 +75,10 @@ export function createApiClient(baseUrl: string) {
     .path("/api/tasks/{taskId}/plan")
     .method("post")
     .create();
+  const cleanupTaskWorktree = fetcher
+    .path("/api/tasks/{taskId}/worktree/cleanup")
+    .method("post")
+    .create();
   const listRuns = fetcher
     .path("/api/tasks/{taskId}/runs")
     .method("get")
@@ -90,6 +100,10 @@ export function createApiClient(baseUrl: string) {
       body: UpdateWorkspaceBody
     ): Promise<WorkspaceResponse> =>
       (await updateWorkspace({ workspaceId, ...body })).data,
+    listWorkspaceGitRefs: async (
+      workspaceId: string
+    ): Promise<WorkspaceGitRefsResponse> =>
+      (await listWorkspaceGitRefs({ workspaceId })).data,
     deleteWorkspace: async (
       workspaceId: string
     ): Promise<DeleteWorkspaceResponse> =>
@@ -111,6 +125,10 @@ export function createApiClient(baseUrl: string) {
       (await stopTask({ taskId })).data,
     planTask: async (taskId: string): Promise<PlanTaskResponse> =>
       (await planTask({ taskId })).data,
+    cleanupTaskWorktree: async (
+      taskId: string
+    ): Promise<CleanupTaskWorktreeResponse> =>
+      (await cleanupTaskWorktree({ taskId })).data,
     listRuns: async (taskId: string): Promise<RunsResponse> =>
       (await listRuns({ taskId })).data,
     getRunLog: async (runId: string): Promise<RunLogResponse> =>

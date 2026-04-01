@@ -57,6 +57,23 @@ export interface paths {
         patch: operations["updateWorkspace"];
         trace?: never;
     };
+    "/api/workspaces/{workspaceId}/git/refs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Git refs for a workspace */
+        get: operations["listWorkspaceGitRefs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tasks": {
         parameters: {
             query?: never;
@@ -91,6 +108,23 @@ export interface paths {
         head?: never;
         /** Update a task card */
         patch: operations["updateTask"];
+        trace?: never;
+    };
+    "/api/tasks/{taskId}/worktree/cleanup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cleanup a task worktree */
+        post: operations["cleanupTaskWorktree"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/tasks/{taskId}/start": {
@@ -204,6 +238,21 @@ export interface components {
             createdAt: string;
             updatedAt: string;
         };
+        WorkspaceGitRef: {
+            name: string;
+            kind: components["schemas"]["WorkspaceGitRefKind"];
+            isDefault: boolean;
+        };
+        WorkspaceGitRefKind: "remote" | "local";
+        TaskWorktree: {
+            baseRef: string;
+            branchName: string;
+            path?: string;
+            status: components["schemas"]["TaskWorktreeStatus"];
+            cleanupReason?: string;
+            lastSyncedBaseAt?: string;
+        };
+        TaskWorktreeStatus: "not_created" | "ready" | "cleanup_pending" | "removed";
         Task: {
             id: string;
             title: string;
@@ -213,6 +262,7 @@ export interface components {
             order: number;
             runnerType: components["schemas"]["RunnerType"];
             runnerConfig: components["schemas"]["RunnerConfig"];
+            worktree: components["schemas"]["TaskWorktree"];
             lastRunId?: string;
             createdAt: string;
             updatedAt: string;
@@ -260,6 +310,9 @@ export interface components {
             name: string;
             rootPath: string;
         };
+        ListWorkspaceGitRefsParams: {
+            workspaceId: string;
+        };
         UpdateWorkspaceBody: {
             name?: string;
         };
@@ -276,6 +329,7 @@ export interface components {
             title: string;
             description?: string;
             workspaceId: string;
+            worktreeBaseRef?: string;
             column?: "backlog" | "todo" | "running" | "review" | "done" | "archived";
             order?: number;
             runnerType: components["schemas"]["RunnerType"];
@@ -288,6 +342,7 @@ export interface components {
             title?: string;
             description?: string;
             workspaceId?: string;
+            worktreeBaseRef?: string;
             column?: "backlog" | "todo" | "running" | "review" | "done" | "archived";
             order?: number;
             runnerType?: "codex" | "shell";
@@ -303,6 +358,9 @@ export interface components {
             taskId: string;
         };
         PlanTaskParams: {
+            taskId: string;
+        };
+        CleanupTaskWorktreeParams: {
             taskId: string;
         };
         ListRunsParams: {
@@ -326,6 +384,14 @@ export interface components {
         };
         WorkspaceData: {
             workspace: components["schemas"]["Workspace"];
+        };
+        WorkspaceGitRefsResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["WorkspaceGitRefsData"];
+        };
+        WorkspaceGitRefsData: {
+            items: components["schemas"]["WorkspaceGitRef"][];
         };
         DeleteWorkspaceResponse: {
             /** @enum {unknown} */
@@ -383,6 +449,14 @@ export interface components {
             task: components["schemas"]["Task"];
             plan: string;
         };
+        CleanupTaskWorktreeResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["CleanupTaskWorktreeData"];
+        };
+        CleanupTaskWorktreeData: {
+            task: components["schemas"]["Task"];
+        };
         RunsResponse: {
             /** @enum {unknown} */
             ok: true;
@@ -411,7 +485,7 @@ export interface components {
             metadata?: components["schemas"]["Recordstringstring"];
         };
         RunLogStream: "stdout" | "stderr" | "system";
-        RunLogKind: "system" | "text" | "agent" | "tool_call" | "tool_output" | "plan" | "status";
+        RunLogKind: "status" | "system" | "text" | "agent" | "tool_call" | "tool_output" | "plan";
         HealthResponse: {
             /** @enum {unknown} */
             ok: true;
@@ -583,6 +657,37 @@ export interface operations {
             };
         };
     };
+    listWorkspaceGitRefs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Workspace Git refs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceGitRefsResponse"];
+                };
+            };
+            /** @description Workspace not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     listTasks: {
         parameters: {
             query?: {
@@ -694,6 +799,46 @@ export interface operations {
                 };
             };
             /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Task not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    cleanupTaskWorktree: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cleaned up task worktree */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CleanupTaskWorktreeResponse"];
+                };
+            };
+            /** @description Unable to cleanup task worktree */
             400: {
                 headers: {
                     [name: string]: unknown;

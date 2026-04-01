@@ -11,19 +11,23 @@ import type {
   Run,
   RunnerConfig,
   Task,
+  TaskWorktree,
   UpdateTaskBody,
   UpdateWorkspaceBody,
+  WorkspaceGitRef,
   Workspace
 } from "@workhorse/contracts";
 
 import { AppError, ensure } from "../lib/errors.js";
 import { createId } from "../lib/id.js";
 import { createRunLogEntry } from "../lib/run-log.js";
+import { createTaskWorktree } from "../lib/task-worktree.js";
 import { StateStore } from "../persistence/state-store.js";
 import { CodexAcpRunner } from "../runners/codex-acp-runner.js";
 import type { RunnerAdapter, RunnerControl } from "../runners/types.js";
 import { ShellRunner } from "../runners/shell-runner.js";
 import { EventBus } from "../ws/event-bus.js";
+import { GitWorktreeService } from "./git-worktree-service.js";
 
 interface ActiveRun {
   control: RunnerControl;
@@ -46,6 +50,8 @@ export class BoardService {
 
   private readonly runners: Record<string, RunnerAdapter>;
 
+  private readonly gitWorktrees: GitWorktreeService;
+
   private readonly activeRuns = new Map<string, ActiveRun>();
 
   public constructor(store: StateStore, events: EventBus) {
@@ -55,6 +61,7 @@ export class BoardService {
       shell: new ShellRunner(),
       codex: new CodexAcpRunner()
     };
+    this.gitWorktrees = new GitWorktreeService();
   }
 
   public async initialize(): Promise<void> {
@@ -70,6 +77,17 @@ export class BoardService {
     return this.store
       .listWorkspaces()
       .sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  public async listWorkspaceGitRefs(workspaceId: string): Promise<WorkspaceGitRef[]> {
+    const workspace = ensure(
+      this.store.listWorkspaces().find((entry) => entry.id === workspaceId),
+      404,
+      "WORKSPACE_NOT_FOUND",
+      "Workspace not found"
+    );
+
+    return this.gitWorktrees.listRefs(workspace);
   }
 
   public async createWorkspace(input: CreateWorkspaceBody): Promise<Workspace> {
@@ -187,11 +205,23 @@ export class BoardService {
       throw new AppError(400, "INVALID_TASK", "Task title is required");
     }
     this.ensureRunnerConfig(input.runnerType, input.runnerConfig);
+    const taskId = createId();
+    const worktree = workspace.isGitRepo
+      ? createTaskWorktree(taskId, input.title, {
+          workspace,
+          baseRef: await this.gitWorktrees.resolveBaseRef(
+            workspace,
+            input.worktreeBaseRef
+          )
+        })
+      : createTaskWorktree(taskId, input.title, {
+          workspace
+        });
 
     const now = new Date().toISOString();
     const column = input.column ?? "backlog";
     const task: Task = {
-      id: createId(),
+      id: taskId,
       title: input.title.trim(),
       description: input.description?.trim() ?? "",
       workspaceId: workspace.id,
@@ -199,6 +229,7 @@ export class BoardService {
       order: input.order ?? this.nextOrder(column),
       runnerType: input.runnerType,
       runnerConfig: input.runnerConfig,
+      worktree,
       createdAt: now,
       updatedAt: now
     };
@@ -223,15 +254,32 @@ export class BoardService {
       "TASK_NOT_FOUND",
       "Task not found"
     );
+    const currentWorkspace = ensure(
+      this.store.listWorkspaces().find((entry) => entry.id === task.workspaceId),
+      404,
+      "WORKSPACE_NOT_FOUND",
+      "Workspace not found"
+    );
+    const nextWorkspace =
+      input.workspaceId !== undefined
+        ? ensure(
+            this.store.listWorkspaces().find((entry) => entry.id === input.workspaceId),
+            404,
+            "WORKSPACE_NOT_FOUND",
+            "Workspace not found"
+          )
+        : currentWorkspace;
+    const workspaceChanged = nextWorkspace.id !== currentWorkspace.id;
 
-    if (input.workspaceId) {
-      ensure(
-        this.store.listWorkspaces().find((entry) => entry.id === input.workspaceId),
-        404,
-        "WORKSPACE_NOT_FOUND",
-        "Workspace not found"
+    if (
+      workspaceChanged &&
+      (task.worktree.status === "ready" || task.worktree.status === "cleanup_pending")
+    ) {
+      throw new AppError(
+        409,
+        "TASK_WORKTREE_ACTIVE",
+        "Cleanup the task worktree before moving it to another workspace"
       );
-      task.workspaceId = input.workspaceId;
     }
 
     if (input.runnerType || input.runnerConfig) {
@@ -248,6 +296,34 @@ export class BoardService {
       }
       task.title = title;
     }
+
+    if (workspaceChanged) {
+      task.workspaceId = nextWorkspace.id;
+      task.worktree = await this.resetTaskWorktree(task, nextWorkspace, input.worktreeBaseRef);
+    } else if (input.worktreeBaseRef !== undefined) {
+      if (!nextWorkspace.isGitRepo) {
+        throw new AppError(
+          400,
+          "TASK_WORKTREE_NOT_SUPPORTED",
+          "Only Git workspaces support task worktrees"
+        );
+      }
+      if (task.worktree.status === "ready" || task.worktree.status === "cleanup_pending") {
+        throw new AppError(
+          409,
+          "TASK_WORKTREE_ACTIVE",
+          "Cleanup the task worktree before changing its base ref"
+        );
+      }
+      task.worktree = {
+        ...task.worktree,
+        baseRef: await this.gitWorktrees.resolveBaseRef(nextWorkspace, input.worktreeBaseRef),
+        path: undefined,
+        cleanupReason: undefined,
+        status: "not_created"
+      };
+    }
+
     task.description = input.description?.trim() ?? task.description;
     const nextColumn = input.column ?? task.column;
     const columnChanged = nextColumn !== task.column;
@@ -257,6 +333,15 @@ export class BoardService {
       (columnChanged ? this.nextOrder(nextColumn) : task.order);
     task.runnerType = input.runnerType ?? task.runnerType;
     task.runnerConfig = input.runnerConfig ?? task.runnerConfig;
+
+    if (
+      nextWorkspace.isGitRepo &&
+      (nextColumn === "done" || nextColumn === "archived") &&
+      (task.worktree.status === "ready" || task.worktree.status === "cleanup_pending")
+    ) {
+      task.worktree = await this.gitWorktrees.cleanupTaskWorktree(nextWorkspace, task);
+    }
+
     task.updatedAt = new Date().toISOString();
 
     this.store.setTasks(tasks);
@@ -276,6 +361,20 @@ export class BoardService {
         409,
         "TASK_RUNNING",
         "Stop the active run before deleting the task"
+      );
+    }
+
+    const task = ensure(
+      this.store.listTasks().find((entry) => entry.id === taskId),
+      404,
+      "TASK_NOT_FOUND",
+      "Task not found"
+    );
+    if (task.worktree.status === "ready" || task.worktree.status === "cleanup_pending") {
+      throw new AppError(
+        409,
+        "TASK_WORKTREE_ACTIVE",
+        "Cleanup the task worktree before deleting the task"
       );
     }
 
@@ -299,8 +398,9 @@ export class BoardService {
       throw new AppError(409, "TASK_ALREADY_RUNNING", "Task already has an active run");
     }
 
+    const tasks = this.store.listTasks();
     const task = ensure(
-      this.store.listTasks().find((entry) => entry.id === taskId),
+      tasks.find((entry) => entry.id === taskId),
       404,
       "TASK_NOT_FOUND",
       "Task not found"
@@ -312,6 +412,15 @@ export class BoardService {
       "WORKSPACE_NOT_FOUND",
       "Workspace not found"
     );
+    let executionWorkspace = workspace;
+
+    if (workspace.isGitRepo) {
+      task.worktree = await this.gitWorktrees.ensureTaskWorktree(workspace, task);
+      executionWorkspace = {
+        ...workspace,
+        rootPath: task.worktree.path ?? workspace.rootPath
+      };
+    }
 
     const runId = createId();
     const run: Run = {
@@ -325,7 +434,6 @@ export class BoardService {
     };
 
     const runs = [...this.store.listRuns(), run];
-    const tasks = this.store.listTasks();
     const taskIndex = tasks.findIndex((entry) => entry.id === task.id);
     tasks[taskIndex] = {
       ...task,
@@ -361,7 +469,7 @@ export class BoardService {
             logFile: this.store.createLogPath(run.id)
           },
           task,
-          workspace
+          workspace: executionWorkspace
         },
         {
           onOutput: async (output) => {
@@ -509,6 +617,44 @@ export class BoardService {
     return { task, run };
   }
 
+  public async cleanupTaskWorktree(taskId: string): Promise<Task> {
+    if (this.activeRuns.has(taskId)) {
+      throw new AppError(
+        409,
+        "TASK_RUNNING",
+        "Stop the active run before cleaning up the task worktree"
+      );
+    }
+
+    const tasks = this.store.listTasks();
+    const task = ensure(
+      tasks.find((entry) => entry.id === taskId),
+      404,
+      "TASK_NOT_FOUND",
+      "Task not found"
+    );
+    const workspace = ensure(
+      this.store.listWorkspaces().find((entry) => entry.id === task.workspaceId),
+      404,
+      "WORKSPACE_NOT_FOUND",
+      "Workspace not found"
+    );
+
+    task.worktree = await this.gitWorktrees.cleanupTaskWorktree(workspace, task);
+    task.updatedAt = new Date().toISOString();
+
+    this.store.setTasks(tasks);
+    await this.store.save();
+    this.events.publish({
+      type: "task.updated",
+      action: "updated",
+      taskId: task.id,
+      task
+    });
+
+    return task;
+  }
+
   public async planTask(taskId: string): Promise<{ task: Task; plan: string }> {
     const tasks = this.store.listTasks();
     const task = ensure(
@@ -524,6 +670,17 @@ export class BoardService {
         "TASK_NOT_PLANNABLE",
         "Only backlog tasks can generate a plan"
       );
+    }
+
+    const workspace = ensure(
+      this.store.listWorkspaces().find((entry) => entry.id === task.workspaceId),
+      404,
+      "WORKSPACE_NOT_FOUND",
+      "Workspace not found"
+    );
+
+    if (workspace.isGitRepo) {
+      task.worktree = await this.gitWorktrees.ensureTaskWorktree(workspace, task);
     }
 
     const plan = this.buildTaskPlan(task);
@@ -563,6 +720,27 @@ export class BoardService {
     }
 
     return this.store.readLogEntries(runId);
+  }
+
+  private async resetTaskWorktree(
+    task: Task,
+    workspace: Workspace,
+    requestedBaseRef?: string
+  ): Promise<TaskWorktree> {
+    if (!workspace.isGitRepo) {
+      return createTaskWorktree(task.id, task.title, {
+        workspace,
+        branchName: task.worktree.branchName,
+        status: "removed"
+      });
+    }
+
+    return createTaskWorktree(task.id, task.title, {
+      workspace,
+      baseRef: await this.gitWorktrees.resolveBaseRef(workspace, requestedBaseRef),
+      branchName: task.worktree.branchName,
+      status: "not_created"
+    });
   }
 
   private async recoverOrphanedRuns(): Promise<void> {

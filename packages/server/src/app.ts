@@ -2,10 +2,12 @@ import { Hono } from "hono";
 
 import {
   buildOpenApiDocument,
+  validateCleanupTaskWorktreeParams,
   validateCreateTaskBody,
   validateCreateWorkspaceBody,
   validateDeleteTaskParams,
   validateDeleteWorkspaceParams,
+  validateListWorkspaceGitRefsParams,
   validateListRunsParams,
   validateListTasksQuery,
   validatePlanTaskParams,
@@ -72,6 +74,16 @@ export function createApp(service: BoardService): Hono {
     );
     const workspace = await service.updateWorkspace(params.workspaceId, body);
     return c.json(ok({ workspace }));
+  });
+
+  app.get("/api/workspaces/:workspaceId/git/refs", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateListWorkspaceGitRefsParams,
+      "Invalid workspace params"
+    );
+    const items = await service.listWorkspaceGitRefs(params.workspaceId);
+    return c.json(ok({ items }));
   });
 
   app.delete("/api/workspaces/:workspaceId", async (c) => {
@@ -156,6 +168,16 @@ export function createApp(service: BoardService): Hono {
     );
     const result = await service.planTask(params.taskId);
     return c.json(ok(result));
+  });
+
+  app.post("/api/tasks/:taskId/worktree/cleanup", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateCleanupTaskWorktreeParams,
+      "Invalid task params"
+    );
+    const task = await service.cleanupTaskWorktree(params.taskId);
+    return c.json(ok({ task }));
   });
 
   app.get("/api/tasks/:taskId/runs", (c) => {

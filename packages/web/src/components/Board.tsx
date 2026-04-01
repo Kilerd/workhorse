@@ -29,10 +29,6 @@ function groupTasks(): Record<DisplayTaskColumn, DisplayTask[]> {
   };
 }
 
-function getWorkspaceName(workspaces: Workspace[], workspaceId: string) {
-  return workspaces.find((workspace) => workspace.id === workspaceId)?.name ?? "Unknown";
-}
-
 export function Board({
   tasks,
   workspaces,
@@ -77,7 +73,8 @@ export function Board({
               <div className="column-list">
                 {grouped[column.id].map((task, index) => {
                   const isActive = task.id === selectedTaskId;
-                  const workspaceName = getWorkspaceName(workspaces, task.workspaceId);
+                  const workspace = workspaces.find((entry) => entry.id === task.workspaceId);
+                  const workspaceName = workspace?.name ?? "Unknown";
                   return (
                     <Draggable draggableId={task.id} index={index} key={task.id}>
                       {(dragProvided, dragSnapshot) => (
@@ -111,6 +108,11 @@ export function Board({
                           </p>
                           <div className="task-card-meta">
                             <span>{workspaceName}</span>
+                            {workspace?.isGitRepo ? (
+                              <span className={`status status-worktree-${task.worktree.status}`}>
+                                {task.worktree.status.replaceAll("_", " ")}
+                              </span>
+                            ) : null}
                             <span>{formatRelativeTime(task.updatedAt)}</span>
                           </div>
                           <div className="task-card-footer">

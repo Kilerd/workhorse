@@ -8,8 +8,34 @@ import {
   parseRunLogEntries,
   serializeRunLogEntry
 } from "../lib/run-log.js";
+import { createTaskWorktree } from "../lib/task-worktree.js";
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
+
+function migrateState(state: AppState): AppState {
+  const workspaces = Array.isArray(state.workspaces) ? state.workspaces : [];
+  const workspaceById = new Map(workspaces.map((workspace) => [workspace.id, workspace]));
+  const tasks = (Array.isArray(state.tasks) ? state.tasks : []).map((task) => {
+    if ("worktree" in task && task.worktree) {
+      return task as Task;
+    }
+
+    const workspace = workspaceById.get(task.workspaceId);
+    return {
+      ...task,
+      worktree: createTaskWorktree(task.id, task.title, {
+        workspace
+      })
+    } satisfies Task;
+  });
+
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    workspaces,
+    tasks,
+    runs: Array.isArray(state.runs) ? state.runs : []
+  };
+}
 
 export class StateStore {
   public readonly dataDir: string;
@@ -43,7 +69,11 @@ export class StateStore {
     }
 
     const raw = await readFile(this.stateFile, "utf8");
-    this.state = JSON.parse(raw) as AppState;
+    this.state = migrateState(JSON.parse(raw) as AppState);
+    if (this.state.schemaVersion !== SCHEMA_VERSION) {
+      this.state.schemaVersion = SCHEMA_VERSION;
+    }
+    await this.save();
   }
 
   public snapshot(): AppState {

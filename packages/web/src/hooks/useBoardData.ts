@@ -220,6 +220,16 @@ export function useBoardData() {
     }
   });
 
+  const cleanupTaskWorktreeMutation = useMutation({
+    mutationFn: async (taskId: string) => {
+      const response = await api.cleanupTaskWorktree(taskId);
+      return unwrap(response).task;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
+    }
+  });
+
   const moveToTodoMutation = useMutation({
     mutationFn: async (taskId: string) => {
       const response = await api.updateTask(taskId, { column: "todo" });
@@ -342,6 +352,7 @@ export function useBoardData() {
     stopTask: stopTaskMutation.mutateAsync,
     updateTask: updateTaskMutation.mutateAsync,
     planTask: planTaskMutation.mutateAsync,
+    cleanupTaskWorktree: cleanupTaskWorktreeMutation.mutateAsync,
     moveToTodo: moveToTodoMutation.mutateAsync,
     markDone: markDoneMutation.mutateAsync,
     archiveTask: archiveMutation.mutateAsync,
@@ -354,6 +365,7 @@ export function useBoardData() {
       stopTaskMutation.isPending ||
       updateTaskMutation.isPending ||
       planTaskMutation.isPending ||
+      cleanupTaskWorktreeMutation.isPending ||
       moveToTodoMutation.isPending ||
       markDoneMutation.isPending ||
       archiveMutation.isPending ||

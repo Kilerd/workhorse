@@ -21,6 +21,7 @@ interface Props {
   onMoveToTodo(): void;
   onMarkDone(): void;
   onArchive(): void;
+  onCleanupWorktree(): void;
   onDelete(): void;
 }
 
@@ -39,6 +40,7 @@ export function TaskDetailsPanel({
   onMoveToTodo,
   onMarkDone,
   onArchive,
+  onCleanupWorktree,
   onDelete
 }: Props) {
   const [tab, setTab] = useState<"overview" | "logs">("overview");
@@ -69,7 +71,12 @@ export function TaskDetailsPanel({
     );
   }
 
-  const workspaceName = workspaces.find((workspace) => workspace.id === task.workspaceId)?.name ?? "Unknown";
+  const workspace = workspaces.find((entry) => entry.id === task.workspaceId) ?? null;
+  const workspaceName = workspace?.name ?? "Unknown";
+  const showWorktree = workspace?.isGitRepo ?? false;
+  const canCleanupWorktree =
+    showWorktree &&
+    (task.worktree.status === "ready" || task.worktree.status === "cleanup_pending");
 
   return (
     <aside className={["details-panel", className].filter(Boolean).join(" ")}>
@@ -89,6 +96,11 @@ export function TaskDetailsPanel({
             onMarkDone={onMarkDone}
             onArchive={onArchive}
           />
+          {canCleanupWorktree ? (
+            <button type="button" className="button button-secondary" onClick={onCleanupWorktree}>
+              {task.worktree.status === "cleanup_pending" ? "Retry cleanup" : "Remove worktree"}
+            </button>
+          ) : null}
           <button type="button" className="button button-danger" onClick={onDelete}>
             Delete
           </button>
@@ -136,6 +148,40 @@ export function TaskDetailsPanel({
             <h3>Description</h3>
             <p className="details-description">{task.description || "No description yet."}</p>
           </section>
+          {showWorktree ? (
+            <section className="details-section">
+              <h3>Worktree</h3>
+              <dl className="details-grid">
+                <div>
+                  <dt>Status</dt>
+                  <dd>{task.worktree.status.replaceAll("_", " ")}</dd>
+                </div>
+                <div>
+                  <dt>Base ref</dt>
+                  <dd>{task.worktree.baseRef || "none"}</dd>
+                </div>
+                <div>
+                  <dt>Branch</dt>
+                  <dd>{task.worktree.branchName}</dd>
+                </div>
+                <div>
+                  <dt>Last sync</dt>
+                  <dd>
+                    {task.worktree.lastSyncedBaseAt
+                      ? formatRelativeTime(task.worktree.lastSyncedBaseAt)
+                      : "not yet"}
+                  </dd>
+                </div>
+              </dl>
+              <div className="details-kv">
+                <strong>Path</strong>
+                <code>{task.worktree.path ?? "not created"}</code>
+              </div>
+              {task.worktree.cleanupReason ? (
+                <p className="details-note">{task.worktree.cleanupReason}</p>
+              ) : null}
+            </section>
+          ) : null}
           <section className="details-section">
             <h3>Runs</h3>
             <div className="run-list">

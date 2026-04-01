@@ -206,6 +206,47 @@
         ]
       }
     },
+    "/api/workspaces/{workspaceId}/git/refs": {
+      "get": {
+        "operationId": "listWorkspaceGitRefs",
+        "summary": "List Git refs for a workspace",
+        "tags": [
+          "Workspaces"
+        ],
+        "responses": {
+          "200": {
+            "description": "Workspace Git refs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceGitRefsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Workspace not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
     "/api/tasks": {
       "get": {
         "operationId": "listTasks",
@@ -349,6 +390,57 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DeleteTaskResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/tasks/{taskId}/worktree/cleanup": {
+      "post": {
+        "operationId": "cleanupTaskWorktree",
+        "summary": "Cleanup a task worktree",
+        "tags": [
+          "Tasks"
+        ],
+        "responses": {
+          "200": {
+            "description": "Cleaned up task worktree",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CleanupTaskWorktreeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unable to cleanup task worktree",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
                 }
               }
             }
@@ -704,6 +796,91 @@
           "updatedAt"
         ]
       },
+      "WorkspaceGitRef": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/WorkspaceGitRefKind"
+          },
+          "isDefault": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "isDefault"
+        ]
+      },
+      "WorkspaceGitRefKind": {
+        "oneOf": [
+          {
+            "enum": [
+              "remote"
+            ]
+          },
+          {
+            "enum": [
+              "local"
+            ]
+          }
+        ]
+      },
+      "TaskWorktree": {
+        "type": "object",
+        "properties": {
+          "baseRef": {
+            "type": "string"
+          },
+          "branchName": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TaskWorktreeStatus"
+          },
+          "cleanupReason": {
+            "type": "string"
+          },
+          "lastSyncedBaseAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "baseRef",
+          "branchName",
+          "status"
+        ]
+      },
+      "TaskWorktreeStatus": {
+        "oneOf": [
+          {
+            "enum": [
+              "not_created"
+            ]
+          },
+          {
+            "enum": [
+              "ready"
+            ]
+          },
+          {
+            "enum": [
+              "cleanup_pending"
+            ]
+          },
+          {
+            "enum": [
+              "removed"
+            ]
+          }
+        ]
+      },
       "Task": {
         "type": "object",
         "properties": {
@@ -731,6 +908,9 @@
           "runnerConfig": {
             "$ref": "#/components/schemas/RunnerConfig"
           },
+          "worktree": {
+            "$ref": "#/components/schemas/TaskWorktree"
+          },
           "lastRunId": {
             "type": "string"
           },
@@ -750,6 +930,7 @@
           "order",
           "runnerType",
           "runnerConfig",
+          "worktree",
           "createdAt",
           "updatedAt"
         ]
@@ -970,6 +1151,17 @@
           "rootPath"
         ]
       },
+      "ListWorkspaceGitRefsParams": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId"
+        ]
+      },
       "UpdateWorkspaceBody": {
         "type": "object",
         "properties": {
@@ -1020,6 +1212,9 @@
             "type": "string"
           },
           "workspaceId": {
+            "type": "string"
+          },
+          "worktreeBaseRef": {
             "type": "string"
           },
           "column": {
@@ -1094,6 +1289,9 @@
             "type": "string"
           },
           "workspaceId": {
+            "type": "string"
+          },
+          "worktreeBaseRef": {
             "type": "string"
           },
           "column": {
@@ -1211,6 +1409,17 @@
           "taskId"
         ]
       },
+      "CleanupTaskWorktreeParams": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      },
       "ListRunsParams": {
         "type": "object",
         "properties": {
@@ -1290,6 +1499,37 @@
         },
         "required": [
           "workspace"
+        ]
+      },
+      "WorkspaceGitRefsResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/WorkspaceGitRefsData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "WorkspaceGitRefsData": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceGitRef"
+            }
+          }
+        },
+        "required": [
+          "items"
         ]
       },
       "DeleteWorkspaceResponse": {
@@ -1492,6 +1732,34 @@
           "plan"
         ]
       },
+      "CleanupTaskWorktreeResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/CleanupTaskWorktreeData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "CleanupTaskWorktreeData": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "$ref": "#/components/schemas/Task"
+          }
+        },
+        "required": [
+          "task"
+        ]
+      },
       "RunsResponse": {
         "type": "object",
         "properties": {
@@ -1617,6 +1885,11 @@
         "oneOf": [
           {
             "enum": [
+              "status"
+            ]
+          },
+          {
+            "enum": [
               "system"
             ]
           },
@@ -1643,11 +1916,6 @@
           {
             "enum": [
               "plan"
-            ]
-          },
-          {
-            "enum": [
-              "status"
             ]
           }
         ]

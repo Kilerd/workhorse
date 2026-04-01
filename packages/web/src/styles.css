@@ -323,7 +323,9 @@ dt {
 .task-card-desc,
 .task-card-meta,
 .run-row span:last-child,
-.details-description {
+.details-description,
+.details-note,
+.modal-note p {
   color: var(--muted);
 }
 
@@ -436,6 +438,26 @@ dt {
 
 .status-archived {
   background: rgba(248, 113, 113, 0.14);
+}
+
+.status-worktree-not_created {
+  background: rgba(114, 200, 255, 0.12);
+  color: #c9ecff;
+}
+
+.status-worktree-ready {
+  background: rgba(52, 211, 153, 0.14);
+  color: #b9f7dd;
+}
+
+.status-worktree-cleanup_pending {
+  background: rgba(251, 191, 36, 0.16);
+  color: #ffe39f;
+}
+
+.status-worktree-removed {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--muted);
 }
 
 .tone-backlog {
@@ -569,6 +591,37 @@ dt {
 .log-viewer {
   white-space: pre-wrap;
   line-height: 1.6;
+}
+
+.details-kv,
+.modal-note {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(9, 13, 28, 0.75);
+  padding: 14px;
+}
+
+.details-kv strong,
+.modal-note span {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.details-kv code,
+.modal-note code {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+}
+
+.details-note,
+.modal-note p {
+  margin: 0;
+  line-height: 1.5;
 }
 
 .run-list {
