@@ -5,6 +5,8 @@ import type { Workspace } from "@workhorse/contracts";
 import { api } from "@/lib/api";
 import type { DisplayTaskColumn, TaskFormValues } from "@/lib/task-view";
 
+const DEFAULT_CODEX_PROMPT = "请完成用户请求的任务。";
+
 interface WorkspaceModalProps {
   open: boolean;
   onClose(): void;
@@ -85,7 +87,7 @@ export function TaskModal({ open, workspaces, onClose, onSubmit }: TaskModalProp
   const [workspaceId, setWorkspaceId] = useState(workspaces[0]?.id ?? "");
   const [runnerType, setRunnerType] = useState<"shell" | "codex">("codex");
   const [shellCommand, setShellCommand] = useState("npm test");
-  const [prompt, setPrompt] = useState("Implement the requested task.");
+  const [prompt, setPrompt] = useState(DEFAULT_CODEX_PROMPT);
   const [column, setColumn] = useState<TaskFormValues["column"]>("backlog");
   const [worktreeBaseRef, setWorktreeBaseRef] = useState("");
   const selectedWorkspace = useMemo(
@@ -111,7 +113,7 @@ export function TaskModal({ open, workspaces, onClose, onSubmit }: TaskModalProp
       setWorkspaceId(workspaces[0]?.id ?? "");
       setRunnerType("codex");
       setShellCommand("npm test");
-      setPrompt("Implement the requested task.");
+      setPrompt(DEFAULT_CODEX_PROMPT);
       setColumn("backlog");
       setWorktreeBaseRef("");
     }
@@ -264,7 +266,7 @@ export function TaskModal({ open, workspaces, onClose, onSubmit }: TaskModalProp
                 rows={5}
                 value={prompt}
                 onChange={(event) => setPrompt(event.target.value)}
-                placeholder="Implement the requested task."
+                placeholder={DEFAULT_CODEX_PROMPT}
               />
             </label>
           )}
