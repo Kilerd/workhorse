@@ -616,10 +616,18 @@ export class CodexAcpRunner implements RunnerAdapter {
   }
 
   private buildPrompt(context: RunnerStartContext, config: CodexRunnerConfig): string {
+    const description = context.task.description.trim();
     const sections = [
-      `Task: ${context.task.title}`,
-      config.prompt.trim()
+      `Task: ${context.task.title}`
     ];
+
+    if (description) {
+      sections.push(`Task description:\n${description}`);
+    }
+
+    sections.push(
+      config.prompt.trim()
+    );
 
     if (context.workspace.isGitRepo) {
       sections.push(

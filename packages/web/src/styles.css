@@ -574,6 +574,22 @@ pre {
   min-height: 0;
 }
 
+.details-content-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.95fr);
+  gap: 14px;
+  padding: 16px;
+  align-items: start;
+}
+
+.details-primary-column,
+.details-log-column,
+.live-log-panel {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
 .details-hero,
 .details-section,
 .details-kv,
@@ -636,6 +652,21 @@ pre {
   display: grid;
   gap: 14px;
   padding: 16px;
+  min-height: 0;
+}
+
+.details-body-logs {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.details-section-log {
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+}
+
+.live-log-panel .details-section-log {
+  grid-template-rows: auto auto minmax(0, 1fr);
+  min-height: clamp(420px, 72vh, 860px);
 }
 
 .details-grid {
@@ -747,9 +778,11 @@ pre {
 
 .log-empty,
 .log-stream {
-  min-height: 260px;
-  max-height: 58vh;
-  overflow: auto;
+  height: clamp(260px, 58vh, 680px);
+  overflow-x: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   border: 1px solid var(--border);
   background: var(--panel);
   padding: 8px;
@@ -766,10 +799,12 @@ pre {
   display: grid;
   gap: 10px;
   align-content: start;
+  grid-auto-rows: max-content;
 }
 
 .log-entry {
-  overflow: hidden;
+  display: grid;
+  min-width: 0;
 }
 
 .log-entry-header {
@@ -814,6 +849,8 @@ pre {
   word-break: break-word;
   line-height: 1.65;
   font-size: 0.72rem;
+  overflow-x: auto;
+  overflow-y: visible;
 }
 
 .modal-backdrop {
@@ -922,6 +959,7 @@ pre {
   }
 
   .details-grid,
+  .details-content-grid,
   .details-stats,
   .modal-grid {
     grid-template-columns: 1fr;

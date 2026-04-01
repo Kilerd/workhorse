@@ -6,18 +6,14 @@ import type { DisplayTask } from "@/lib/task-view";
 import { LiveLog } from "./LiveLog";
 import { TaskActionBar } from "./TaskActionBar";
 
-export type TaskDetailsTab = "overview" | "logs";
-
 interface Props {
   className?: string;
   task: DisplayTask | null;
-  tab: TaskDetailsTab;
   runs: Run[];
   workspaces: Workspace[];
   selectedRunId: string | null;
   runLogLoading?: boolean;
   onBack?(): void;
-  onTabChange(tab: TaskDetailsTab): void;
   onSelectRun(runId: string): void;
   liveLog: RunLogEntry[];
   runLog: RunLogEntry[];
@@ -78,13 +74,11 @@ function formatRunStatusCopy(run: Run | null, task: DisplayTask): string {
 export function TaskDetailsPanel({
   className,
   task,
-  tab,
   runs,
   workspaces,
   selectedRunId,
   runLogLoading = false,
   onBack,
-  onTabChange,
   onSelectRun,
   liveLog,
   runLog,
@@ -129,11 +123,6 @@ export function TaskDetailsPanel({
     task.runnerConfig.type === "shell"
       ? task.runnerConfig.command
       : task.runnerConfig.prompt;
-
-  function handleRunSelect(runId: string) {
-    onSelectRun(runId);
-    onTabChange("logs");
-  }
 
   return (
     <aside className={["details-panel", className].filter(Boolean).join(" ")}>
@@ -182,40 +171,10 @@ export function TaskDetailsPanel({
             Delete
           </button>
         </div>
-
-        <div className="details-tabs" role="tablist" aria-label="Task detail sections">
-          <button
-            type="button"
-            className={tab === "overview" ? "tab tab-active" : "tab"}
-            role="tab"
-            aria-selected={tab === "overview"}
-            aria-controls="task-details-panel-overview"
-            id="task-details-tab-overview"
-            onClick={() => onTabChange("overview")}
-          >
-            Overview
-          </button>
-          <button
-            type="button"
-            className={tab === "logs" ? "tab tab-active" : "tab"}
-            role="tab"
-            aria-selected={tab === "logs"}
-            aria-controls="task-details-panel-logs"
-            id="task-details-tab-logs"
-            onClick={() => onTabChange("logs")}
-          >
-            Logs
-          </button>
-        </div>
       </section>
 
-      {tab === "overview" ? (
-        <div
-          className="details-body"
-          role="tabpanel"
-          id="task-details-panel-overview"
-          aria-labelledby="task-details-tab-overview"
-        >
+      <div className="details-content-grid">
+        <div className="details-primary-column">
           <section className="details-section">
             <h3>Description</h3>
             <p className="details-description">{task.description || "No description yet."}</p>
@@ -316,7 +275,7 @@ export function TaskDetailsPanel({
                     type="button"
                     key={run.id}
                     className={run.id === viewedRun?.id ? "run-row run-row-active" : "run-row"}
-                    onClick={() => handleRunSelect(run.id)}
+                    onClick={() => onSelectRun(run.id)}
                   >
                     <span>{titleCase(run.status)}</span>
                     <span>{formatRelativeTime(run.startedAt)}</span>
@@ -326,12 +285,8 @@ export function TaskDetailsPanel({
             </div>
           </section>
         </div>
-      ) : (
-        <div
-          role="tabpanel"
-          id="task-details-panel-logs"
-          aria-labelledby="task-details-tab-logs"
-        >
+
+        <div className="details-log-column">
           <LiveLog
             task={task}
             activeRun={activeRun}
@@ -339,9 +294,10 @@ export function TaskDetailsPanel({
             liveLog={liveLog}
             runLog={runLog}
             isLoading={runLogLoading}
+            showStatus={false}
           />
         </div>
-      )}
+      </div>
     </aside>
   );
 }

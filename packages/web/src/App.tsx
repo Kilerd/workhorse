@@ -7,13 +7,12 @@ import {
   Routes,
   useLocation,
   useNavigate,
-  useParams,
-  useSearchParams
+  useParams
 } from "react-router-dom";
 import type { RunLogEntry, ServerEvent, Workspace } from "@workhorse/contracts";
 
 import { Board } from "@/components/Board";
-import { TaskDetailsPanel, type TaskDetailsTab } from "@/components/TaskDetailsPanel";
+import { TaskDetailsPanel } from "@/components/TaskDetailsPanel";
 import { TaskModal, WorkspaceModal } from "@/components/WorkspaceModals";
 import { TopBar } from "@/components/TopBar";
 import { useBoardData } from "@/hooks/useBoardData";
@@ -252,28 +251,12 @@ function TaskDetailsRoute({
 }: TaskDetailsRouteProps) {
   const navigate = useNavigate();
   const { taskId } = useParams<{ taskId: string }>();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const tab: TaskDetailsTab = searchParams.get("tab") === "logs" ? "logs" : "overview";
 
   useEffect(() => {
     if (taskId && board.selectedTask?.id !== taskId) {
       board.setTaskSelection(taskId);
     }
   }, [board.selectedTask?.id, board.setTaskSelection, taskId]);
-
-  const handleTabChange = useCallback(
-    (nextTab: TaskDetailsTab) => {
-      const nextSearchParams = new URLSearchParams(searchParams);
-      if (nextTab === "overview") {
-        nextSearchParams.delete("tab");
-      } else {
-        nextSearchParams.set("tab", nextTab);
-      }
-
-      setSearchParams(nextSearchParams, { replace: true });
-    },
-    [searchParams, setSearchParams]
-  );
 
   const task = taskId ? allTasks.find((entry) => entry.id === taskId) ?? null : null;
   const isSelectedTaskActive = task ? board.selectedTask?.id === task.id : false;
@@ -292,7 +275,7 @@ function TaskDetailsRoute({
 
       return (await api.getRunLog(activeRunId)).data.items;
     },
-    enabled: isSelectedTaskActive && tab === "logs" && Boolean(activeRunId)
+    enabled: isSelectedTaskActive && Boolean(activeRunId)
   });
   const runLog = runLogQuery.data ?? [];
 
@@ -333,12 +316,10 @@ function TaskDetailsRoute({
       <TaskDetailsPanel
         className="details-panel-page"
         task={task}
-        tab={tab}
         runs={runs}
         workspaces={workspaces}
         selectedRunId={board.selectedRunId}
         runLogLoading={runLogQuery.isLoading}
-        onTabChange={handleTabChange}
         onBack={() => navigate("/")}
         onSelectRun={board.setSelectedRunId}
         liveLog={liveLog}

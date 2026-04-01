@@ -8,6 +8,7 @@ interface Props {
   liveLog: RunLogEntry[];
   runLog: RunLogEntry[];
   isLoading?: boolean;
+  showStatus?: boolean;
 }
 
 const ENTRY_LABELS: Record<RunLogEntry["kind"], string> = {
@@ -199,7 +200,8 @@ export function LiveLog({
   viewedRun,
   liveLog,
   runLog,
-  isLoading = false
+  isLoading = false,
+  showStatus = true
 }: Props) {
   const entries = useMemo(() => {
     const merged = [...runLog, ...liveLog];
@@ -226,29 +228,37 @@ export function LiveLog({
   }, [entries]);
 
   return (
-    <div className="details-body">
-      <section className="details-section">
-        <h3>Run status</h3>
-        <div className="active-run">
-          <div>
-            <strong>{activeRun ? activeRun.status : "idle"}</strong>
-            <p>{activeRun ? activeRun.id : "No active run"}</p>
+    <div className={showStatus ? "details-body details-body-logs" : "live-log-panel"}>
+      {showStatus ? (
+        <section className="details-section">
+          <h3>Run status</h3>
+          <div className="active-run">
+            <div>
+              <strong>{activeRun ? activeRun.status : "idle"}</strong>
+              <p>{activeRun ? activeRun.id : "No active run"}</p>
+            </div>
+            <div className="muted">{task.runnerType}</div>
           </div>
-          <div className="muted">{task.runnerType}</div>
-        </div>
-        {viewedRun ? (
+          {viewedRun ? (
+            <p className="muted">
+              Viewing {viewedRun.status} run {viewedRun.id}
+            </p>
+          ) : null}
+          {viewedRun?.status === "canceled" && !activeRun ? (
+            <p className="muted">
+              This run was canceled. That usually means it was stopped manually, or the server restarted while the task was running.
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
+      <section className="details-section details-section-log">
+        <h3>Live log</h3>
+        {!showStatus && viewedRun ? (
           <p className="muted">
             Viewing {viewedRun.status} run {viewedRun.id}
           </p>
         ) : null}
-        {viewedRun?.status === "canceled" && !activeRun ? (
-          <p className="muted">
-            This run was canceled. That usually means it was stopped manually, or the server restarted while the task was running.
-          </p>
-        ) : null}
-      </section>
-      <section className="details-section">
-        <h3>Live log</h3>
         {aggregatedEntries.length === 0 ? (
           isLoading ? (
             <div className="log-empty">Loading logs...</div>
