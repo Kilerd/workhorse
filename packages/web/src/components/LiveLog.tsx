@@ -1,10 +1,10 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Run, RunLogEntry, Task } from "@workhorse/contracts";
 
 import {
   ENTRY_LABELS,
   getToolStatus,
-  isCommandExecutionEntry,
+  partitionLiveLogEntries,
   metadataEntries,
   normalizeToolTitle,
   prepareLiveLogEntries
@@ -80,6 +80,98 @@ function renderEntryHeader(entry: RunLogEntry, collapsible = false) {
   );
 }
 
+function getConsoleEntryTone(entry: RunLogEntry): "agent" | "stderr" | "system" | "tool" | "stdout" {
+  if (entry.stream === "stderr") {
+    return "stderr";
+  }
+
+  if (entry.kind === "agent") {
+    return "agent";
+  }
+
+  if (entry.kind === "tool_output") {
+    return "tool";
+  }
+
+  if (entry.stream === "system") {
+    return "system";
+  }
+
+  return "stdout";
+}
+
+function getConsoleEntryLabel(entry: RunLogEntry): string {
+  if (entry.kind === "agent") {
+    return "agent";
+  }
+
+  if (entry.kind === "tool_output") {
+    return entry.stream === "stderr" ? "tool stderr" : "tool output";
+  }
+
+  return entry.stream;
+}
+
+function renderConsoleEntry(entry: RunLogEntry) {
+  const tone = getConsoleEntryTone(entry);
+  const title =
+    entry.title && !["Agent output", "Tool output"].includes(entry.title)
+      ? entry.title
+      : null;
+
+  return (
+    <article key={entry.id} className={`log-console-entry log-console-entry-${tone}`}>
+      <div className="log-console-entry-meta">
+        <div className="log-console-entry-heading">
+          <span className={`log-console-label log-console-label-${tone}`}>
+            {getConsoleEntryLabel(entry)}
+          </span>
+          {title ? <strong>{title}</strong> : null}
+        </div>
+        <time dateTime={entry.timestamp}>{formatTimestamp(entry.timestamp)}</time>
+      </div>
+      <pre className="log-console-entry-body">{entry.text}</pre>
+    </article>
+  );
+}
+
+function renderArchiveSection({
+  title,
+  description,
+  entries
+}: {
+  title: string;
+  description: string;
+  entries: RunLogEntry[];
+}) {
+  if (entries.length === 0) {
+    return null;
+  }
+
+  return (
+    <details className="log-archive">
+      <summary className="log-archive-summary">
+        <div className="log-archive-copy">
+          <strong>{title}</strong>
+          <p>{description}</p>
+        </div>
+        <span className="log-stream-chip">{entries.length} items</span>
+      </summary>
+      <div className="log-archive-list">
+        {entries.map((entry) => (
+          <details
+            key={entry.id}
+            className={`log-entry log-entry-${entry.kind} log-entry-collapsible log-archive-entry`}
+          >
+            {renderEntryHeader(entry, true)}
+            <div className="log-entry-content">{renderEntryBody(entry)}</div>
+          </details>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 export function LiveLog({
   task,
   activeRun,
@@ -92,6 +184,42 @@ export function LiveLog({
   const aggregatedEntries = useMemo(() => {
     return prepareLiveLogEntries([...runLog, ...liveLog]);
   }, [liveLog, runLog]);
+  const { streamEntries, activeEntries, completedToolEntries, systemEntries } = useMemo(() => {
+    return partitionLiveLogEntries(aggregatedEntries);
+  }, [aggregatedEntries]);
+  const streamRef = useRef<HTMLDivElement>(null);
+  const [isPinnedToBottom, setIsPinnedToBottom] = useState(true);
+  const streamTailKey = useMemo(() => {
+    const lastEntry = streamEntries.at(-1);
+    if (!lastEntry) {
+      return "empty";
+    }
+
+    return `${lastEntry.id}:${lastEntry.timestamp}:${lastEntry.text.length}`;
+  }, [streamEntries]);
+
+  useEffect(() => {
+    setIsPinnedToBottom(true);
+  }, [viewedRun?.id]);
+
+  useEffect(() => {
+    const node = streamRef.current;
+    if (!node || !isPinnedToBottom) {
+      return;
+    }
+
+    node.scrollTop = node.scrollHeight;
+  }, [isPinnedToBottom, streamTailKey]);
+
+  function handleStreamScroll() {
+    const node = streamRef.current;
+    if (!node) {
+      return;
+    }
+
+    const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
+    setIsPinnedToBottom(distanceFromBottom < 32);
+  }
 
   return (
     <div className={showStatus ? "details-body details-body-logs" : "live-log-panel"}>
@@ -126,41 +254,96 @@ export function LiveLog({
       ) : null}
 
       <section className="details-section details-section-log">
-        <h3>Live log</h3>
-        {!showStatus && viewedRun ? (
-          <p className="muted">
-            Viewing {viewedRun.status} run {viewedRun.id}
-          </p>
-        ) : null}
+        <div className="log-summary-bar">
+          <div className="log-summary-copy">
+            <h3>Live log</h3>
+            {!showStatus && viewedRun ? (
+              <p className="muted">
+                Viewing {viewedRun.status} run {viewedRun.id}
+              </p>
+            ) : null}
+          </div>
+          {aggregatedEntries.length > 0 ? (
+            <div className="log-summary-chips">
+              {streamEntries.length > 0 ? (
+                <span className="meta-chip">{streamEntries.length} stream</span>
+              ) : null}
+              {activeEntries.length > 0 ? (
+                <span className="meta-chip meta-chip-status">{activeEntries.length} active</span>
+              ) : null}
+              {completedToolEntries.length > 0 ? (
+                <span className="meta-chip">{completedToolEntries.length} done</span>
+              ) : null}
+              {systemEntries.length > 0 ? (
+                <span className="meta-chip">{systemEntries.length} system</span>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
         {aggregatedEntries.length === 0 ? (
           isLoading ? (
             <div className="log-empty">Loading logs...</div>
           ) : (
-          <div className="log-empty">
-            Logs will appear here when a run starts.
-          </div>
+            <div className="log-empty">
+              Logs will appear here when a run starts.
+            </div>
           )
         ) : (
-          <div className="log-stream">
-            {aggregatedEntries.map((entry) => (
-              isCommandExecutionEntry(entry) ? (
-                <details
-                  key={entry.id}
-                  className={`log-entry log-entry-${entry.kind} log-entry-collapsible`}
+          <div className="log-stack">
+            {activeEntries.length > 0 ? (
+              <div className="log-group">
+                <div className="log-group-header">
+                  <p className="log-group-title">Current activity</p>
+                </div>
+                <div className="log-activity-lane">
+                  {activeEntries.map((entry) => (
+                    <article
+                      key={entry.id}
+                      className={`log-entry log-entry-${entry.kind} log-activity-card`}
+                    >
+                      {renderEntryHeader(entry)}
+                      <div className="log-entry-content">{renderEntryBody(entry)}</div>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="log-group">
+              <div className="log-group-header">
+                <p className="log-group-title">Output stream</p>
+                {streamEntries.length > 0 && !isPinnedToBottom ? (
+                  <span className="log-stream-chip">Scroll paused</span>
+                ) : null}
+              </div>
+              {streamEntries.length > 0 ? (
+                <div
+                  ref={streamRef}
+                  className="log-console"
+                  onScroll={handleStreamScroll}
                 >
-                  {renderEntryHeader(entry, true)}
-                  <div className="log-entry-content">{renderEntryBody(entry)}</div>
-                </details>
+                  {streamEntries.map((entry) => renderConsoleEntry(entry))}
+                </div>
               ) : (
-                <article
-                  key={entry.id}
-                  className={`log-entry log-entry-${entry.kind}`}
-                >
-                  {renderEntryHeader(entry)}
-                  {renderEntryBody(entry)}
-                </article>
-              )
-            ))}
+                <div className="log-empty">
+                  {activeEntries.length > 0
+                    ? "Structured run events are listed above. Console output will appear here when the runner prints something."
+                    : "This run did not emit stdout or stderr output."}
+                </div>
+              )}
+            </div>
+
+            {renderArchiveSection({
+              title: "Completed steps",
+              description: "Finished tool calls are tucked away here so the live stream stays readable.",
+              entries: completedToolEntries
+            })}
+
+            {renderArchiveSection({
+              title: "System notices",
+              description: "Runner bootstrap and infrastructure chatter from the underlying session.",
+              entries: systemEntries
+            })}
           </div>
         )}
       </section>

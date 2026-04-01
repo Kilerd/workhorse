@@ -19,6 +19,46 @@ const HIDDEN_METADATA_KEYS = new Set([
   "itemType"
 ]);
 
+export interface LiveLogDisplayGroups {
+  streamEntries: RunLogEntry[];
+  activeEntries: RunLogEntry[];
+  completedToolEntries: RunLogEntry[];
+  systemEntries: RunLogEntry[];
+}
+
+function compactActiveEntries(entries: RunLogEntry[]): RunLogEntry[] {
+  const seen = new Set<string>();
+  const compacted: RunLogEntry[] = [];
+
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (!entry) {
+      continue;
+    }
+
+    if (entry.kind === "tool_call") {
+      compacted.push(entry);
+      continue;
+    }
+
+    const key =
+      entry.kind === "plan"
+        ? "plan"
+        : entry.kind === "status"
+          ? `status:${entry.title ?? entry.metadata?.itemType ?? ""}`
+          : `${entry.kind}:${entry.title ?? ""}`;
+
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    compacted.push(entry);
+  }
+
+  return compacted.reverse();
+}
+
 export function metadataEntries(entry: RunLogEntry): Array<[string, string]> {
   return Object.entries(entry.metadata ?? {}).filter(
     (field): field is [string, string] => {
@@ -273,4 +313,46 @@ export function prepareLiveLogEntries(entries: RunLogEntry[]): RunLogEntry[] {
         metadata: entry.metadata ? { ...entry.metadata } : undefined
       }))
   );
+}
+
+export function partitionLiveLogEntries(
+  entries: RunLogEntry[]
+): LiveLogDisplayGroups {
+  const groups = entries.reduce<LiveLogDisplayGroups>(
+    (groups, entry) => {
+      if (entry.kind === "tool_call") {
+        const toolStatus = getToolStatus(entry)?.tone;
+        if (toolStatus === "completed") {
+          groups.completedToolEntries.push(entry);
+        } else {
+          groups.activeEntries.push(entry);
+        }
+        return groups;
+      }
+
+      if (entry.kind === "plan" || entry.kind === "status") {
+        groups.activeEntries.push(entry);
+        return groups;
+      }
+
+      if (entry.kind === "system") {
+        groups.systemEntries.push(entry);
+        return groups;
+      }
+
+      groups.streamEntries.push(entry);
+      return groups;
+    },
+    {
+      streamEntries: [],
+      activeEntries: [],
+      completedToolEntries: [],
+      systemEntries: []
+    }
+  );
+
+  return {
+    ...groups,
+    activeEntries: compactActiveEntries(groups.activeEntries)
+  };
 }

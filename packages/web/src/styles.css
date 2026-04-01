@@ -776,16 +776,83 @@ pre {
   color: var(--muted);
 }
 
+.log-summary-bar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.log-summary-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.log-summary-copy h3,
+.log-group-title,
+.log-archive-copy p {
+  margin: 0;
+}
+
+.log-summary-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.log-stack,
+.log-group {
+  display: grid;
+  gap: 10px;
+  min-height: 0;
+}
+
+.log-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.log-group-title {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.log-activity-lane {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.log-activity-card {
+  background: var(--panel-strong);
+}
+
+.log-activity-card .log-entry-header {
+  background: linear-gradient(180deg, var(--surface-soft), transparent);
+}
+
+.log-activity-card .log-entry-body {
+  max-height: 11rem;
+  overflow-y: auto;
+}
+
 .log-empty,
-.log-stream {
+.log-console {
   height: clamp(260px, 58vh, 680px);
   overflow-x: auto;
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   border: 1px solid var(--border);
-  background: var(--panel);
-  padding: 8px;
+  background: linear-gradient(180deg, var(--panel-strong), var(--bg));
+  padding: 12px;
   border-radius: 0;
 }
 
@@ -795,11 +862,104 @@ pre {
   color: var(--muted);
 }
 
-.log-stream {
+.log-console {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   align-content: start;
   grid-auto-rows: max-content;
+}
+
+.log-console-entry {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 0 8px 10px;
+  border-left: 2px solid var(--border);
+}
+
+.log-console-entry + .log-console-entry {
+  border-top: 1px solid var(--border);
+}
+
+.log-console-entry-meta,
+.log-console-entry-heading {
+  display: flex;
+  min-width: 0;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.log-console-entry-meta {
+  align-items: flex-start;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 0.64rem;
+}
+
+.log-console-entry-heading {
+  align-items: center;
+}
+
+.log-console-label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 0 6px;
+  border: 1px solid currentColor;
+  font-family: var(--font-mono);
+  font-size: 0.56rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.log-console-entry-body {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.7;
+  font-size: 0.74rem;
+  overflow-x: auto;
+}
+
+.log-console-entry-stdout {
+  border-left-color: rgba(104, 199, 246, 0.34);
+}
+
+.log-console-label-stdout {
+  color: var(--info);
+}
+
+.log-console-entry-agent {
+  border-left-color: rgba(73, 214, 196, 0.42);
+}
+
+.log-console-label-agent {
+  color: var(--accent);
+}
+
+.log-console-entry-tool {
+  border-left-color: rgba(242, 195, 92, 0.42);
+}
+
+.log-console-label-tool {
+  color: var(--warning);
+}
+
+.log-console-entry-system {
+  border-left-color: rgba(140, 161, 160, 0.34);
+}
+
+.log-console-label-system {
+  color: var(--muted);
+}
+
+.log-console-entry-stderr {
+  border-left-color: rgba(240, 113, 113, 0.46);
+}
+
+.log-console-label-stderr,
+.log-console-entry-stderr .log-console-entry-body {
+  color: var(--danger);
 }
 
 .log-entry {
@@ -899,6 +1059,49 @@ pre {
 
 .log-entry-collapsible[open] > .log-entry-content {
   display: block;
+}
+
+.log-archive {
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.log-archive-summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.log-archive-summary::-webkit-details-marker {
+  display: none;
+}
+
+.log-archive-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.log-archive-copy strong {
+  font-size: 0.78rem;
+}
+
+.log-archive-copy p {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.log-archive-list {
+  display: grid;
+  gap: 8px;
+  padding: 0 12px 12px;
+}
+
+.log-archive-entry {
+  background: var(--surface-faint);
 }
 
 .modal-backdrop {
