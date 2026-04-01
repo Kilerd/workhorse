@@ -30,9 +30,12 @@ export const BOARD_COLUMNS: Array<{
   { id: "todo", title: "Todo", tone: "tone-todo" },
   { id: "running", title: "Running", tone: "tone-running" },
   { id: "review", title: "Review", tone: "tone-review" },
-  { id: "done", title: "Done", tone: "tone-done" },
-  { id: "archived", title: "Archived", tone: "tone-archived" }
+  { id: "done", title: "Done", tone: "tone-done" }
 ];
+
+export function isBoardVisibleColumn(column: TaskColumn): boolean {
+  return column !== "archived";
+}
 
 export function getTaskActions(column: DisplayTaskColumn): TaskActionDescriptor[] {
   switch (column) {

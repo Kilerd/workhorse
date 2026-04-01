@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { Workspace } from "@workhorse/contracts";
 
 import { api } from "@/lib/api";
-import type { DisplayTaskColumn, TaskFormValues } from "@/lib/task-view";
+import { BOARD_COLUMNS, type TaskFormValues } from "@/lib/task-view";
 import { resolveTaskWorkspaceId } from "@/lib/workspace-selection";
 
 const DEFAULT_CODEX_PROMPT = "请完成用户请求的任务。";
@@ -260,14 +260,13 @@ export function TaskModal({
             <span>Column</span>
             <select
               value={column}
-              onChange={(event) => setColumn(event.target.value as DisplayTaskColumn)}
+              onChange={(event) => setColumn(event.target.value as TaskFormValues["column"])}
             >
-              <option value="backlog">backlog</option>
-              <option value="todo">todo</option>
-              <option value="running">running</option>
-              <option value="review">review</option>
-              <option value="done">done</option>
-              <option value="archived">archived</option>
+              {BOARD_COLUMNS.map((boardColumn) => (
+                <option key={boardColumn.id} value={boardColumn.id}>
+                  {boardColumn.id}
+                </option>
+              ))}
             </select>
           </label>
           {selectedWorkspace?.isGitRepo ? (
