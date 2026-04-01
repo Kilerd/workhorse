@@ -31,6 +31,10 @@ export interface GitHubPullRequestProvider {
     repositoryFullName: string,
     headRef: string
   ): Promise<GitHubPullRequestSummary | null>;
+  findMergedPullRequest(
+    repositoryFullName: string,
+    headRef: string
+  ): Promise<GitHubPullRequestSummary | null>;
   listRequiredChecks(
     repositoryFullName: string,
     pullRequest: number | string
@@ -230,6 +234,21 @@ export class GhCliPullRequestProvider implements GitHubPullRequestProvider {
     repositoryFullName: string,
     headRef: string
   ): Promise<GitHubPullRequestSummary | null> {
+    return this.findPullRequestByState(repositoryFullName, headRef, "open");
+  }
+
+  public async findMergedPullRequest(
+    repositoryFullName: string,
+    headRef: string
+  ): Promise<GitHubPullRequestSummary | null> {
+    return this.findPullRequestByState(repositoryFullName, headRef, "merged");
+  }
+
+  private async findPullRequestByState(
+    repositoryFullName: string,
+    headRef: string,
+    state: "open" | "merged"
+  ): Promise<GitHubPullRequestSummary | null> {
     const repository = normalizeGitHubRepositoryFullName(repositoryFullName);
     if (!repository) {
       throw new AppError(
@@ -248,7 +267,7 @@ export class GhCliPullRequestProvider implements GitHubPullRequestProvider {
         "--head",
         headRef,
         "--state",
-        "open",
+        state,
         "--limit",
         "1",
         "--json",
@@ -260,7 +279,7 @@ export class GhCliPullRequestProvider implements GitHubPullRequestProvider {
       throw new AppError(
         502,
         "GITHUB_MONITOR_REQUEST_FAILED",
-        `gh pr list failed for ${repository}#${headRef}: ${error instanceof Error ? error.message : String(error)}`
+        `gh pr list failed for ${repository}#${headRef} (${state}): ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }
