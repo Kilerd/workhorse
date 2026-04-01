@@ -34,9 +34,15 @@ export interface RunFinishedEvent {
   task: Task;
 }
 
+export interface RuntimeReviewMonitorPolledEvent {
+  type: "runtime.review-monitor.polled";
+  polledAt: string;
+}
+
 export type ServerEvent =
   | WorkspaceUpdatedEvent
   | TaskUpdatedEvent
   | RunStartedEvent
   | RunOutputEvent
-  | RunFinishedEvent;
+  | RunFinishedEvent
+  | RuntimeReviewMonitorPolledEvent;

@@ -496,10 +496,15 @@ export interface components {
             /** @enum {unknown} */
             status: "ok";
             state: components["schemas"]["PickAppStateschemaVersion"];
+            reviewMonitor: components["schemas"]["HealthReviewMonitorData"];
         };
         /** @description From T, pick a set of properties whose keys are in the union K */
         PickAppStateschemaVersion: {
             schemaVersion: number;
+        };
+        HealthReviewMonitorData: {
+            intervalMs: number;
+            lastPolledAt?: string;
         };
     };
     responses: never;

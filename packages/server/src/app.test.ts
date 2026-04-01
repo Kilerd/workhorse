@@ -12,7 +12,7 @@ import { StateStore } from "./persistence/state-store.js";
 import { BoardService } from "./services/board-service.js";
 import { EventBus } from "./ws/event-bus.js";
 
-async function createRuntime() {
+async function createRuntime(options?: { reviewMonitorIntervalMs?: number }) {
   const dataDir = await mkdtemp(join(tmpdir(), "workhorse-test-"));
   const workspaceDir = join(dataDir, "workspace");
   await mkdir(workspaceDir, { recursive: true });
@@ -21,7 +21,7 @@ async function createRuntime() {
   await service.initialize();
 
   return {
-    app: createApp(service),
+    app: createApp(service, options),
     dataDir,
     workspaceDir,
     service
@@ -141,6 +141,19 @@ describe("workhorse runtime", () => {
     expect(openApiPayload.openapi).toBe("3.0.3");
     expect(openApiPayload.paths["/api/tasks"]).toBeDefined();
     expect(openApiPayload.paths["/api/tasks/{taskId}/plan"]).toBeDefined();
+  });
+
+  it("reports review monitor timing in health responses", async () => {
+    const { app } = await createRuntime({ reviewMonitorIntervalMs: 15_000 });
+
+    const response = await app.request("/api/health");
+    expect(response.status).toBe(200);
+
+    const payload = await response.json();
+    expect(payload.data.reviewMonitor).toEqual({
+      intervalMs: 15_000,
+      lastPolledAt: undefined
+    });
   });
 
   it("runs a shell task to completion and persists the log", async () => {
