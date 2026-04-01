@@ -288,6 +288,44 @@ describe("workhorse runtime", () => {
     expect(recoveredTask?.column).toBe("review");
   });
 
+  it("stores the pull request url on tasks that move into review", async () => {
+    const { service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+    const task = await createCodexTask(service, workspace.id);
+    const prUrl = "https://github.com/acme/widgets/pull/42";
+
+    (service as any).runners.codex = {
+      type: "codex",
+      async start(_context: unknown, hooks: { onExit(result: {
+        status: "succeeded";
+        metadata: Record<string, string>;
+      }): Promise<void> }) {
+        void sleep(25).then(() =>
+          hooks.onExit({
+            status: "succeeded",
+            metadata: {
+              prUrl
+            }
+          })
+        );
+
+        return {
+          command: "codex test runner",
+          async stop() {}
+        };
+      }
+    };
+
+    await service.startTask(task.id);
+
+    const completedRun = await waitForRunToFinish(service, task.id);
+    const updatedTask = service.listTasks({}).find((entry) => entry.id === task.id);
+
+    expect(completedRun.metadata?.prUrl).toBe(prUrl);
+    expect(updatedTask?.column).toBe("review");
+    expect(updatedTask?.pullRequestUrl).toBe(prUrl);
+  });
+
   it("rejects workspace paths that are not directories", async () => {
     const { service, dataDir } = await createRuntime();
     const filePath = join(dataDir, "not-a-directory.txt");

@@ -264,6 +264,7 @@ export interface components {
             runnerConfig: components["schemas"]["RunnerConfig"];
             worktree: components["schemas"]["TaskWorktree"];
             lastRunId?: string;
+            pullRequestUrl?: string;
             createdAt: string;
             updatedAt: string;
         };

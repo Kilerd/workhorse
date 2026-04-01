@@ -125,6 +125,22 @@ export function Board({
                             ) : null}
                           </div>
 
+                          {task.column === "review" && task.pullRequestUrl ? (
+                            <div className="task-card-pr">
+                              <span className="meta-token">PR</span>
+                              <a
+                                className="task-pr-link"
+                                href={task.pullRequestUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(event) => event.stopPropagation()}
+                                onKeyDown={(event) => event.stopPropagation()}
+                              >
+                                {task.pullRequestUrl}
+                              </a>
+                            </div>
+                          ) : null}
+
                           <div className="task-card-footer">
                             <span className="task-card-time">
                               Updated {formatRelativeTime(task.updatedAt)}

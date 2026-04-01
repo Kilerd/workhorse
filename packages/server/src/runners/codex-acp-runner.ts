@@ -5,6 +5,7 @@ import type { CodexRunnerConfig } from "@workhorse/contracts";
 import WebSocket from "ws";
 
 import { AppError } from "../lib/errors.js";
+import { extractGitHubPullRequestUrl } from "../lib/github.js";
 import { getAvailablePort } from "../lib/net.js";
 import type {
   RunnerAdapter,
@@ -328,6 +329,15 @@ export class CodexAcpRunner implements RunnerAdapter {
     let threadId = "";
     let turnId = "";
     const streamedAgentItems = new Set<string>();
+    const capturedText: string[] = [];
+
+    const appendCapturedText = (value: string | undefined): void => {
+      if (!value?.trim()) {
+        return;
+      }
+
+      capturedText.push(value);
+    };
 
     const finalize = async (result: {
       status: "succeeded" | "failed" | "interrupted" | "canceled";
@@ -344,7 +354,10 @@ export class CodexAcpRunner implements RunnerAdapter {
         child.kill("SIGTERM");
       }
 
-      await hooks.onExit(result);
+      await hooks.onExit({
+        ...result,
+        metadata: this.attachPullRequestMetadata(result.metadata, capturedText)
+      });
     };
 
     const send = (message: JsonRpcRequest | JsonRpcNotification): void => {
@@ -422,6 +435,7 @@ export class CodexAcpRunner implements RunnerAdapter {
       switch (notification.method) {
         case "item/agentMessage/delta": {
           const params = notification.params as AgentMessageDeltaNotification;
+          appendCapturedText(params.delta);
           const streamKey = buildItemStreamKey({
             turnId: params.turnId,
             itemId: params.itemId
@@ -446,6 +460,7 @@ export class CodexAcpRunner implements RunnerAdapter {
         }
         case "item/assistantMessage/delta": {
           const params = notification.params as AgentMessageDeltaNotification;
+          appendCapturedText(params.delta);
           const streamKey = buildItemStreamKey({
             turnId: params.turnId,
             itemId: params.itemId
@@ -470,6 +485,7 @@ export class CodexAcpRunner implements RunnerAdapter {
         }
         case "command/exec/outputDelta": {
           const params = notification.params as CommandExecOutputDeltaNotification;
+          appendCapturedText(params.delta);
           await hooks.onOutput({
             kind: "tool_output",
             text: params.delta,
@@ -481,6 +497,7 @@ export class CodexAcpRunner implements RunnerAdapter {
         }
         case "item/commandExecution/outputDelta": {
           const params = notification.params as CommandExecutionOutputDeltaNotification;
+          appendCapturedText(params.delta);
           await hooks.onOutput({
             kind: "tool_output",
             text: params.delta,
@@ -514,6 +531,7 @@ export class CodexAcpRunner implements RunnerAdapter {
             skipAgentLifecycle: streamKey ? streamedAgentItems.has(streamKey) : false
           });
           if (output) {
+            appendCapturedText(output.text);
             await hooks.onOutput(output);
           }
           if (streamKey) {
@@ -665,6 +683,23 @@ export class CodexAcpRunner implements RunnerAdapter {
     }
 
     return sections.filter(Boolean).join("\n\n");
+  }
+
+  private attachPullRequestMetadata(
+    metadata: Record<string, string> | undefined,
+    capturedText: string[]
+  ): Record<string, string> | undefined {
+    const prUrl =
+      metadata?.prUrl ??
+      extractGitHubPullRequestUrl(capturedText.join("\n"));
+    if (!prUrl) {
+      return metadata;
+    }
+
+    return {
+      ...(metadata ?? {}),
+      prUrl
+    };
   }
 
   private resolvePreviousThreadId(context: RunnerStartContext): string | null {
