@@ -5,19 +5,39 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 import { describe, expect, it } from "vitest";
 
-import type { Run } from "@workhorse/contracts";
+import type { HealthCodexQuotaData, Run } from "@workhorse/contracts";
 
 import { createApp } from "./app.js";
 import { StateStore } from "./persistence/state-store.js";
+import type { CodexAppServer } from "./runners/codex-app-server-manager.js";
 import { BoardService } from "./services/board-service.js";
 import { EventBus } from "./ws/event-bus.js";
 
-async function createRuntime(options?: { reviewMonitorIntervalMs?: number }) {
+function createCodexAppServerStub(
+  quota: HealthCodexQuotaData | null = null
+): CodexAppServer {
+  return {
+    async initialize() {},
+    async createConnection() {
+      throw new Error("Codex app-server connections are not available in tests");
+    },
+    async readAccountRateLimits() {
+      return quota;
+    }
+  };
+}
+
+async function createRuntime(options?: {
+  reviewMonitorIntervalMs?: number;
+  codexAppServer?: CodexAppServer;
+}) {
   const dataDir = await mkdtemp(join(tmpdir(), "workhorse-test-"));
   const workspaceDir = join(dataDir, "workspace");
   await mkdir(workspaceDir, { recursive: true });
 
-  const service = new BoardService(new StateStore(dataDir), new EventBus());
+  const service = new BoardService(new StateStore(dataDir), new EventBus(), {
+    codexAppServer: options?.codexAppServer ?? createCodexAppServerStub()
+  });
   await service.initialize();
 
   return {
@@ -154,6 +174,35 @@ describe("workhorse runtime", () => {
       intervalMs: 15_000,
       lastPolledAt: undefined
     });
+    expect(payload.data.codexQuota).toBeNull();
+  });
+
+  it("reports codex quota in health responses", async () => {
+    const codexQuota: HealthCodexQuotaData = {
+      limitId: "codex",
+      planType: "plus",
+      primary: {
+        usedPercent: 60,
+        remainingPercent: 40,
+        windowDurationMins: 300,
+        resetsAt: "2026-04-01T10:45:37.000Z"
+      },
+      secondary: {
+        usedPercent: 17,
+        remainingPercent: 83,
+        windowDurationMins: 10_080,
+        resetsAt: "2026-04-08T05:45:37.000Z"
+      }
+    };
+    const { app } = await createRuntime({
+      codexAppServer: createCodexAppServerStub(codexQuota)
+    });
+
+    const response = await app.request("/api/health");
+    expect(response.status).toBe(200);
+
+    const payload = await response.json();
+    expect(payload.data.codexQuota).toEqual(codexQuota);
   });
 
   it("runs a shell task to completion and persists the log", async () => {

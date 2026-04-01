@@ -3,7 +3,10 @@ import WebSocket from "ws";
 
 import { AppError } from "../lib/errors.js";
 import { extractGitHubPullRequestUrl } from "../lib/github.js";
-import { CodexAppServerManager } from "./codex-app-server-manager.js";
+import {
+  CodexAppServerManager,
+  type CodexAppServer
+} from "./codex-app-server-manager.js";
 import type {
   RunnerAdapter,
   RunnerControl,
@@ -336,7 +339,7 @@ export class CodexAcpRunner implements RunnerAdapter {
   public readonly type = "codex" as const;
 
   public constructor(
-    private readonly appServerManager: CodexAppServerManager = new CodexAppServerManager()
+    private readonly appServerManager: CodexAppServer = new CodexAppServerManager()
   ) {}
 
   public async start(

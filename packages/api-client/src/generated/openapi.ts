@@ -529,6 +529,7 @@ export interface components {
             status: "ok";
             state: components["schemas"]["PickAppStateschemaVersion"];
             reviewMonitor: components["schemas"]["HealthReviewMonitorData"];
+            codexQuota: null | components["schemas"]["HealthCodexQuotaData"];
         };
         /** @description From T, pick a set of properties whose keys are in the union K */
         PickAppStateschemaVersion: {
@@ -537,6 +538,18 @@ export interface components {
         HealthReviewMonitorData: {
             intervalMs: number;
             lastPolledAt?: string;
+        };
+        HealthCodexQuotaData: {
+            limitId?: string;
+            planType?: "free" | "go" | "plus" | "pro" | "team" | "business" | "enterprise" | "edu" | "unknown";
+            primary?: components["schemas"]["HealthCodexQuotaWindowData"];
+            secondary?: components["schemas"]["HealthCodexQuotaWindowData"];
+        };
+        HealthCodexQuotaWindowData: {
+            usedPercent: number;
+            remainingPercent: number;
+            windowDurationMins?: number;
+            resetsAt?: string;
         };
     };
     responses: never;

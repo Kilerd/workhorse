@@ -66,7 +66,8 @@ export function useBoardData() {
 
   const healthQuery = useQuery({
     queryKey: queryKey("health"),
-    queryFn: async () => unwrap(await api.health())
+    queryFn: async () => unwrap(await api.health()),
+    refetchInterval: 60_000
   });
 
   const displayedTasks = useMemo<DisplayTask[]>(
