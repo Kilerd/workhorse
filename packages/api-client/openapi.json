@@ -1885,11 +1885,6 @@
         "oneOf": [
           {
             "enum": [
-              "status"
-            ]
-          },
-          {
-            "enum": [
               "system"
             ]
           },
@@ -1916,6 +1911,11 @@
           {
             "enum": [
               "plan"
+            ]
+          },
+          {
+            "enum": [
+              "status"
             ]
           }
         ]

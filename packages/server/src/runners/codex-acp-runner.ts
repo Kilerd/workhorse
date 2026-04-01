@@ -575,7 +575,7 @@ export class CodexAcpRunner implements RunnerAdapter {
       input: [
         {
           type: "text",
-          text: config.prompt,
+          text: this.buildPrompt(context, config),
           text_elements: []
         }
       ]
@@ -613,6 +613,27 @@ export class CodexAcpRunner implements RunnerAdapter {
         }, 1_000).unref();
       }
     };
+  }
+
+  private buildPrompt(context: RunnerStartContext, config: CodexRunnerConfig): string {
+    const sections = [
+      `Task: ${context.task.title}`,
+      config.prompt.trim()
+    ];
+
+    if (context.workspace.isGitRepo) {
+      sections.push(
+        [
+          "Git requirements:",
+          `- Work on branch \`${context.task.worktree.branchName}\` from \`${context.task.worktree.baseRef}\`.`,
+          "- You are responsible for creating any commits, pushing the branch, and opening or updating the GitHub PR yourself before finishing.",
+          "- Use Conventional Commits for commit messages.",
+          "- Mention the PR URL in your final response."
+        ].join("\n")
+      );
+    }
+
+    return sections.filter(Boolean).join("\n\n");
   }
 
   private async connect(url: string): Promise<WebSocket> {

@@ -57,4 +57,5 @@ By default Workhorse stores local state under `~/.workhorse`:
 ## Notes
 
 - Codex tasks use ACP over WebSocket by launching `codex app-server --listen ...`.
+- Git-backed Codex tasks are instructed to commit, push, and open a GitHub PR before they finish.
 - If the runtime restarts while a task is active, the previous run is marked as `canceled` and the task moves to `review`.

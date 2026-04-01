@@ -483,46 +483,12 @@ export class BoardService {
             });
           },
           onExit: async (result) => {
-            const currentRuns = this.store.listRuns();
-            const currentTasks = this.store.listTasks();
-            const runEntry = ensure(
-              currentRuns.find((entry) => entry.id === run.id),
-              404,
-              "RUN_NOT_FOUND",
-              "Run not found"
-            );
-            const taskEntry = ensure(
-              currentTasks.find((entry) => entry.id === task.id),
-              404,
-              "TASK_NOT_FOUND",
-              "Task not found"
-            );
-
-            runEntry.status = this.activeRuns.get(task.id)?.stopRequested
-              ? "canceled"
-              : result.status;
-            runEntry.exitCode = result.exitCode;
-            runEntry.endedAt = new Date().toISOString();
-            runEntry.metadata = result.metadata;
-
-            taskEntry.column = "review";
-            taskEntry.updatedAt = new Date().toISOString();
-
-            this.store.setRuns(currentRuns);
-            this.store.setTasks(currentTasks);
-            await this.store.save();
-            this.activeRuns.delete(task.id);
-            this.events.publish({
-              type: "task.updated",
-              action: "updated",
-              taskId: taskEntry.id,
-              task: taskEntry
-            });
-            this.events.publish({
-              type: "run.finished",
-              taskId: taskEntry.id,
-              run: runEntry,
-              task: taskEntry
+            await this.transitionTaskRunToReview(task.id, run.id, {
+              status: this.activeRuns.get(task.id)?.stopRequested
+                ? "canceled"
+                : result.status,
+              exitCode: result.exitCode,
+              metadata: result.metadata
             });
           }
         }
@@ -745,30 +711,76 @@ export class BoardService {
 
   private async recoverOrphanedRuns(): Promise<void> {
     const runs = this.store.listRuns();
-    const tasks = this.store.listTasks();
-    let changed = false;
-
     for (const run of runs) {
       if (run.status !== "queued" && run.status !== "running") {
         continue;
       }
 
-      run.status = "canceled";
-      run.endedAt = new Date().toISOString();
-      changed = true;
-
-      const task = tasks.find((entry) => entry.id === run.taskId);
-      if (task) {
-        task.column = "review";
-        task.updatedAt = new Date().toISOString();
-      }
+      await this.transitionTaskRunToReview(run.taskId, run.id, {
+        status: "canceled"
+      });
     }
+  }
 
-    if (changed) {
-      this.store.setRuns(runs);
-      this.store.setTasks(tasks);
-      await this.store.save();
+  private async transitionTaskRunToReview(
+    taskId: string,
+    runId: string,
+    result: {
+      status: Run["status"];
+      exitCode?: number;
+      metadata?: Record<string, string>;
     }
+  ): Promise<{ run: Run; task: Task }> {
+    const currentRuns = this.store.listRuns();
+    const currentTasks = this.store.listTasks();
+    const runEntry = ensure(
+      currentRuns.find((entry) => entry.id === runId),
+      404,
+      "RUN_NOT_FOUND",
+      "Run not found"
+    );
+    const taskEntry = ensure(
+      currentTasks.find((entry) => entry.id === taskId),
+      404,
+      "TASK_NOT_FOUND",
+      "Task not found"
+    );
+
+    runEntry.status = result.status;
+    runEntry.exitCode = result.exitCode;
+    runEntry.endedAt = new Date().toISOString();
+    runEntry.metadata = result.metadata
+      ? {
+          ...(runEntry.metadata ?? {}),
+          ...result.metadata
+        }
+      : runEntry.metadata;
+
+    taskEntry.column = "review";
+    taskEntry.updatedAt = new Date().toISOString();
+
+    this.store.setRuns(currentRuns);
+    this.store.setTasks(currentTasks);
+    await this.store.save();
+    this.activeRuns.delete(taskId);
+    this.events.publish({
+      type: "task.updated",
+      action: "updated",
+      taskId: taskEntry.id,
+      task: taskEntry
+    });
+
+    this.events.publish({
+      type: "run.finished",
+      taskId: taskEntry.id,
+      run: runEntry,
+      task: taskEntry
+    });
+
+    return {
+      run: runEntry,
+      task: taskEntry
+    };
   }
 
   private async ensureReadableDirectory(path: string): Promise<void> {
@@ -859,6 +871,7 @@ export class BoardService {
       "4. Verify the result with the smallest useful test or smoke check.",
       "## Exit Criteria",
       "- The task result is visible or testable.",
+      "- For Git-backed Codex tasks, the agent creates or updates a GitHub PR before finishing.",
       "- Any follow-up work is captured before moving to review."
     ].join("\n\n");
   }

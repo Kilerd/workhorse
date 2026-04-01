@@ -485,7 +485,7 @@ export interface components {
             metadata?: components["schemas"]["Recordstringstring"];
         };
         RunLogStream: "stdout" | "stderr" | "system";
-        RunLogKind: "status" | "system" | "text" | "agent" | "tool_call" | "tool_output" | "plan";
+        RunLogKind: "system" | "text" | "agent" | "tool_call" | "tool_output" | "plan" | "status";
         HealthResponse: {
             /** @enum {unknown} */
             ok: true;
