@@ -367,6 +367,7 @@ function TaskDetailsRoute({
         onPlan={() => board.planTask(task.id)}
         onStart={() => board.startTask(task.id)}
         onStop={() => board.stopTask(task.id)}
+        onSendInput={(text) => board.sendTaskInput({ taskId: task.id, text })}
         onMoveToTodo={() => board.moveToTodo(task.id)}
         onMarkDone={() => board.markDone(task.id)}
         onArchive={() => board.archiveTask(task.id)}

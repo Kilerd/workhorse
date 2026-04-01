@@ -14,6 +14,10 @@ async function main(): Promise<void> {
   const events = new EventBus();
   const service = new BoardService(store, events);
   await service.initialize();
+  await service.warmCodexAppServer().catch((error) => {
+    console.error("Initial Codex app-server startup failed");
+    console.error(error);
+  });
   await service.pollGitReviewTasksForBaseUpdates().catch((error) => {
     console.error("Initial Git review monitor poll failed");
     console.error(error);

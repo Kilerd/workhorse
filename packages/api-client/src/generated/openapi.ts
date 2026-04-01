@@ -161,6 +161,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tasks/{taskId}/input": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send a user message to the task's Codex session */
+        post: operations["sendTaskInput"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tasks/{taskId}/plan": {
         parameters: {
             query?: never;
@@ -358,6 +375,12 @@ export interface components {
         StopTaskParams: {
             taskId: string;
         };
+        TaskInputParams: {
+            taskId: string;
+        };
+        TaskInputBody: {
+            text: string;
+        };
         PlanTaskParams: {
             taskId: string;
         };
@@ -441,6 +464,15 @@ export interface components {
             task: components["schemas"]["Task"];
             run: components["schemas"]["Run"];
         };
+        TaskInputResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["TaskInputData"];
+        };
+        TaskInputData: {
+            task: components["schemas"]["Task"];
+            run: components["schemas"]["Run"];
+        };
         PlanTaskResponse: {
             /** @enum {unknown} */
             ok: true;
@@ -486,7 +518,7 @@ export interface components {
             metadata?: components["schemas"]["Recordstringstring"];
         };
         RunLogStream: "stdout" | "stderr" | "system";
-        RunLogKind: "status" | "system" | "text" | "agent" | "tool_call" | "tool_output" | "plan";
+        RunLogKind: "system" | "text" | "user" | "agent" | "tool_call" | "tool_output" | "plan" | "status";
         HealthResponse: {
             /** @enum {unknown} */
             ok: true;
@@ -925,6 +957,50 @@ export interface operations {
                 };
             };
             /** @description Unable to stop task */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Task not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    sendTaskInput: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskInputBody"];
+            };
+        };
+        responses: {
+            /** @description Accepted task input */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskInputResponse"];
+                };
+            };
+            /** @description Unable to accept task input */
             400: {
                 headers: {
                     [name: string]: unknown;

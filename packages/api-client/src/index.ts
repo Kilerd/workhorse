@@ -13,6 +13,8 @@ import type {
   RunsResponse,
   StartTaskResponse,
   StopTaskResponse,
+  TaskInputBody,
+  TaskInputResponse,
   TaskResponse,
   TasksResponse,
   UpdateTaskBody,
@@ -71,6 +73,10 @@ export function createApiClient(baseUrl: string) {
     .path("/api/tasks/{taskId}/stop")
     .method("post")
     .create();
+  const sendTaskInput = fetcher
+    .path("/api/tasks/{taskId}/input")
+    .method("post")
+    .create();
   const planTask = fetcher
     .path("/api/tasks/{taskId}/plan")
     .method("post")
@@ -123,6 +129,11 @@ export function createApiClient(baseUrl: string) {
       (await startTask({ taskId })).data,
     stopTask: async (taskId: string): Promise<StopTaskResponse> =>
       (await stopTask({ taskId })).data,
+    sendTaskInput: async (
+      taskId: string,
+      body: TaskInputBody
+    ): Promise<TaskInputResponse> =>
+      (await sendTaskInput({ taskId, ...body })).data,
     planTask: async (taskId: string): Promise<PlanTaskResponse> =>
       (await planTask({ taskId })).data,
     cleanupTaskWorktree: async (

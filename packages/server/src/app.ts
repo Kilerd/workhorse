@@ -14,6 +14,8 @@ import {
   validateRunLogParams,
   validateStartTaskParams,
   validateStopTaskParams,
+  validateTaskInputBody,
+  validateTaskInputParams,
   validateUpdateTaskBody,
   validateUpdateTaskParams,
   validateUpdateWorkspaceBody,
@@ -176,6 +178,21 @@ export function createApp(
       "Invalid task params"
     );
     const result = await service.stopTask(params.taskId);
+    return c.json(ok(result));
+  });
+
+  app.post("/api/tasks/:taskId/input", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateTaskInputParams,
+      "Invalid task params"
+    );
+    const body = validateOrThrow(
+      await c.req.json(),
+      validateTaskInputBody,
+      "Invalid task input"
+    );
+    const result = await service.sendTaskInput(params.taskId, body);
     return c.json(ok(result));
   });
 

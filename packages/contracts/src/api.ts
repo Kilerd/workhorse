@@ -117,6 +117,14 @@ export interface StopTaskParams {
   taskId: string;
 }
 
+export interface TaskInputParams {
+  taskId: string;
+}
+
+export interface TaskInputBody {
+  text: string;
+}
+
 export interface PlanTaskParams {
   taskId: string;
 }
@@ -127,6 +135,11 @@ export interface StartTaskData {
 }
 
 export interface StopTaskData {
+  task: Task;
+  run: Run;
+}
+
+export interface TaskInputData {
   task: Task;
   run: Run;
 }
@@ -180,6 +193,7 @@ export type TaskResponse = ApiSuccess<TaskData>;
 export type DeleteTaskResponse = ApiSuccess<DeleteResult>;
 export type StartTaskResponse = ApiSuccess<StartTaskData>;
 export type StopTaskResponse = ApiSuccess<StopTaskData>;
+export type TaskInputResponse = ApiSuccess<TaskInputData>;
 export type PlanTaskResponse = ApiSuccess<PlanTaskData>;
 export type CleanupTaskWorktreeResponse = ApiSuccess<CleanupTaskWorktreeData>;
 export type RunsResponse = ApiSuccess<ListRunsData>;
@@ -224,6 +238,8 @@ export type SchemaName =
   | "DeleteTaskParams"
   | "StartTaskParams"
   | "StopTaskParams"
+  | "TaskInputParams"
+  | "TaskInputBody"
   | "PlanTaskParams"
   | "CleanupTaskWorktreeParams"
   | "ListRunsParams"
@@ -237,6 +253,7 @@ export type SchemaName =
   | "DeleteTaskResponse"
   | "StartTaskResponse"
   | "StopTaskResponse"
+  | "TaskInputResponse"
   | "PlanTaskResponse"
   | "CleanupTaskWorktreeResponse"
   | "RunsResponse"
@@ -505,6 +522,32 @@ export const endpointRegistry: EndpointSpec[] = [
       {
         status: 400,
         description: "Unable to stop task",
+        schema: "ApiError"
+      },
+      {
+        status: 404,
+        description: "Task not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "sendTaskInput",
+    method: "post",
+    path: "/api/tasks/{taskId}/input",
+    summary: "Send a user message to the task's Codex session",
+    tag: "Runs",
+    paramsSchema: "TaskInputParams",
+    bodySchema: "TaskInputBody",
+    responses: [
+      {
+        status: 200,
+        description: "Accepted task input",
+        schema: "TaskInputResponse"
+      },
+      {
+        status: 400,
+        description: "Unable to accept task input",
         schema: "ApiError"
       },
       {

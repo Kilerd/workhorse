@@ -1,12 +1,9 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { setTimeout as sleep } from "node:timers/promises";
-
 import type { CodexRunnerConfig } from "@workhorse/contracts";
 import WebSocket from "ws";
 
 import { AppError } from "../lib/errors.js";
 import { extractGitHubPullRequestUrl } from "../lib/github.js";
-import { getAvailablePort } from "../lib/net.js";
+import { CodexAppServerManager } from "./codex-app-server-manager.js";
 import type {
   RunnerAdapter,
   RunnerControl,
@@ -54,6 +51,10 @@ interface TurnStartResult {
   turn: {
     id: string;
   };
+}
+
+interface TurnSteerResult {
+  turnId: string;
 }
 
 interface TurnState {
@@ -334,6 +335,10 @@ export function classifyItemLifecycle(
 export class CodexAcpRunner implements RunnerAdapter {
   public readonly type = "codex" as const;
 
+  public constructor(
+    private readonly appServerManager: CodexAppServerManager = new CodexAppServerManager()
+  ) {}
+
   public async start(
     context: RunnerStartContext,
     hooks: RunnerLifecycleHooks
@@ -351,36 +356,8 @@ export class CodexAcpRunner implements RunnerAdapter {
     config: CodexRunnerConfig,
     hooks: RunnerLifecycleHooks
   ): Promise<RunnerControl> {
-    const port = await getAvailablePort();
-    const listenUrl = `ws://127.0.0.1:${port}`;
-    const child = spawn(
-      "codex",
-      ["app-server", "--listen", listenUrl],
-      {
-        cwd: context.workspace.rootPath,
-        env: process.env
-      }
-    );
-
-    child.stdout.on("data", async (chunk: Buffer) => {
-      await hooks.onOutput({
-        kind: "system",
-        text: chunk.toString("utf8"),
-        stream: "system",
-        title: "Codex ACP"
-      });
-    });
-
-    child.stderr.on("data", async (chunk: Buffer) => {
-      await hooks.onOutput({
-        kind: "system",
-        text: chunk.toString("utf8"),
-        stream: "system",
-        title: "Codex ACP"
-      });
-    });
-
-    const ws = await this.connect(listenUrl);
+    const connection = await this.appServerManager.createConnection();
+    const ws = connection.ws;
     const pending = new Map<JsonRpcId, PendingRequest>();
     let requestId = 0;
     let finalized = false;
@@ -424,9 +401,6 @@ export class CodexAcpRunner implements RunnerAdapter {
 
       finalized = true;
       ws.close();
-      if (!child.killed) {
-        child.kill("SIGTERM");
-      }
 
       await hooks.onExit({
         ...result,
@@ -452,19 +426,6 @@ export class CodexAcpRunner implements RunnerAdapter {
         pending.set(id, { resolve, reject });
       });
     };
-
-    child.on("error", async (error) => {
-      await hooks.onOutput({
-        kind: "system",
-        text: `${error.message}\n`,
-        stream: "system",
-        title: "Codex ACP error"
-      });
-      await finalize({
-        status: stopRequested ? "canceled" : threadId && turnId ? "interrupted" : "failed",
-        metadata: threadId && turnId ? { threadId, turnId } : undefined
-      });
-    });
 
     ws.on("message", async (rawMessage: WebSocket.RawData) => {
       let message: JsonRpcResponse | JsonRpcNotification | JsonRpcRequest;
@@ -690,15 +651,6 @@ export class CodexAcpRunner implements RunnerAdapter {
       }
     });
 
-    child.on("exit", async () => {
-      if (!finalized) {
-        await finalize({
-          status: stopRequested ? "canceled" : threadId && turnId ? "interrupted" : "failed",
-          metadata: threadId && turnId ? { threadId, turnId } : undefined
-        });
-      }
-    });
-
     await request<InitializeResult>("initialize", {
       clientInfo: {
         name: "workhorse",
@@ -720,17 +672,59 @@ export class CodexAcpRunner implements RunnerAdapter {
 
     const turn = await request<TurnStartResult>(
       "turn/start",
-      this.buildTurnStartParams(context, config, threadId)
+      this.buildTurnStartParams(context, config, threadId, thread.resumed)
     );
 
     turnId = turn.turn.id;
 
     return {
-      pid: child.pid ?? undefined,
-      command: `codex app-server --listen ${listenUrl}`,
+      pid: connection.pid,
+      command: connection.command,
       metadata: {
         threadId,
         turnId
+      },
+      sendInput: async (input) => {
+        const text = input.trim();
+        if (!text) {
+          return;
+        }
+
+        if (finalized || stopRequested) {
+          throw new AppError(409, "CODEX_SESSION_UNAVAILABLE", "Codex session is no longer active");
+        }
+
+        if (ws.readyState !== WebSocket.OPEN) {
+          throw new AppError(409, "CODEX_SESSION_UNAVAILABLE", "Codex session is disconnected");
+        }
+
+        if (!threadId) {
+          throw new AppError(409, "CODEX_THREAD_UNAVAILABLE", "Codex thread is unavailable");
+        }
+
+        const inputPayload = this.buildUserInputPayload(text);
+
+        if (turnId) {
+          const response = await request<TurnSteerResult>("turn/steer", {
+            threadId,
+            expectedTurnId: turnId,
+            input: inputPayload
+          });
+          turnId = response.turnId;
+        } else {
+          const response = await request<TurnStartResult>("turn/start", {
+            threadId,
+            input: inputPayload
+          });
+          turnId = response.turn.id;
+        }
+
+        return {
+          metadata: {
+            threadId,
+            turnId
+          }
+        };
       },
       async stop() {
         stopRequested = true;
@@ -741,18 +735,9 @@ export class CodexAcpRunner implements RunnerAdapter {
               turnId
             });
           } catch {
-            // Fall through to process termination.
+            // Let websocket close handling mark the session interrupted if needed.
           }
         }
-
-        if (!child.killed) {
-          child.kill("SIGTERM");
-        }
-        setTimeout(() => {
-          if (!child.killed) {
-            child.kill("SIGKILL");
-          }
-        }, 1_000).unref();
       }
     };
   }
@@ -784,6 +769,32 @@ export class CodexAcpRunner implements RunnerAdapter {
     }
 
     return sections.filter(Boolean).join("\n\n");
+  }
+
+  private buildFreshThreadFollowUpPrompt(
+    context: RunnerStartContext,
+    config: CodexRunnerConfig
+  ): string {
+    const userInput = context.inputText?.trim();
+    if (!userInput) {
+      return this.buildPrompt(context, config);
+    }
+
+    return [
+      this.buildPrompt(context, config),
+      "User follow-up:",
+      userInput
+    ].join("\n\n");
+  }
+
+  private buildUserInputPayload(text: string) {
+    return [
+      {
+        type: "text" as const,
+        text,
+        text_elements: []
+      }
+    ];
   }
 
   private attachPullRequestMetadata(
@@ -842,17 +853,17 @@ export class CodexAcpRunner implements RunnerAdapter {
   private buildTurnStartParams(
     context: RunnerStartContext,
     config: CodexRunnerConfig,
-    threadId: string
+    threadId: string,
+    resumed: boolean
   ) {
+    const turnInput =
+      context.inputText?.trim() && resumed
+        ? context.inputText.trim()
+        : this.buildFreshThreadFollowUpPrompt(context, config);
+
     return {
       threadId,
-      input: [
-        {
-          type: "text",
-          text: this.buildPrompt(context, config),
-          text_elements: []
-        }
-      ]
+      input: this.buildUserInputPayload(turnInput)
     };
   }
 
@@ -901,30 +912,6 @@ export class CodexAcpRunner implements RunnerAdapter {
       threadId: started.thread.id,
       resumed: false
     };
-  }
-
-  private async connect(url: string): Promise<WebSocket> {
-    let lastError: unknown;
-
-    for (let attempt = 0; attempt < 50; attempt += 1) {
-      try {
-        const socket = await new Promise<WebSocket>((resolve, reject) => {
-          const ws = new WebSocket(url);
-          ws.once("open", () => resolve(ws));
-          ws.once("error", reject);
-        });
-        return socket;
-      } catch (error) {
-        lastError = error;
-        await sleep(100);
-      }
-    }
-
-    throw new AppError(
-      500,
-      "CODEX_ACP_UNAVAILABLE",
-      `Unable to connect to Codex ACP server: ${String(lastError)}`
-    );
   }
 
   private async respondToServerRequest(

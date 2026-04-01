@@ -156,6 +156,27 @@ export function useBoardData() {
     }
   });
 
+  const sendTaskInputMutation = useMutation({
+    mutationFn: async ({
+      taskId,
+      text
+    }: {
+      taskId: string;
+      text: string;
+    }) => {
+      const response = await api.sendTaskInput(taskId, { text });
+      return unwrap(response);
+    },
+    onSuccess: async (result, { taskId }) => {
+      if (taskId === selectedTaskId) {
+        setSelectedRunId(result.run.id);
+      }
+
+      await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
+      await queryClient.invalidateQueries({ queryKey: queryKey("runs") });
+    }
+  });
+
   const updateTaskMutation = useMutation({
     mutationFn: async ({
       taskId,
@@ -326,6 +347,7 @@ export function useBoardData() {
     createTask: createTaskMutation.mutateAsync,
     startTask: startTaskMutation.mutateAsync,
     stopTask: stopTaskMutation.mutateAsync,
+    sendTaskInput: sendTaskInputMutation.mutateAsync,
     updateTask: updateTaskMutation.mutateAsync,
     planTask: planTaskMutation.mutateAsync,
     cleanupTaskWorktree: cleanupTaskWorktreeMutation.mutateAsync,
@@ -339,6 +361,7 @@ export function useBoardData() {
       createTaskMutation.isPending ||
       startTaskMutation.isPending ||
       stopTaskMutation.isPending ||
+      sendTaskInputMutation.isPending ||
       updateTaskMutation.isPending ||
       planTaskMutation.isPending ||
       cleanupTaskWorktreeMutation.isPending ||

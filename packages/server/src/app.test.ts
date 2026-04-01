@@ -419,6 +419,164 @@ describe("workhorse runtime", () => {
     expect(publishedOutput).toEqual(["first message", "second message"]);
   });
 
+  it("sends live input into an active codex run and persists it to the log", async () => {
+    const { service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+    const task = await createCodexTask(service, workspace.id, "review");
+    const sendInputCalls: string[] = [];
+
+    (service as any).runners.codex = {
+      type: "codex",
+      async start(_context: unknown, hooks: {
+        onExit(result: {
+          status: "canceled";
+        }): Promise<void>;
+      }) {
+        return {
+          command: "codex test runner",
+          metadata: {
+            threadId: "thread-1",
+            turnId: "turn-1"
+          },
+          async sendInput(text: string) {
+            sendInputCalls.push(text);
+            return {
+              metadata: {
+                threadId: "thread-1",
+                turnId: "turn-2"
+              }
+            };
+          },
+          async stop() {
+            await hooks.onExit({
+              status: "canceled"
+            });
+          }
+        };
+      }
+    };
+
+    const started = await service.startTask(task.id);
+    const result = await service.sendTaskInput(task.id, {
+      text: "Please fix the failing test too."
+    });
+
+    expect(result.run.id).toBe(started.run.id);
+    expect(sendInputCalls).toEqual(["Please fix the failing test too."]);
+
+    const log = await service.getRunLog(started.run.id);
+    expect(log).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "user",
+          title: "User input",
+          text: "Please fix the failing test too."
+        })
+      ])
+    );
+
+    await service.stopTask(task.id);
+    const completedRun = await waitForRunToFinish(service, task.id);
+    expect(completedRun.metadata?.turnId).toBe("turn-2");
+  });
+
+  it("starts a fresh run from review when sending follow-up input", async () => {
+    const { service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+    const task = await createCodexTask(service, workspace.id, "review");
+    const previousRunId = "run-previous";
+    const now = new Date().toISOString();
+    const store = (service as any).store as StateStore;
+
+    store.setTasks(
+      service.snapshot().tasks.map((entry) =>
+        entry.id === task.id
+          ? {
+              ...entry,
+              lastRunId: previousRunId
+            }
+          : entry
+      )
+    );
+    store.setRuns([
+      {
+        id: previousRunId,
+        taskId: task.id,
+        status: "succeeded",
+        runnerType: "codex",
+        command: "codex test runner",
+        startedAt: now,
+        endedAt: now,
+        logFile: store.createLogPath(previousRunId),
+        metadata: {
+          threadId: "thread-previous",
+          turnId: "turn-previous"
+        }
+      }
+    ]);
+    await store.save();
+
+    let capturedContext: Record<string, unknown> | undefined;
+    (service as any).runners.codex = {
+      type: "codex",
+      async start(context: Record<string, unknown>, hooks: {
+        onExit(result: {
+          status: "succeeded";
+          metadata: Record<string, string>;
+        }): Promise<void>;
+      }) {
+        capturedContext = context;
+        void sleep(25).then(() =>
+          hooks.onExit({
+            status: "succeeded",
+            metadata: {
+              threadId: "thread-previous",
+              turnId: "turn-next"
+            }
+          })
+        );
+
+        return {
+          command: "codex test runner",
+          metadata: {
+            threadId: "thread-previous",
+            turnId: "turn-next"
+          },
+          async stop() {}
+        };
+      }
+    };
+
+    const result = await service.sendTaskInput(task.id, {
+      text: "Address the review feedback."
+    });
+    let completedRun: Run | undefined;
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      completedRun = service
+        .listRuns(task.id)
+        .find((entry) => entry.id === result.run.id && Boolean(entry.endedAt));
+      if (completedRun) {
+        break;
+      }
+      await sleep(25);
+    }
+    const log = await service.getRunLog(result.run.id);
+
+    expect((capturedContext?.previousRun as Run | undefined)?.metadata?.threadId).toBe(
+      "thread-previous"
+    );
+    expect(capturedContext?.inputText).toBe("Address the review feedback.");
+    expect(log).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "user",
+          text: "Address the review feedback."
+        })
+      ])
+    );
+    expect(completedRun?.id).toBe(result.run.id);
+  });
+
   it("rejects workspace paths that are not directories", async () => {
     const { service, dataDir } = await createRuntime();
     const filePath = join(dataDir, "not-a-directory.txt");

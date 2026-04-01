@@ -20,6 +20,7 @@ export type RunLogStream = "stdout" | "stderr" | "system";
 
 export type RunLogKind =
   | "text"
+  | "user"
   | "agent"
   | "tool_call"
   | "tool_output"

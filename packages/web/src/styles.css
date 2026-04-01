@@ -604,6 +604,10 @@ pre {
   color: var(--warning);
 }
 
+.log-kind-user {
+  color: var(--info);
+}
+
 .status-worktree-removed,
 .log-kind-agent {
   color: var(--accent-strong);
@@ -1232,6 +1236,70 @@ pre {
   color: var(--accent);
 }
 
+.log-input-panel {
+  display: grid;
+  gap: 8px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--panel), var(--surface-faint));
+  flex: 0 0 auto;
+}
+
+.log-input-header,
+.log-input-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.log-input-copy {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.log-input-header strong {
+  display: block;
+  font-size: 0.76rem;
+}
+
+.log-input-copy span,
+.log-input-footer {
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1.4;
+}
+
+.log-input-label {
+  display: block;
+}
+
+.log-input-label textarea {
+  width: 100%;
+  min-height: 56px;
+  resize: vertical;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.5;
+}
+
+.log-input-label textarea:focus {
+  outline: 1px solid var(--accent);
+  outline-offset: 0;
+  border-color: var(--accent);
+}
+
+.log-input-error {
+  color: var(--danger);
+}
+
 .task-detail-log-pane .log-stack,
 .task-detail-log-pane .log-group {
   gap: 0;
@@ -1241,6 +1309,7 @@ pre {
 
 .task-detail-log-pane .log-stack {
   grid-template-rows: minmax(0, 1fr);
+  flex: 1 1 auto;
 }
 
 .task-detail-log-pane .log-group {
@@ -1658,6 +1727,14 @@ pre {
 
 .log-console-entry-agent {
   border-left-color: rgba(73, 214, 196, 0.42);
+}
+
+.log-console-entry-user {
+  border-left-color: rgba(104, 199, 246, 0.42);
+}
+
+.log-console-label-user {
+  color: var(--info);
 }
 
 .log-console-label-agent {

@@ -131,6 +131,54 @@ describe("CodexAcpRunner prompt", () => {
     });
   });
 
+  it("uses the raw follow-up text when continuing on a resumed thread", () => {
+    const runner = new CodexAcpRunner() as any;
+    const context = createCodexContext({
+      inputText: "Please address the review comments."
+    });
+
+    const params = runner.buildTurnStartParams(
+      context,
+      {
+        prompt: "Implement the feature"
+      },
+      "thread-1",
+      true
+    );
+
+    expect(params).toMatchObject({
+      threadId: "thread-1",
+      input: [
+        {
+          type: "text",
+          text: "Please address the review comments."
+        }
+      ]
+    });
+  });
+
+  it("falls back to task context plus follow-up text when no thread was resumed", () => {
+    const runner = new CodexAcpRunner() as any;
+    const context = createCodexContext({
+      inputText: "Please address the review comments."
+    });
+
+    const params = runner.buildTurnStartParams(
+      context,
+      {
+        prompt: "Implement the feature"
+      },
+      "thread-2",
+      false
+    );
+
+    expect(params.threadId).toBe("thread-2");
+    expect(params.input[0]?.text).toContain("Task: Implement feature");
+    expect(params.input[0]?.text).toContain("Implement the feature");
+    expect(params.input[0]?.text).toContain("User follow-up:");
+    expect(params.input[0]?.text).toContain("Please address the review comments.");
+  });
+
   it("resumes the previous codex thread when a thread id is available", () => {
     const runner = new CodexAcpRunner() as any;
 

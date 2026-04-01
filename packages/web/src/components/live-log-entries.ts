@@ -2,6 +2,7 @@ import type { RunLogEntry } from "@workhorse/contracts";
 
 export const ENTRY_LABELS: Record<RunLogEntry["kind"], string> = {
   text: "Output",
+  user: "User",
   agent: "Agent",
   tool_call: "Tool",
   tool_output: "Tool Output",

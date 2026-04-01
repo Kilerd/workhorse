@@ -9,7 +9,9 @@ import type {
   DeleteResult,
   ListTasksQuery,
   Run,
+  RunLogEntry,
   RunnerConfig,
+  TaskInputBody,
   Task,
   TaskWorktree,
   UpdateTaskBody,
@@ -29,6 +31,7 @@ import { createId } from "../lib/id.js";
 import { createRunLogEntry } from "../lib/run-log.js";
 import { createTaskWorktree } from "../lib/task-worktree.js";
 import { StateStore } from "../persistence/state-store.js";
+import { CodexAppServerManager } from "../runners/codex-app-server-manager.js";
 import { CodexAcpRunner } from "../runners/codex-acp-runner.js";
 import type { RunnerAdapter, RunnerControl } from "../runners/types.js";
 import { ShellRunner } from "../runners/shell-runner.js";
@@ -38,12 +41,15 @@ import { GitWorktreeService } from "./git-worktree-service.js";
 interface ActiveRun {
   control: RunnerControl;
   stopRequested: boolean;
+  runId: string;
+  queue(work: () => Promise<void>): Promise<void>;
 }
 
 interface StartTaskOptions {
   allowedColumns?: Task["column"][];
   runnerConfigOverride?: RunnerConfig;
   runMetadata?: Record<string, string>;
+  initialInputText?: string;
 }
 
 type MonitorCiStatus = GitHubCheckBucket | "not_required";
@@ -58,6 +64,7 @@ interface MonitorReason {
 interface BoardServiceDependencies {
   gitWorktrees?: GitWorktreeService;
   githubPullRequests?: GitHubPullRequestProvider;
+  codexAppServer?: CodexAppServerManager;
 }
 
 export interface GitReviewMonitorResult {
@@ -86,6 +93,8 @@ export class BoardService {
 
   private readonly githubPullRequests: GitHubPullRequestProvider;
 
+  private readonly codexAppServer: CodexAppServerManager;
+
   private readonly activeRuns = new Map<string, ActiveRun>();
 
   private reviewMonitorLastPolledAt?: string;
@@ -97,9 +106,10 @@ export class BoardService {
   ) {
     this.store = store;
     this.events = events;
+    this.codexAppServer = dependencies.codexAppServer ?? new CodexAppServerManager();
     this.runners = {
       shell: new ShellRunner(),
-      codex: new CodexAcpRunner()
+      codex: new CodexAcpRunner(this.codexAppServer)
     };
     this.gitWorktrees = dependencies.gitWorktrees ?? new GitWorktreeService();
     this.githubPullRequests =
@@ -109,6 +119,10 @@ export class BoardService {
   public async initialize(): Promise<void> {
     await this.store.load();
     await this.recoverOrphanedRuns();
+  }
+
+  public async warmCodexAppServer(): Promise<void> {
+    await this.codexAppServer.initialize();
   }
 
   public snapshot(): AppState {
@@ -588,6 +602,121 @@ export class BoardService {
     return { task, run };
   }
 
+  public async sendTaskInput(
+    taskId: string,
+    input: TaskInputBody
+  ): Promise<{ task: Task; run: Run }> {
+    const text = input.text.trim();
+    if (!text) {
+      throw new AppError(400, "INVALID_TASK_INPUT", "Task input cannot be blank");
+    }
+
+    const task = ensure(
+      this.store.listTasks().find((entry) => entry.id === taskId),
+      404,
+      "TASK_NOT_FOUND",
+      "Task not found"
+    );
+
+    if (task.runnerType !== "codex") {
+      throw new AppError(
+        400,
+        "TASK_INPUT_NOT_SUPPORTED",
+        "Only Codex tasks accept live input"
+      );
+    }
+
+    const active = this.activeRuns.get(taskId);
+    if (!active) {
+      if (task.column !== "review") {
+        throw new AppError(
+          409,
+          "TASK_INPUT_NOT_AVAILABLE",
+          "Task input is only available while a Codex task is running or in review"
+        );
+      }
+
+      return this.startTaskInternal(taskId, {
+        allowedColumns: ["review"],
+        initialInputText: text
+      });
+    }
+
+    if (!active.control.sendInput) {
+      throw new AppError(
+        400,
+        "TASK_INPUT_NOT_SUPPORTED",
+        "The active runner does not support live input"
+      );
+    }
+
+    const run = ensure(
+      this.store.listRuns().find((entry) => entry.id === active.runId),
+      404,
+      "RUN_NOT_FOUND",
+      "Run not found"
+    );
+
+    await active.queue(async () => {
+      await this.appendAndPublishRunOutput(
+        task.id,
+        run.id,
+        this.createUserInputLogEntry(run.id, text)
+      );
+    });
+
+    try {
+      const result = await active.control.sendInput(text);
+      if (result?.metadata) {
+        await active.queue(async () => {
+          await this.updateRunMetadata(run.id, result.metadata ?? {});
+        });
+      }
+    } catch (error) {
+      const inputError =
+        error instanceof AppError
+          ? error
+          : new AppError(
+              409,
+              "TASK_INPUT_REJECTED",
+              error instanceof Error ? error.message : String(error)
+            );
+
+      await active.queue(async () => {
+        await this.appendAndPublishRunOutput(
+          task.id,
+          run.id,
+          createRunLogEntry(run.id, {
+            kind: "system",
+            stream: "system",
+            title: "Input error",
+            text: `${inputError.message}\n`
+          })
+        );
+      });
+
+      throw inputError;
+    }
+
+    const updatedTask = ensure(
+      this.store.listTasks().find((entry) => entry.id === taskId),
+      404,
+      "TASK_NOT_FOUND",
+      "Task not found"
+    );
+    const updatedRun = ensure(
+      this.store.listRuns().find((entry) => entry.id === run.id),
+      404,
+      "RUN_NOT_FOUND",
+      "Run not found"
+    );
+
+    return {
+      task: updatedTask,
+      run: updatedRun
+    };
+  }
+
   public async cleanupTaskWorktree(taskId: string): Promise<Task> {
     if (this.activeRuns.has(taskId)) {
       throw new AppError(
@@ -693,6 +822,51 @@ export class BoardService {
     return this.store.readLogEntries(runId);
   }
 
+  private createUserInputLogEntry(runId: string, text: string): RunLogEntry {
+    return createRunLogEntry(runId, {
+      kind: "user",
+      stream: "system",
+      title: "User input",
+      text
+    });
+  }
+
+  private async appendAndPublishRunOutput(
+    taskId: string,
+    runId: string,
+    entry: RunLogEntry
+  ): Promise<void> {
+    await this.store.appendLogEntry(runId, entry);
+    this.events.publish({
+      type: "run.output",
+      taskId,
+      runId,
+      entry
+    });
+  }
+
+  private async updateRunMetadata(
+    runId: string,
+    metadata: Record<string, string>
+  ): Promise<Run> {
+    const runs = this.store.listRuns();
+    const run = ensure(
+      runs.find((entry) => entry.id === runId),
+      404,
+      "RUN_NOT_FOUND",
+      "Run not found"
+    );
+
+    run.metadata = {
+      ...(run.metadata ?? {}),
+      ...metadata
+    };
+
+    this.store.setRuns(runs);
+    await this.store.save();
+    return run;
+  }
+
   private async startTaskInternal(
     taskId: string,
     options: StartTaskOptions = {}
@@ -769,6 +943,14 @@ export class BoardService {
       task: tasks[taskIndex]
     });
 
+    if (options.initialInputText) {
+      await this.appendAndPublishRunOutput(
+        task.id,
+        run.id,
+        this.createUserInputLogEntry(run.id, options.initialInputText)
+      );
+    }
+
     const runner = this.runners[executionTask.runnerType];
     if (!runner) {
       throw new AppError(
@@ -794,19 +976,14 @@ export class BoardService {
           },
           previousRun,
           task: executionTask,
-          workspace: executionWorkspace
+          workspace: executionWorkspace,
+          inputText: options.initialInputText
         },
         {
           onOutput: async (output) => {
             await queueOutput(async () => {
               const entry = createRunLogEntry(run.id, output);
-              await this.store.appendLogEntry(run.id, entry);
-              this.events.publish({
-                type: "run.output",
-                taskId: task.id,
-                runId: run.id,
-                entry
-              });
+              await this.appendAndPublishRunOutput(task.id, run.id, entry);
             });
           },
           onExit: async (result) => {
@@ -835,7 +1012,9 @@ export class BoardService {
 
       this.activeRuns.set(task.id, {
         control,
-        stopRequested: false
+        stopRequested: false,
+        runId: run.id,
+        queue: queueOutput
       });
 
       this.events.publish({
@@ -857,13 +1036,7 @@ export class BoardService {
         text: `${error instanceof Error ? error.message : String(error)}\n`,
         title: "Runner error"
       });
-      await this.store.appendLogEntry(run.id, entry);
-      this.events.publish({
-        type: "run.output",
-        taskId: task.id,
-        runId: run.id,
-        entry
-      });
+      await this.appendAndPublishRunOutput(task.id, run.id, entry);
       tasks[taskIndex] = {
         ...tasks[taskIndex],
         column: "review",

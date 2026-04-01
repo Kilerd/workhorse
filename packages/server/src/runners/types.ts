@@ -12,6 +12,7 @@ export interface RunnerStartContext {
   previousRun?: Run;
   task: Task;
   workspace: Workspace;
+  inputText?: string;
 }
 
 export interface RunnerLifecycleHooks {
@@ -35,6 +36,7 @@ export interface RunnerControl {
   command: string;
   metadata?: Record<string, string>;
   stop(): Promise<void>;
+  sendInput?(input: string): Promise<{ metadata?: Record<string, string> } | void>;
 }
 
 export interface RunnerAdapter {

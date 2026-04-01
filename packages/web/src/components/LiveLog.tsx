@@ -23,6 +23,9 @@ interface Props {
   runLog: RunLogEntry[];
   isLoading?: boolean;
   showStatus?: boolean;
+  canSendInput?: boolean;
+  inputMode?: "running" | "review" | null;
+  onSendInput?(text: string): Promise<unknown>;
 }
 
 function formatTimestamp(value: string): string {
@@ -112,7 +115,7 @@ function renderEntryHeader(entry: RunLogEntry, collapsible = false) {
 
 function getConsoleEntryTone(
   entry: RunLogEntry
-): "agent" | "plan" | "status" | "stderr" | "system" | "tool" | "stdout" {
+): "agent" | "plan" | "status" | "stderr" | "system" | "tool" | "user" | "stdout" {
   if (entry.stream === "stderr") {
     return "stderr";
   }
@@ -123,6 +126,10 @@ function getConsoleEntryTone(
 
   if (entry.kind === "agent") {
     return "agent";
+  }
+
+  if (entry.kind === "user") {
+    return "user";
   }
 
   if (entry.kind === "plan") {
@@ -143,6 +150,10 @@ function getConsoleEntryTone(
 function getConsoleEntryLabel(entry: RunLogEntry): string {
   if (entry.kind === "tool_call") {
     return "tool";
+  }
+
+  if (entry.kind === "user") {
+    return "user";
   }
 
   if (entry.kind === "agent") {
@@ -346,7 +357,10 @@ export function LiveLog({
   liveLog,
   runLog,
   isLoading = false,
-  showStatus = true
+  showStatus = true,
+  canSendInput = false,
+  inputMode = null,
+  onSendInput
 }: Props) {
   const aggregatedEntries = useMemo(() => {
     return prepareLiveLogEntries([...runLog, ...liveLog]);
@@ -366,6 +380,9 @@ export function LiveLog({
   const streamRef = useRef<HTMLDivElement>(null);
   const [isPinnedToBottom, setIsPinnedToBottom] = useState(true);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const [draft, setDraft] = useState("");
+  const [submitState, setSubmitState] = useState<"idle" | "sending" | "failed">("idle");
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const streamTailKey = useMemo(() => {
     const lastEntry = streamEntries.at(-1);
     if (!lastEntry) {
@@ -378,6 +395,12 @@ export function LiveLog({
   useEffect(() => {
     setIsPinnedToBottom(true);
   }, [viewedRun?.id]);
+
+  useEffect(() => {
+    setDraft("");
+    setSubmitState("idle");
+    setSubmitError(null);
+  }, [inputMode, viewedRun?.id]);
 
   useEffect(() => {
     const node = streamRef.current;
@@ -423,7 +446,32 @@ export function LiveLog({
     }
   }
 
+  async function handleSendInput() {
+    const text = draft.trim();
+    if (!text || !canSendInput || !onSendInput) {
+      return;
+    }
+
+    setSubmitState("sending");
+    setSubmitError(null);
+
+    try {
+      await onSendInput(text);
+      setDraft("");
+      setSubmitState("idle");
+    } catch (error) {
+      setSubmitState("failed");
+      setSubmitError(error instanceof Error ? error.message : "Unable to send input.");
+    }
+  }
+
   const hasVisibleEntries = Boolean(stickyPlanEntry) || streamEntries.length > 0;
+  const inputAssistText =
+    inputMode === "running"
+      ? "Send a steering message into the active Codex run."
+      : inputMode === "review"
+        ? "Resume the latest Codex thread from review and continue in the same conversation."
+        : null;
 
   return (
     <div className={showStatus ? "details-body details-body-logs" : "live-log-panel"}>
@@ -546,6 +594,59 @@ export function LiveLog({
             </div>
           </div>
         )}
+        {canSendInput && onSendInput ? (
+          <form
+            className="log-input-panel"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleSendInput();
+            }}
+          >
+            <div className="log-input-header">
+              <div className="log-input-copy">
+                <strong>{inputMode === "review" ? "Continue thread" : "Intervene live"}</strong>
+                {inputAssistText ? <span>{inputAssistText}</span> : null}
+              </div>
+              <button
+                type="submit"
+                className="button"
+                disabled={submitState === "sending" || draft.trim().length === 0}
+              >
+                {submitState === "sending" ? "Sending..." : "Send"}
+              </button>
+            </div>
+            <label className="log-input-label">
+              <span className="sr-only">Send input to Codex</span>
+              <textarea
+                value={draft}
+                onChange={(event) => {
+                  setDraft(event.target.value);
+                  if (submitState === "failed") {
+                    setSubmitState("idle");
+                    setSubmitError(null);
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                    event.preventDefault();
+                    void handleSendInput();
+                  }
+                }}
+                rows={2}
+                placeholder={
+                  inputMode === "review"
+                    ? "Describe what should change next..."
+                    : "Tell the agent what to do next..."
+                }
+                disabled={submitState === "sending"}
+              />
+            </label>
+            <div className="log-input-footer">
+              <span>Press Ctrl/Cmd+Enter to send.</span>
+              {submitError ? <span className="log-input-error">{submitError}</span> : null}
+            </div>
+          </form>
+        ) : null}
       </section>
     </div>
   );

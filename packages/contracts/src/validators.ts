@@ -23,6 +23,9 @@ import type {
   StartTaskResponse,
   StopTaskParams,
   StopTaskResponse,
+  TaskInputBody,
+  TaskInputParams,
+  TaskInputResponse,
   TaskResponse,
   TasksResponse,
   UpdateTaskBody,
@@ -53,6 +56,8 @@ export const validateUpdateTaskBody = typia.createValidate<UpdateTaskBody>();
 export const validateDeleteTaskParams = typia.createValidate<DeleteTaskParams>();
 export const validateStartTaskParams = typia.createValidate<StartTaskParams>();
 export const validateStopTaskParams = typia.createValidate<StopTaskParams>();
+export const validateTaskInputParams = typia.createValidate<TaskInputParams>();
+export const validateTaskInputBody = typia.createValidate<TaskInputBody>();
 export const validatePlanTaskParams = typia.createValidate<PlanTaskParams>();
 export const validateCleanupTaskWorktreeParams =
   typia.createValidate<CleanupTaskWorktreeParams>();
@@ -78,6 +83,8 @@ export const schemaRegistry = {
   DeleteTaskParams: () => typia.json.schema<DeleteTaskParams>(),
   StartTaskParams: () => typia.json.schema<StartTaskParams>(),
   StopTaskParams: () => typia.json.schema<StopTaskParams>(),
+  TaskInputParams: () => typia.json.schema<TaskInputParams>(),
+  TaskInputBody: () => typia.json.schema<TaskInputBody>(),
   PlanTaskParams: () => typia.json.schema<PlanTaskParams>(),
   CleanupTaskWorktreeParams: () => typia.json.schema<CleanupTaskWorktreeParams>(),
   ListRunsParams: () => typia.json.schema<ListRunsParams>(),
@@ -91,6 +98,7 @@ export const schemaRegistry = {
   DeleteTaskResponse: () => typia.json.schema<DeleteTaskResponse>(),
   StartTaskResponse: () => typia.json.schema<StartTaskResponse>(),
   StopTaskResponse: () => typia.json.schema<StopTaskResponse>(),
+  TaskInputResponse: () => typia.json.schema<TaskInputResponse>(),
   PlanTaskResponse: () => typia.json.schema<PlanTaskResponse>(),
   CleanupTaskWorktreeResponse: () => typia.json.schema<CleanupTaskWorktreeResponse>(),
   RunsResponse: () => typia.json.schema<RunsResponse>(),

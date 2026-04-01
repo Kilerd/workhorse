@@ -20,6 +20,7 @@ interface Props {
   onPlan(): void;
   onStart(): void;
   onStop(): void;
+  onSendInput(text: string): Promise<unknown>;
   onMoveToTodo(): void;
   onMarkDone(): void;
   onArchive(): void;
@@ -242,6 +243,7 @@ export function TaskDetailsPanel({
   onPlan,
   onStart,
   onStop,
+  onSendInput,
   onMoveToTodo,
   onMarkDone,
   onArchive,
@@ -282,6 +284,16 @@ export function TaskDetailsPanel({
       : task.runnerConfig.prompt;
   const summaryRun = activeRun ?? viewedRun;
   const runTone = getRunTone(summaryRun, task);
+  const canSendInput =
+    task.runnerType === "codex" &&
+    ((activeRun?.id !== undefined && viewedRun?.id === activeRun.id) ||
+      (!activeRun && task.column === "review" && viewedRun?.id === task.lastRunId));
+  const inputMode =
+    activeRun?.id !== undefined && viewedRun?.id === activeRun.id
+      ? "running"
+      : !activeRun && task.column === "review" && viewedRun?.id === task.lastRunId
+        ? "review"
+        : null;
 
   return (
     <aside className={["details-panel", className].filter(Boolean).join(" ")}>
@@ -466,6 +478,9 @@ export function TaskDetailsPanel({
             runLog={runLog}
             isLoading={runLogLoading}
             showStatus={false}
+            canSendInput={canSendInput}
+            inputMode={inputMode}
+            onSendInput={onSendInput}
           />
         </div>
       </div>

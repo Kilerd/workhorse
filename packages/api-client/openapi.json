@@ -570,6 +570,67 @@
         ]
       }
     },
+    "/api/tasks/{taskId}/input": {
+      "post": {
+        "operationId": "sendTaskInput",
+        "summary": "Send a user message to the task's Codex session",
+        "tags": [
+          "Runs"
+        ],
+        "responses": {
+          "200": {
+            "description": "Accepted task input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskInputResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unable to accept task input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskInputBody"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/tasks/{taskId}/plan": {
       "post": {
         "operationId": "planTask",
@@ -1406,6 +1467,28 @@
           "taskId"
         ]
       },
+      "TaskInputParams": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      },
+      "TaskInputBody": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
       "PlanTaskParams": {
         "type": "object",
         "properties": {
@@ -1708,6 +1791,38 @@
           "run"
         ]
       },
+      "TaskInputResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/TaskInputData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "TaskInputData": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "$ref": "#/components/schemas/Task"
+          },
+          "run": {
+            "$ref": "#/components/schemas/Run"
+          }
+        },
+        "required": [
+          "task",
+          "run"
+        ]
+      },
       "PlanTaskResponse": {
         "type": "object",
         "properties": {
@@ -1893,17 +2008,17 @@
         "oneOf": [
           {
             "enum": [
-              "status"
-            ]
-          },
-          {
-            "enum": [
               "system"
             ]
           },
           {
             "enum": [
               "text"
+            ]
+          },
+          {
+            "enum": [
+              "user"
             ]
           },
           {
@@ -1924,6 +2039,11 @@
           {
             "enum": [
               "plan"
+            ]
+          },
+          {
+            "enum": [
+              "status"
             ]
           }
         ]
