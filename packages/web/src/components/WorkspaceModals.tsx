@@ -20,6 +20,25 @@ interface TaskModalProps {
   onSubmit(values: TaskFormValues): void;
 }
 
+function useCloseOnEscape(open: boolean, onClose: () => void) {
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open, onClose]);
+}
+
 function slugifyBranchPreview(value: string): string {
   const slug = value
     .toLowerCase()
@@ -33,6 +52,8 @@ function slugifyBranchPreview(value: string): string {
 export function WorkspaceModal({ open, onClose, onSubmit }: WorkspaceModalProps) {
   const [name, setName] = useState("");
   const [rootPath, setRootPath] = useState("");
+
+  useCloseOnEscape(open, onClose);
 
   useEffect(() => {
     if (!open) {
@@ -90,6 +111,9 @@ export function TaskModal({ open, workspaces, onClose, onSubmit }: TaskModalProp
   const [prompt, setPrompt] = useState(DEFAULT_CODEX_PROMPT);
   const [column, setColumn] = useState<TaskFormValues["column"]>("backlog");
   const [worktreeBaseRef, setWorktreeBaseRef] = useState("");
+
+  useCloseOnEscape(open, onClose);
+
   const selectedWorkspace = useMemo(
     () => workspaces.find((workspace) => workspace.id === workspaceId),
     [workspaceId, workspaces]
