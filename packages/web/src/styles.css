@@ -813,6 +813,17 @@ pre {
   background: var(--surface-faint);
 }
 
+.log-entry-summary {
+  display: grid;
+  gap: 6px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.log-entry-summary::-webkit-details-marker {
+  display: none;
+}
+
 .log-entry-title,
 .log-entry-meta {
   min-width: 0;
@@ -822,6 +833,35 @@ pre {
   align-items: center;
   color: var(--muted);
   font-size: 0.64rem;
+}
+
+.log-entry-status-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border: 1px solid currentColor;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.log-entry-status-in-progress {
+  color: var(--warning);
+}
+
+.log-entry-status-completed {
+  color: var(--success);
+}
+
+.log-entry-status-failed,
+.log-entry-status-interrupted {
+  color: var(--danger);
+}
+
+.log-entry-status-started {
+  color: var(--info);
 }
 
 .log-entry-details {
@@ -851,6 +891,14 @@ pre {
   font-size: 0.72rem;
   overflow-x: auto;
   overflow-y: visible;
+}
+
+.log-entry-collapsible > .log-entry-content {
+  display: none;
+}
+
+.log-entry-collapsible[open] > .log-entry-content {
+  display: block;
 }
 
 .modal-backdrop {
