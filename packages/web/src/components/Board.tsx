@@ -171,9 +171,6 @@ export function Board({
                                 {task.description || "No description"}
                               </p>
                             </div>
-                            <span className={`pill pill-${task.runnerType}`}>
-                              {task.runnerType.toUpperCase()}
-                            </span>
                           </div>
 
                           <div className="task-card-tags">

@@ -251,7 +251,6 @@ pre {
 
 .meta-chip,
 .meta-token,
-.pill,
 .status,
 .log-kind,
 .log-stream-chip {
@@ -565,16 +564,6 @@ pre {
 
 .task-card-actions-compact {
   justify-content: flex-end;
-}
-
-.pill-codex {
-  color: var(--accent-strong);
-  background: rgba(73, 214, 196, 0.12);
-}
-
-.pill-shell {
-  color: #ffdd9a;
-  background: rgba(242, 195, 92, 0.12);
 }
 
 .status-backlog {
