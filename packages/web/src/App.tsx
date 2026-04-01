@@ -274,6 +274,7 @@ function ReactAppShell() {
       <TaskModal
         open={board.taskModalOpen}
         workspaces={workspaces}
+        selectedWorkspaceId={board.selectedWorkspaceId}
         onClose={() => board.setTaskModalOpen(false)}
         onSubmit={(values) => {
           void board.createTask(values);
