@@ -339,6 +339,86 @@ describe("workhorse runtime", () => {
     expect(updatedTask?.pullRequestUrl).toBe(prUrl);
   });
 
+  it("serializes run output persistence and publication in emission order", async () => {
+    const { service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+    const task = await createCodexTask(service, workspace.id, "review");
+    const store = (service as any).store as StateStore;
+    const events = (service as any).events as EventBus;
+    const publishedOutput: string[] = [];
+    const appendLogEntry = store.appendLogEntry.bind(store);
+    const publish = events.publish.bind(events);
+
+    store.appendLogEntry = async (runId, entry) => {
+      if (entry.text === "first message") {
+        await sleep(50);
+      }
+
+      await appendLogEntry(runId, entry);
+    };
+    events.publish = (event) => {
+      if (event.type === "run.output") {
+        publishedOutput.push(event.entry.text);
+      }
+
+      publish(event);
+    };
+
+    (service as any).runners.codex = {
+      type: "codex",
+      async start(_context: unknown, hooks: {
+        onOutput(entry: {
+          kind: "agent";
+          text: string;
+          stream: "stdout";
+          title: string;
+          metadata: Record<string, string>;
+        }): Promise<void>;
+        onExit(result: {
+          status: "succeeded";
+        }): Promise<void>;
+      }) {
+        const first = hooks.onOutput({
+          kind: "agent",
+          text: "first message",
+          stream: "stdout",
+          title: "Agent output",
+          metadata: {
+            groupId: "agent:turn-1:item-1"
+          }
+        });
+        const second = hooks.onOutput({
+          kind: "agent",
+          text: "second message",
+          stream: "stdout",
+          title: "Agent output",
+          metadata: {
+            groupId: "agent:turn-1:item-2"
+          }
+        });
+
+        void Promise.all([first, second]).then(() =>
+          hooks.onExit({
+            status: "succeeded"
+          })
+        );
+
+        return {
+          command: "codex test runner",
+          async stop() {}
+        };
+      }
+    };
+
+    await service.startTask(task.id);
+
+    const completedRun = await waitForRunToFinish(service, task.id);
+    const log = await service.getRunLog(completedRun.id);
+
+    expect(log.map((entry) => entry.text)).toEqual(["first message", "second message"]);
+    expect(publishedOutput).toEqual(["first message", "second message"]);
+  });
+
   it("rejects workspace paths that are not directories", async () => {
     const { service, dataDir } = await createRuntime();
     const filePath = join(dataDir, "not-a-directory.txt");
