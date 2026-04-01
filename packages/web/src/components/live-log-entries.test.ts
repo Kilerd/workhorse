@@ -5,6 +5,7 @@ import {
   buildLiveLogStreamItems,
   findStickyPlanEntry,
   getToolStatus,
+  groupLiveLogStreamItems,
   isCommandExecutionEntry,
   normalizeToolTitle,
   parseStickyPlanContent,
@@ -430,5 +431,111 @@ describe("live log entry aggregation", () => {
     ]);
 
     expect(findStickyPlanEntry(entries)?.id).toBe("plan-update");
+  });
+
+  it("groups nearby completed command executions into a single stream item", () => {
+    const streamItems = groupLiveLogStreamItems(
+      buildLiveLogStreamItems(
+        prepareLiveLogEntries([
+          makeEntry({
+            id: "command-1",
+            title: "Command Execution completed",
+            text: "sed -n '1,260p' packages/web/src/components/LiveLog.tsx",
+            metadata: {
+              itemType: "commandExecution",
+              phase: "completed",
+              status: "completed",
+              groupId: "item:turn-1:command-1"
+            }
+          }),
+          makeEntry({
+            id: "command-2",
+            timestamp: "2026-04-01T01:47:38.000Z",
+            title: "Command Execution completed",
+            text: "sed -n '1,260p' packages/web/src/components/live-log-entries.ts",
+            metadata: {
+              itemType: "commandExecution",
+              phase: "completed",
+              status: "completed",
+              groupId: "item:turn-1:command-2"
+            }
+          }),
+          makeEntry({
+            id: "command-3",
+            timestamp: "2026-04-01T01:47:49.000Z",
+            title: "Command Execution completed",
+            text: "sed -n '1,260p' packages/server/src/lib/run-log.ts",
+            metadata: {
+              itemType: "commandExecution",
+              phase: "completed",
+              status: "completed",
+              groupId: "item:turn-1:command-3"
+            }
+          }),
+          makeEntry({
+            id: "agent",
+            timestamp: "2026-04-01T01:47:52.000Z",
+            kind: "agent",
+            stream: "stdout",
+            title: "Agent output",
+            text: "Inspected the log stream."
+          })
+        ])
+      )
+    );
+
+    expect(streamItems).toHaveLength(2);
+    expect(streamItems[0]).toMatchObject({
+      type: "command_execution_group",
+      items: [
+        { entry: { id: "command-1" } },
+        { entry: { id: "command-2" } },
+        { entry: { id: "command-3" } }
+      ]
+    });
+    expect(streamItems[1]).toMatchObject({
+      type: "entry",
+      entry: { id: "agent" }
+    });
+  });
+
+  it("keeps in-progress command executions expanded as individual items", () => {
+    const streamItems = groupLiveLogStreamItems(
+      buildLiveLogStreamItems(
+        prepareLiveLogEntries([
+          makeEntry({
+            id: "command-1",
+            title: "Command Execution started",
+            text: "npm run build",
+            metadata: {
+              itemType: "commandExecution",
+              phase: "started",
+              status: "inProgress"
+            }
+          }),
+          makeEntry({
+            id: "command-2",
+            timestamp: "2026-04-01T01:47:32.000Z",
+            title: "Command Execution started",
+            text: "npm run test",
+            metadata: {
+              itemType: "commandExecution",
+              phase: "started",
+              status: "inProgress"
+            }
+          })
+        ])
+      )
+    );
+
+    expect(streamItems).toHaveLength(2);
+    expect(streamItems[0]).toMatchObject({
+      type: "tool",
+      entry: { id: "command-1" }
+    });
+    expect(streamItems[1]).toMatchObject({
+      type: "tool",
+      entry: { id: "command-2" }
+    });
   });
 });

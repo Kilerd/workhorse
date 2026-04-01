@@ -35,16 +35,28 @@ export interface StickyPlanContent {
   body: string | null;
 }
 
+export interface LiveLogEntryStreamItem {
+  type: "entry";
+  entry: RunLogEntry;
+}
+
+export interface LiveLogToolStreamItem {
+  type: "tool";
+  entry: RunLogEntry;
+  outputEntries: RunLogEntry[];
+}
+
+export interface LiveLogCommandExecutionGroupStreamItem {
+  type: "command_execution_group";
+  items: LiveLogToolStreamItem[];
+}
+
 export type LiveLogStreamItem =
-  | {
-      type: "entry";
-      entry: RunLogEntry;
-    }
-  | {
-      type: "tool";
-      entry: RunLogEntry;
-      outputEntries: RunLogEntry[];
-    };
+  | LiveLogEntryStreamItem
+  | LiveLogToolStreamItem
+  | LiveLogCommandExecutionGroupStreamItem;
+
+const COMMAND_EXECUTION_GROUP_WINDOW_MS = 30_000;
 
 export function metadataEntries(entry: RunLogEntry): Array<[string, string]> {
   return Object.entries(entry.metadata ?? {}).filter(
@@ -236,6 +248,37 @@ export function isCommandExecutionEntry(entry: RunLogEntry): boolean {
   }
 
   return normalizeToolTitle(entry).toLowerCase() === "command execution";
+}
+
+function isCompletedToolEntry(entry: RunLogEntry): boolean {
+  if (entry.kind !== "tool_call") {
+    return false;
+  }
+
+  const phase = entry.metadata?.phase?.toLowerCase();
+  if (phase === "completed") {
+    return true;
+  }
+
+  return entry.metadata?.status?.toLowerCase() === "completed";
+}
+
+function areEntriesTemporallyClose(left: RunLogEntry, right: RunLogEntry): boolean {
+  const leftTimestamp = Date.parse(left.timestamp);
+  const rightTimestamp = Date.parse(right.timestamp);
+  if (Number.isNaN(leftTimestamp) || Number.isNaN(rightTimestamp)) {
+    return false;
+  }
+
+  return Math.abs(rightTimestamp - leftTimestamp) <= COMMAND_EXECUTION_GROUP_WINDOW_MS;
+}
+
+function isGroupableCommandExecutionItem(item: LiveLogStreamItem): item is LiveLogToolStreamItem {
+  return (
+    item.type === "tool" &&
+    isCommandExecutionEntry(item.entry) &&
+    isCompletedToolEntry(item.entry)
+  );
 }
 
 function normalizeStatusTone(value: string): string {
@@ -568,4 +611,46 @@ export function buildLiveLogStreamItems(entries: RunLogEntry[]): LiveLogStreamIt
   }
 
   return items;
+}
+
+export function groupLiveLogStreamItems(items: LiveLogStreamItem[]): LiveLogStreamItem[] {
+  const groupedItems: LiveLogStreamItem[] = [];
+  let currentCommandGroup: LiveLogToolStreamItem[] = [];
+
+  function flushCommandGroup() {
+    if (currentCommandGroup.length >= 2) {
+      groupedItems.push({
+        type: "command_execution_group",
+        items: currentCommandGroup
+      });
+    } else if (currentCommandGroup.length === 1) {
+      const [singleItem] = currentCommandGroup;
+      if (singleItem) {
+        groupedItems.push(singleItem);
+      }
+    }
+
+    currentCommandGroup = [];
+  }
+
+  for (const item of items) {
+    if (!isGroupableCommandExecutionItem(item)) {
+      flushCommandGroup();
+      groupedItems.push(item);
+      continue;
+    }
+
+    const previousItem = currentCommandGroup.at(-1);
+    if (
+      previousItem &&
+      !areEntriesTemporallyClose(previousItem.entry, item.entry)
+    ) {
+      flushCommandGroup();
+    }
+
+    currentCommandGroup.push(item);
+  }
+
+  flushCommandGroup();
+  return groupedItems;
 }

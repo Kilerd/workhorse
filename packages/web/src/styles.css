@@ -1514,6 +1514,40 @@ pre {
   border-left: 2px solid rgba(242, 195, 92, 0.42);
 }
 
+.log-command-execution-group {
+  display: grid;
+  gap: 10px;
+  padding: 10px 0 10px 10px;
+  border-left: 2px solid rgba(242, 195, 92, 0.5);
+}
+
+.log-command-execution-group-summary {
+  display: grid;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.log-command-execution-group-summary::-webkit-details-marker {
+  display: none;
+}
+
+.log-command-execution-group:not([open]) > .log-command-execution-group-body {
+  display: none;
+}
+
+.log-command-execution-group-body {
+  display: grid;
+  gap: 0;
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
+}
+
+.log-command-execution-group-range {
+  color: var(--muted);
+  font-size: 0.64rem;
+}
+
 .log-tool-stream-summary {
   display: grid;
   gap: 8px;
@@ -1544,7 +1578,12 @@ pre {
 
 .log-tool-stream-item + .log-console-entry,
 .log-console-entry + .log-tool-stream-item,
-.log-tool-stream-item + .log-tool-stream-item {
+.log-tool-stream-item + .log-tool-stream-item,
+.log-tool-stream-item + .log-command-execution-group,
+.log-command-execution-group + .log-console-entry,
+.log-command-execution-group + .log-tool-stream-item,
+.log-command-execution-group + .log-command-execution-group,
+.log-console-entry + .log-command-execution-group {
   border-top: 1px solid var(--border);
 }
 
