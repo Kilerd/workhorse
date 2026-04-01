@@ -21,6 +21,18 @@ const HIDDEN_METADATA_KEYS = new Set([
 
 export interface LiveLogDisplayGroups {
   streamEntries: RunLogEntry[];
+  stickyPlanEntry: RunLogEntry | null;
+}
+
+export interface StickyPlanItem {
+  text: string;
+  done: boolean;
+}
+
+export interface StickyPlanContent {
+  summary: string | null;
+  items: StickyPlanItem[];
+  body: string | null;
 }
 
 export type LiveLogStreamItem =
@@ -83,6 +95,136 @@ export function normalizeToolTitle(entry: RunLogEntry): string {
   return ENTRY_LABELS[entry.kind] ?? "Log Entry";
 }
 
+export function isBoilerplatePlanEntry(entry: RunLogEntry): boolean {
+  if (entry.kind !== "plan") {
+    return false;
+  }
+
+  const normalizedText = entry.text.trim().replace(/\s+/g, " ").toLowerCase();
+  if (!normalizedText) {
+    return true;
+  }
+
+  if (
+    normalizedText === "planning started." ||
+    normalizedText === "planning updated." ||
+    normalizedText === "plan started." ||
+    normalizedText === "plan updated."
+  ) {
+    return true;
+  }
+
+  const normalizedTitle = entry.title?.trim().toLowerCase();
+  if (
+    (normalizedTitle === "plan started" || normalizedTitle === "plan updated") &&
+    normalizedText === `${normalizedTitle}.`
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+export function findStickyPlanEntry(entries: RunLogEntry[]): RunLogEntry | null {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (!entry || entry.kind !== "plan" || isBoilerplatePlanEntry(entry)) {
+      continue;
+    }
+
+    return entry;
+  }
+
+  return null;
+}
+
+function parseStickyPlanItem(line: string): StickyPlanItem | null {
+  const checkboxMatch = line.match(/^(?:\d+[.)]\s+)?[-*]?\s*\[(x|X| )\]\s+(.+)$/);
+  if (checkboxMatch) {
+    const marker = checkboxMatch[1];
+    const text = checkboxMatch[2];
+    if (!marker || !text) {
+      return null;
+    }
+
+    return {
+      done: marker.toLowerCase() === "x",
+      text: text.trim()
+    };
+  }
+
+  const numberedMatch = line.match(/^\d+[.)]\s+(.+)$/);
+  if (numberedMatch) {
+    const text = numberedMatch[1];
+    if (!text) {
+      return null;
+    }
+
+    return {
+      done: false,
+      text: text.trim()
+    };
+  }
+
+  const bulletMatch = line.match(/^[-*]\s+(.+)$/);
+  if (bulletMatch) {
+    const text = bulletMatch[1];
+    if (!text) {
+      return null;
+    }
+
+    return {
+      done: false,
+      text: text.trim()
+    };
+  }
+
+  return null;
+}
+
+export function parseStickyPlanContent(text: string): StickyPlanContent {
+  const lines = text
+    .split(/\r?\n/g)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/^#\s*plan$/i.test(line) && !/^plan:?$/i.test(line));
+
+  if (lines.length === 0) {
+    return {
+      summary: null,
+      items: [],
+      body: null
+    };
+  }
+
+  const items: StickyPlanItem[] = [];
+  const introLines: string[] = [];
+  const trailingLines: string[] = [];
+  let sawItem = false;
+
+  for (const line of lines) {
+    const item = parseStickyPlanItem(line);
+    if (item) {
+      sawItem = true;
+      items.push(item);
+      continue;
+    }
+
+    if (!sawItem) {
+      introLines.push(line);
+      continue;
+    }
+
+    trailingLines.push(line);
+  }
+
+  return {
+    summary: introLines.length > 0 ? introLines.join(" ") : null,
+    items,
+    body: items.length === 0 ? lines.join("\n") : trailingLines.join("\n") || null
+  };
+}
+
 export function isCommandExecutionEntry(entry: RunLogEntry): boolean {
   if (entry.kind !== "tool_call") {
     return false;
@@ -104,7 +246,7 @@ function normalizeStatusTone(value: string): string {
 }
 
 export function getToolStatus(entry: RunLogEntry): { label: string; tone: string } | null {
-  if (entry.kind !== "tool_call") {
+  if (entry.kind !== "tool_call" && entry.kind !== "status") {
     return null;
   }
 
@@ -141,9 +283,35 @@ function isToolLifecycleMatch(left: RunLogEntry, right: RunLogEntry): boolean {
   );
 }
 
+function isStatusLifecycleMatch(left: RunLogEntry, right: RunLogEntry): boolean {
+  if (left.kind !== "status" || right.kind !== "status") {
+    return false;
+  }
+
+  if (right.metadata?.phase !== "completed") {
+    return false;
+  }
+
+  const leftGroupId = left.metadata?.groupId;
+  const rightGroupId = right.metadata?.groupId;
+  if (leftGroupId && rightGroupId) {
+    return leftGroupId === rightGroupId && left.metadata?.phase !== "completed";
+  }
+
+  return (
+    left.metadata?.phase === "started" &&
+    left.metadata?.itemType === right.metadata?.itemType &&
+    left.title === right.title
+  );
+}
+
 function canMergeEntries(left: RunLogEntry, right: RunLogEntry): boolean {
   if (left.kind === "tool_call" && right.kind === "tool_call") {
     return isToolLifecycleMatch(left, right);
+  }
+
+  if (left.kind === "status" && right.kind === "status") {
+    return isStatusLifecycleMatch(left, right);
   }
 
   if (!["agent", "text", "tool_output", "system"].includes(left.kind)) {
@@ -194,6 +362,15 @@ function mergeToolText(leftText: string, rightText: string): string {
   return `${previous}\n${next}`;
 }
 
+function mergeStatusText(leftText: string, rightText: string): string {
+  const next = rightText.trim();
+  if (next) {
+    return rightText;
+  }
+
+  return leftText;
+}
+
 function mergeEntries(left: RunLogEntry, right: RunLogEntry): RunLogEntry | null {
   if (!canMergeEntries(left, right)) {
     return null;
@@ -204,6 +381,19 @@ function mergeEntries(left: RunLogEntry, right: RunLogEntry): RunLogEntry | null
       ...left,
       title: normalizeToolTitle(right),
       text: mergeToolText(left.text, right.text),
+      timestamp: right.timestamp,
+      source: right.source ?? left.source,
+      metadata: {
+        ...(left.metadata ?? {}),
+        ...(right.metadata ?? {})
+      }
+    };
+  }
+
+  if (left.kind === "status" && right.kind === "status") {
+    return {
+      ...left,
+      text: mergeStatusText(left.text, right.text),
       timestamp: right.timestamp,
       source: right.source ?? left.source,
       metadata: {
@@ -224,13 +414,21 @@ function findToolLifecycleEntryIndex(
   entries: RunLogEntry[],
   entry: RunLogEntry
 ): number {
-  if (entry.kind !== "tool_call") {
+  if (entry.kind !== "tool_call" && entry.kind !== "status") {
     return -1;
   }
 
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const candidate = entries[index];
-    if (!candidate || !isToolLifecycleMatch(candidate, entry)) {
+    if (!candidate) {
+      continue;
+    }
+
+    const isLifecycleMatch =
+      entry.kind === "tool_call"
+        ? isToolLifecycleMatch(candidate, entry)
+        : isStatusLifecycleMatch(candidate, entry);
+    if (!isLifecycleMatch) {
       continue;
     }
 
@@ -300,13 +498,24 @@ export function prepareLiveLogEntries(entries: RunLogEntry[]): RunLogEntry[] {
 export function partitionLiveLogEntries(
   entries: RunLogEntry[]
 ): LiveLogDisplayGroups {
+  const stickyPlanEntry = findStickyPlanEntry(entries);
+
   return entries.reduce<LiveLogDisplayGroups>(
     (groups, entry) => {
+      if (entry.kind === "plan") {
+        return groups;
+      }
+
+      if (stickyPlanEntry && entry.kind === "status") {
+        return groups;
+      }
+
       groups.streamEntries.push(entry);
       return groups;
     },
     {
-      streamEntries: []
+      streamEntries: [],
+      stickyPlanEntry
     }
   );
 }

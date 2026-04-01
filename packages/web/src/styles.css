@@ -1349,6 +1349,112 @@ pre {
   grid-auto-rows: max-content;
 }
 
+.sticky-plan-card {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+}
+
+.sticky-plan-card-header,
+.sticky-plan-card-summary,
+.sticky-plan-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.sticky-plan-card-header {
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.sticky-plan-card-header time {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.sticky-plan-card-summary strong {
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.sticky-plan-card-kicker {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border: 1px solid rgba(73, 214, 196, 0.28);
+  color: var(--accent-strong);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  background: rgba(73, 214, 196, 0.1);
+}
+
+.sticky-plan-card-description {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.sticky-plan-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sticky-plan-marker {
+  position: relative;
+  top: 0.15rem;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  color: var(--muted);
+}
+
+.sticky-plan-marker-done {
+  color: var(--success);
+}
+
+.sticky-plan-marker-done::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.sticky-plan-item-text {
+  line-height: 1.55;
+}
+
+.sticky-plan-item-text-done {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.sticky-plan-body {
+  margin: 0;
+  padding-top: 2px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.65;
+  color: var(--muted);
+  overflow-x: auto;
+}
+
 .log-console-entry {
   display: grid;
   gap: 8px;

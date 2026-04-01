@@ -3,9 +3,11 @@ import type { RunLogEntry } from "@workhorse/contracts";
 
 import {
   buildLiveLogStreamItems,
+  findStickyPlanEntry,
   getToolStatus,
   isCommandExecutionEntry,
   normalizeToolTitle,
+  parseStickyPlanContent,
   partitionLiveLogEntries,
   prepareLiveLogEntries
 } from "./live-log-entries";
@@ -89,7 +91,68 @@ describe("live log entry aggregation", () => {
     expect(outputEntry.text).toBe("status\ninProgress\n");
   });
 
-  it("keeps tool, plan and system events in the output stream", () => {
+  it("merges status lifecycle entries into a single stream item", () => {
+    const entries = prepareLiveLogEntries([
+      makeEntry({
+        id: "status-started",
+        kind: "status",
+        title: "File Change",
+        text: "status: inProgress",
+        metadata: {
+          groupId: "item:turn-1:item-2",
+          itemId: "item-2",
+          itemType: "fileChange",
+          phase: "started",
+          turnId: "turn-1",
+          threadId: "thread-1"
+        }
+      }),
+      makeEntry({
+        id: "agent",
+        timestamp: "2026-04-01T01:47:32.000Z",
+        kind: "agent",
+        stream: "stdout",
+        title: "Agent output",
+        text: "Thinking..."
+      }),
+      makeEntry({
+        id: "status-completed",
+        timestamp: "2026-04-01T01:47:33.000Z",
+        kind: "status",
+        title: "File Change",
+        text: "status: completed",
+        metadata: {
+          groupId: "item:turn-1:item-2",
+          itemId: "item-2",
+          itemType: "fileChange",
+          phase: "completed",
+          turnId: "turn-1",
+          threadId: "thread-1"
+        }
+      })
+    ]);
+
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toMatchObject({
+      id: "status-started",
+      kind: "status",
+      title: "File Change",
+      text: "status: completed",
+      metadata: {
+        itemType: "fileChange",
+        phase: "completed"
+      }
+    });
+    expect(getToolStatus(entries[0]!)).toEqual({
+      label: "Completed",
+      tone: "completed"
+    });
+    expect(entries[1]).toMatchObject({
+      id: "agent"
+    });
+  });
+
+  it("routes the latest meaningful plan entry to the sticky plan panel", () => {
     const groups = partitionLiveLogEntries(
       prepareLiveLogEntries([
         makeEntry({
@@ -145,9 +208,34 @@ describe("live log entry aggregation", () => {
       "stdout",
       "tool-active",
       "tool-done",
-      "plan",
       "system"
     ]);
+    expect(groups.stickyPlanEntry?.id).toBe("plan");
+  });
+
+  it("filters boilerplate plan entries from the stream without creating a sticky plan", () => {
+    const groups = partitionLiveLogEntries(
+      prepareLiveLogEntries([
+        makeEntry({
+          id: "plan-start",
+          kind: "plan",
+          stream: "system",
+          title: "Plan started",
+          text: "Planning started."
+        }),
+        makeEntry({
+          id: "status",
+          timestamp: "2026-04-01T01:47:35.000Z",
+          kind: "status",
+          stream: "system",
+          title: "File Change",
+          text: "status: inProgress"
+        })
+      ])
+    );
+
+    expect(groups.stickyPlanEntry).toBeNull();
+    expect(groups.streamEntries.map((entry) => entry.id)).toEqual(["status"]);
   });
 
   it("attaches following tool output blocks to the preceding tool entry in stream order", () => {
@@ -302,5 +390,45 @@ describe("live log entry aggregation", () => {
       "agent-earlier",
       "agent-last"
     ]);
+  });
+
+  it("parses sticky plan checklist content", () => {
+    expect(
+      parseStickyPlanContent(`# Plan
+
+1. Inspect the code
+- [x] Add tests
+- [ ] Verify build`)
+    ).toEqual({
+      summary: null,
+      items: [
+        { text: "Inspect the code", done: false },
+        { text: "Add tests", done: true },
+        { text: "Verify build", done: false }
+      ],
+      body: null
+    });
+  });
+
+  it("finds the latest non-boilerplate plan entry", () => {
+    const entries = prepareLiveLogEntries([
+      makeEntry({
+        id: "plan-start",
+        kind: "plan",
+        stream: "system",
+        title: "Plan started",
+        text: "Planning started."
+      }),
+      makeEntry({
+        id: "plan-update",
+        timestamp: "2026-04-01T01:47:35.000Z",
+        kind: "plan",
+        stream: "system",
+        title: "Plan updated",
+        text: "1. Inspect logs\n2. Tighten UI"
+      })
+    ]);
+
+    expect(findStickyPlanEntry(entries)?.id).toBe("plan-update");
   });
 });

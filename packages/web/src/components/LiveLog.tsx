@@ -6,6 +6,7 @@ import {
   ENTRY_LABELS,
   getToolStatus,
   isCommandExecutionEntry,
+  parseStickyPlanContent,
   partitionLiveLogEntries,
   metadataEntries,
   normalizeToolTitle,
@@ -300,9 +301,12 @@ export function LiveLog({
   const aggregatedEntries = useMemo(() => {
     return prepareLiveLogEntries([...runLog, ...liveLog]);
   }, [liveLog, runLog]);
-  const { streamEntries } = useMemo(() => {
+  const { streamEntries, stickyPlanEntry } = useMemo(() => {
     return partitionLiveLogEntries(aggregatedEntries);
   }, [aggregatedEntries]);
+  const stickyPlan = useMemo(() => {
+    return stickyPlanEntry ? parseStickyPlanContent(stickyPlanEntry.text) : null;
+  }, [stickyPlanEntry]);
   const streamItems = useMemo(() => {
     return buildLiveLogStreamItems(streamEntries);
   }, [streamEntries]);
@@ -365,6 +369,8 @@ export function LiveLog({
       setCopyState("failed");
     }
   }
+
+  const hasVisibleEntries = Boolean(stickyPlanEntry) || streamEntries.length > 0;
 
   return (
     <div className={showStatus ? "details-body details-body-logs" : "live-log-panel"}>
@@ -445,6 +451,8 @@ export function LiveLog({
               Logs will appear here when a run starts.
             </div>
           )
+        ) : !hasVisibleEntries ? (
+          <div className="log-empty">Waiting for meaningful output.</div>
         ) : (
           <div className="log-stack">
             <div className="log-group">
@@ -460,6 +468,9 @@ export function LiveLog({
                   className="log-console"
                   onScroll={handleStreamScroll}
                 >
+                  {stickyPlanEntry && stickyPlan ? (
+                    <StickyPlanCard entry={stickyPlanEntry} plan={stickyPlan} />
+                  ) : null}
                   {streamItems.map((item) =>
                     item.type === "tool"
                       ? renderToolStreamItem(item.entry, item.outputEntries)
@@ -467,8 +478,12 @@ export function LiveLog({
                   )}
                 </div>
               ) : (
-                <div className="log-empty">
-                  This run did not emit output.
+                <div className="log-console">
+                  {stickyPlanEntry && stickyPlan ? (
+                    <StickyPlanCard entry={stickyPlanEntry} plan={stickyPlan} />
+                  ) : (
+                    <div className="log-empty">This run did not emit output.</div>
+                  )}
                 </div>
               )}
             </div>
@@ -476,6 +491,66 @@ export function LiveLog({
         )}
       </section>
     </div>
+  );
+}
+
+function StickyPlanCard({
+  entry,
+  plan
+}: {
+  entry: RunLogEntry;
+  plan: ReturnType<typeof parseStickyPlanContent>;
+}) {
+  const completedCount = plan.items.filter((item) => item.done).length;
+  const summary =
+    plan.items.length > 0
+      ? `${completedCount} out of ${plan.items.length} task${
+          plan.items.length === 1 ? "" : "s"
+        } completed`
+      : plan.summary ?? "Execution plan";
+
+  return (
+    <section className="sticky-plan-card">
+      <div className="sticky-plan-card-header">
+        <div className="sticky-plan-card-summary">
+          <span className="sticky-plan-card-kicker">Plan</span>
+          <strong>{summary}</strong>
+        </div>
+        <time dateTime={entry.timestamp}>{formatTimestamp(entry.timestamp)}</time>
+      </div>
+
+      {plan.summary && plan.items.length > 0 ? (
+        <p className="sticky-plan-card-description">{plan.summary}</p>
+      ) : null}
+
+      {plan.items.length > 0 ? (
+        <ol className="sticky-plan-list">
+          {plan.items.map((item, index) => (
+            <li key={`${entry.id}-${index}`} className="sticky-plan-item">
+              <span
+                className={
+                  item.done
+                    ? "sticky-plan-marker sticky-plan-marker-done"
+                    : "sticky-plan-marker"
+                }
+                aria-hidden="true"
+              />
+              <span
+                className={
+                  item.done
+                    ? "sticky-plan-item-text sticky-plan-item-text-done"
+                    : "sticky-plan-item-text"
+                }
+              >
+                {item.text}
+              </span>
+            </li>
+          ))}
+        </ol>
+      ) : null}
+
+      {plan.body ? <pre className="sticky-plan-body">{plan.body}</pre> : null}
+    </section>
   );
 }
 
