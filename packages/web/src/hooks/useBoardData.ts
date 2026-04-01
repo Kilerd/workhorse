@@ -15,6 +15,11 @@ import type {
 
 import { api } from "@/lib/api";
 import { readStoredValue, writeStoredValue } from "@/lib/persist";
+import {
+  resolveActiveRunId,
+  resolveRunSelectionAfterStart,
+  resolveViewedRunId
+} from "@/lib/run-selection";
 import { type DisplayTask, type TaskFormValues } from "@/lib/task-view";
 
 const STORAGE_KEYS = {
@@ -95,17 +100,16 @@ export function useBoardData() {
   });
 
   const activeRunId = useMemo(() => {
-    if (selectedRunId) {
-      return selectedRunId;
-    }
-
     const runs = selectedTaskRunsQuery.data ?? [];
-    return (
-      runs.find((run) => run.status === "running")?.id ??
-      runs[0]?.id ??
-      selectedTask?.lastRunId ??
-      null
-    );
+    return resolveActiveRunId(runs);
+  }, [selectedTaskRunsQuery.data]);
+
+  const viewedRunId = useMemo(() => {
+    return resolveViewedRunId({
+      runs: selectedTaskRunsQuery.data ?? [],
+      selectedRunId,
+      lastRunId: selectedTask?.lastRunId
+    });
   }, [selectedRunId, selectedTask?.lastRunId, selectedTaskRunsQuery.data]);
 
   const createWorkspaceMutation = useMutation({
@@ -137,7 +141,13 @@ export function useBoardData() {
     },
     onSuccess: async (result, taskId) => {
       if (taskId === selectedTaskId) {
-        setSelectedRunId(result.run.id);
+        setSelectedRunId((current) =>
+          resolveRunSelectionAfterStart({
+            selectedRunId: current,
+            previousLastRunId: selectedTask?.lastRunId,
+            startedRunId: result.run.id
+          })
+        );
       }
 
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
@@ -299,15 +309,11 @@ export function useBoardData() {
       return;
     }
 
-    if (event.taskId === selectedTaskId && !selectedRunId) {
-      setSelectedRunId(event.runId);
-    }
-
     setLiveLogByRunId((current) => ({
       ...current,
       [event.runId]: [...(current[event.runId] ?? []), event.entry]
     }));
-  }, [selectedRunId, selectedTaskId]);
+  }, []);
 
   const clearLiveOutput = useCallback((runId: string) => {
     setLiveLogByRunId((current) => {
@@ -332,6 +338,7 @@ export function useBoardData() {
     selectedTask,
     selectedTaskRunsQuery,
     activeRunId,
+    viewedRunId,
     selectedRunId,
     liveLogByRunId,
     workspaceModalOpen,

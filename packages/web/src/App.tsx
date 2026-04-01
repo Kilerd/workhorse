@@ -18,6 +18,7 @@ import { TopBar } from "@/components/TopBar";
 import { useBoardData } from "@/hooks/useBoardData";
 import { api } from "@/lib/api";
 import { useWorkspaceSocket } from "@/hooks/useWorkspaceSocket";
+import { resolveRunSelectionAfterStart } from "@/lib/run-selection";
 import type { DisplayTaskColumn } from "@/lib/task-view";
 import { queryClient } from "@/lib/query";
 import { applyTheme, getPreferredTheme, type ThemeMode } from "@/lib/theme";
@@ -72,7 +73,13 @@ function ReactAppShell() {
           break;
         case "run.started":
           if (event.taskId === board.selectedTask?.id) {
-            board.setSelectedRunId(event.run.id);
+            board.setSelectedRunId((current) =>
+              resolveRunSelectionAfterStart({
+                selectedRunId: current,
+                previousLastRunId: board.selectedTask?.lastRunId,
+                startedRunId: event.run.id
+              })
+            );
           }
           queryClient.invalidateQueries({ queryKey: ["tasks"] });
           queryClient.invalidateQueries({ queryKey: ["runs"] });
@@ -302,20 +309,22 @@ function TaskDetailsRoute({
   const isSelectedTaskActive = task ? board.selectedTask?.id === task.id : false;
   const runs = isSelectedTaskActive ? board.selectedTaskRunsQuery.data ?? [] : [];
   const activeRunId = isSelectedTaskActive ? board.activeRunId : null;
-  const liveLog = activeRunId ? board.liveLogByRunId[activeRunId] ?? [] : [];
+  const viewedRunId = isSelectedTaskActive ? board.viewedRunId : null;
+  const liveLog =
+    activeRunId && viewedRunId === activeRunId ? board.liveLogByRunId[activeRunId] ?? [] : [];
   const workspaceName = task
     ? workspaces.find((workspace) => workspace.id === task.workspaceId)?.name ?? "Unknown workspace"
     : "Unknown workspace";
   const runLogQuery = useQuery({
-    queryKey: ["run-log", activeRunId ?? ""],
+    queryKey: ["run-log", viewedRunId ?? ""],
     queryFn: async (): Promise<RunLogEntry[]> => {
-      if (!activeRunId) {
+      if (!viewedRunId) {
         return [];
       }
 
-      return (await api.getRunLog(activeRunId)).data.items;
+      return (await api.getRunLog(viewedRunId)).data.items;
     },
-    enabled: isSelectedTaskActive && Boolean(activeRunId)
+    enabled: isSelectedTaskActive && Boolean(viewedRunId)
   });
   const runLog = runLogQuery.data ?? [];
 
