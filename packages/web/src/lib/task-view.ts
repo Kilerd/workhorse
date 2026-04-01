@@ -17,6 +17,7 @@ export type TaskActionId =
 export interface TaskActionDescriptor {
   id: TaskActionId;
   label: string;
+  shortLabel?: string;
   kind: "primary" | "secondary" | "danger";
 }
 
@@ -46,8 +47,8 @@ export function getTaskActions(column: DisplayTaskColumn): TaskActionDescriptor[
       return [{ id: "stop", label: "Stop", kind: "secondary" }];
     case "review":
       return [
-        { id: "move-to-todo", label: "Move to Todo", kind: "secondary" },
-        { id: "mark-done", label: "Mark Done", kind: "primary" }
+        { id: "move-to-todo", label: "Move to Todo", shortLabel: "Todo", kind: "secondary" },
+        { id: "mark-done", label: "Mark Done", shortLabel: "Done", kind: "primary" }
       ];
     case "done":
       return [{ id: "archive", label: "Archive", kind: "secondary" }];

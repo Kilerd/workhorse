@@ -29,21 +29,24 @@ export function TaskActionBar({
   }
 
   return (
-    <span className="task-card-actions">
+    <span className={compact ? "task-card-actions task-card-actions-compact" : "task-card-actions"}>
       {actions.map((action) => {
         const className = compact
-          ? "icon-button"
+          ? "action-chip"
           : action.kind === "primary"
             ? "button"
             : action.kind === "danger"
               ? "button button-danger"
               : "button button-secondary";
 
+        const label = compact ? action.shortLabel ?? action.label : action.label;
+
         return (
           <button
             type="button"
             key={action.id}
             className={className}
+            title={action.label}
             onClick={(event) => {
               event.stopPropagation();
               switch (action.id) {
@@ -68,7 +71,7 @@ export function TaskActionBar({
               }
             }}
           >
-            {action.label}
+            {label}
           </button>
         );
       })}

@@ -21,11 +21,10 @@ import { api } from "@/lib/api";
 import { useWorkspaceSocket } from "@/hooks/useWorkspaceSocket";
 import type { DisplayTaskColumn } from "@/lib/task-view";
 import { queryClient } from "@/lib/query";
+import { applyTheme, getPreferredTheme, type ThemeMode } from "@/lib/theme";
 
 export default function App() {
-  return (
-    <ReactAppShell />
-  );
+  return <ReactAppShell />;
 }
 
 function ReactAppShell() {
@@ -33,11 +32,13 @@ function ReactAppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const [syncedAt, setSyncedAt] = useState<string>(new Date().toISOString());
-  const {
-    selectedWorkspaceTasks,
-    displayedTasks,
-    workspacesQuery
-  } = board;
+  const [searchQuery, setSearchQuery] = useState("");
+  const [theme, setTheme] = useState<ThemeMode>(() => getPreferredTheme());
+  const { selectedWorkspaceTasks, displayedTasks, workspacesQuery } = board;
+
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
 
   const handleEvent = useCallback(
     (event: ServerEvent) => {
@@ -75,12 +76,33 @@ function ReactAppShell() {
   const workspaces = workspacesQuery.data ?? [];
   const tasks = selectedWorkspaceTasks;
   const allTasks = displayedTasks;
+  const workspaceNames = useMemo(() => {
+    return new Map(workspaces.map((workspace) => [workspace.id, workspace.name]));
+  }, [workspaces]);
+
+  const boardTasks = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) {
+      return tasks;
+    }
+
+    return tasks.filter((task) => {
+      const workspaceName = workspaceNames.get(task.workspaceId) ?? "";
+      return [task.title, task.description, workspaceName, task.runnerType, task.column]
+        .join(" ")
+        .toLowerCase()
+        .includes(query);
+    });
+  }, [searchQuery, tasks, workspaceNames]);
 
   const selectedWorkspaceName = useMemo(() => {
     if (board.selectedWorkspaceId === "all") {
       return "All workspaces";
     }
-    return workspaces.find((workspace) => workspace.id === board.selectedWorkspaceId)?.name ?? "All workspaces";
+    return (
+      workspaces.find((workspace) => workspace.id === board.selectedWorkspaceId)?.name ??
+      "All workspaces"
+    );
   }, [board.selectedWorkspaceId, workspaces]);
 
   function handleDrop(result: DropResult) {
@@ -95,14 +117,14 @@ function ReactAppShell() {
       return;
     }
 
-    const task = tasks.find((item) => item.id === result.draggableId);
+    const task = boardTasks.find((item) => item.id === result.draggableId);
     if (!task) {
       return;
     }
 
     const destinationColumn = result.destination.droppableId as DisplayTaskColumn;
 
-    const destinationTasks = tasks
+    const destinationTasks = boardTasks
       .filter((item) => item.column === destinationColumn && item.id !== task.id)
       .sort((left, right) => left.order - right.order);
 
@@ -135,8 +157,6 @@ function ReactAppShell() {
 
   return (
     <div className="app-shell">
-      <div className="ambient ambient-a" />
-      <div className="ambient ambient-b" />
       <main
         className={
           location.pathname.startsWith("/tasks/") ? "app app-details" : "app app-board"
@@ -146,6 +166,8 @@ function ReactAppShell() {
           workspaces={workspaces}
           selectedWorkspaceId={board.selectedWorkspaceId}
           selectedWorkspaceName={selectedWorkspaceName}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
           onWorkspaceChange={board.setWorkspaceSelection}
           onCreateWorkspace={() => board.setWorkspaceModalOpen(true)}
           onCreateTask={() => board.setTaskModalOpen(true)}
@@ -154,8 +176,12 @@ function ReactAppShell() {
             void queryClient.invalidateQueries({ queryKey: ["tasks"] });
             setSyncedAt(new Date().toISOString());
           }}
+          theme={theme}
+          onToggleTheme={() =>
+            setTheme((current) => (current === "dark" ? "light" : "dark"))
+          }
           lastSyncedAt={syncedAt}
-          boardCount={tasks.length}
+          boardCount={boardTasks.length}
           runtimeStatus={board.healthQuery.data?.status ?? "connecting"}
         />
 
@@ -165,9 +191,9 @@ function ReactAppShell() {
             element={
               <DragDropContext onDragEnd={handleDrop}>
                 <Board
-                  tasks={tasks}
+                  tasks={boardTasks}
                   workspaces={workspaces}
-                  selectedTaskId={null}
+                  selectedTaskId={board.selectedTask?.id ?? null}
                   onTaskOpen={openTask}
                   onPlan={(taskId) => board.planTask(taskId)}
                   onTaskStart={(taskId) => board.startTask(taskId)}
@@ -182,11 +208,7 @@ function ReactAppShell() {
           <Route
             path="/tasks/:taskId"
             element={
-              <TaskDetailsRoute
-                board={board}
-                allTasks={allTasks}
-                workspaces={workspaces}
-              />
+              <TaskDetailsRoute board={board} allTasks={allTasks} workspaces={workspaces} />
             }
           />
           <Route path="*" element={<Navigate to="/" replace />} />
@@ -308,25 +330,6 @@ function TaskDetailsRoute({
 
   return (
     <section className="details-page-shell">
-      <div className="details-page-header">
-        <button
-          type="button"
-          className="button button-secondary"
-          onClick={() => navigate("/")}
-        >
-          Back to board
-        </button>
-      <div className="details-page-meta">
-          <span className="meta-chip">Workspace {workspaceName}</span>
-          <span className={`status status-${task.column}`}>{task.column}</span>
-          {workspaces.find((workspace) => workspace.id === task.workspaceId)?.isGitRepo ? (
-            <span className={`status status-worktree-${task.worktree.status}`}>
-              {task.worktree.status.replaceAll("_", " ")}
-            </span>
-          ) : null}
-        </div>
-      </div>
-
       <TaskDetailsPanel
         className="details-panel-page"
         task={task}
@@ -336,6 +339,7 @@ function TaskDetailsRoute({
         selectedRunId={board.selectedRunId}
         runLogLoading={runLogQuery.isLoading}
         onTabChange={handleTabChange}
+        onBack={() => navigate("/")}
         onSelectRun={board.setSelectedRunId}
         liveLog={liveLog}
         runLog={runLog}

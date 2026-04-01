@@ -34,3 +34,7 @@ export function titleCase(value: string): string {
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 }
+
+export function formatCount(value: number, singular: string, plural = `${singular}s`): string {
+  return `${value} ${value === 1 ? singular : plural}`;
+}

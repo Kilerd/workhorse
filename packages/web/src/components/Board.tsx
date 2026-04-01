@@ -1,7 +1,7 @@
 import { Draggable, Droppable } from "@hello-pangea/dnd";
 import type { Workspace } from "@workhorse/contracts";
 
-import { formatRelativeTime } from "@/lib/format";
+import { formatRelativeTime, titleCase } from "@/lib/format";
 import { BOARD_COLUMNS, type DisplayTask, type DisplayTaskColumn } from "@/lib/task-view";
 import { TaskActionBar } from "./TaskActionBar";
 
@@ -56,25 +56,27 @@ export function Board({
             <article
               className={[
                 "column",
-                column.tone,
                 snapshot.isDraggingOver ? "column-dragging" : ""
               ]
                 .filter(Boolean)
                 .join(" ")}
-              ref={provided.innerRef}
-              {...provided.droppableProps}
             >
               <div className="column-header">
-                <div>
-                  <h2>{column.title}</h2>
-                  <p>{grouped[column.id].length} cards</p>
-                </div>
+                <h2>{column.title}</h2>
+                <span>{grouped[column.id].length} cards</span>
               </div>
-              <div className="column-list">
+
+              <div
+                className="column-list"
+                ref={provided.innerRef}
+                {...provided.droppableProps}
+              >
                 {grouped[column.id].map((task, index) => {
                   const isActive = task.id === selectedTaskId;
                   const workspace = workspaces.find((entry) => entry.id === task.workspaceId);
                   const workspaceName = workspace?.name ?? "Unknown";
+                  const showWorktree = workspace?.isGitRepo ?? false;
+
                   return (
                     <Draggable draggableId={task.id} index={index} key={task.id}>
                       {(dragProvided, dragSnapshot) => (
@@ -99,24 +101,34 @@ export function Board({
                             }
                           }}
                         >
-                          <div className="task-card-top">
-                            <strong>{task.title}</strong>
-                            <span className={`pill pill-${task.runnerType}`}>{task.runnerType}</span>
+                          <div className="task-card-head">
+                            <div className="task-card-title">
+                              <strong>{task.title}</strong>
+                              <p className="task-card-desc">
+                                {task.description || "No description"}
+                              </p>
+                            </div>
+                            <span className={`pill pill-${task.runnerType}`}>
+                              {task.runnerType.toUpperCase()}
+                            </span>
                           </div>
-                          <p className="task-card-desc">
-                            {task.description || "No description"}
-                          </p>
-                          <div className="task-card-meta">
-                            <span>{workspaceName}</span>
-                            {workspace?.isGitRepo ? (
+
+                          <div className="task-card-tags">
+                            <span className="meta-token">{workspaceName}</span>
+                            <span className={`status status-${task.column}`}>
+                              {titleCase(task.column)}
+                            </span>
+                            {showWorktree ? (
                               <span className={`status status-worktree-${task.worktree.status}`}>
-                                {task.worktree.status.replaceAll("_", " ")}
+                                {titleCase(task.worktree.status)}
                               </span>
                             ) : null}
-                            <span>{formatRelativeTime(task.updatedAt)}</span>
                           </div>
+
                           <div className="task-card-footer">
-                            <span className={`status status-${task.column}`}>{task.column}</span>
+                            <span className="task-card-time">
+                              Updated {formatRelativeTime(task.updatedAt)}
+                            </span>
                             <TaskActionBar
                               column={task.column}
                               compact
