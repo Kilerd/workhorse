@@ -7,6 +7,7 @@ interface Props {
   viewedRun: Run | null;
   liveLog: RunLogEntry[];
   runLog: RunLogEntry[];
+  isLoading?: boolean;
 }
 
 const ENTRY_LABELS: Record<RunLogEntry["kind"], string> = {
@@ -192,7 +193,14 @@ function formatTimestamp(value: string): string {
   });
 }
 
-export function LiveLog({ task, activeRun, viewedRun, liveLog, runLog }: Props) {
+export function LiveLog({
+  task,
+  activeRun,
+  viewedRun,
+  liveLog,
+  runLog,
+  isLoading = false
+}: Props) {
   const entries = useMemo(() => {
     const merged = [...runLog, ...liveLog];
     const seen = new Set<string>();
@@ -242,9 +250,13 @@ export function LiveLog({ task, activeRun, viewedRun, liveLog, runLog }: Props) 
       <section className="details-section">
         <h3>Live log</h3>
         {aggregatedEntries.length === 0 ? (
+          isLoading ? (
+            <div className="log-empty">Loading logs...</div>
+          ) : (
           <div className="log-empty">
             Logs will appear here when a run starts.
           </div>
+          )
         ) : (
           <div className="log-stream">
             {aggregatedEntries.map((entry) => (

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { Run, RunLogEntry, Workspace } from "@workhorse/contracts";
 
 import { formatRelativeTime } from "@/lib/format";
@@ -9,9 +9,12 @@ import { TaskActionBar } from "./TaskActionBar";
 interface Props {
   className?: string;
   task: DisplayTask | null;
+  tab: TaskDetailsTab;
   runs: Run[];
   workspaces: Workspace[];
   selectedRunId: string | null;
+  runLogLoading?: boolean;
+  onTabChange(tab: TaskDetailsTab): void;
   onSelectRun(runId: string): void;
   liveLog: RunLogEntry[];
   runLog: RunLogEntry[];
@@ -25,12 +28,17 @@ interface Props {
   onDelete(): void;
 }
 
+export type TaskDetailsTab = "overview" | "logs";
+
 export function TaskDetailsPanel({
   className,
   task,
+  tab,
   runs,
   workspaces,
   selectedRunId,
+  runLogLoading = false,
+  onTabChange,
   onSelectRun,
   liveLog,
   runLog,
@@ -43,12 +51,6 @@ export function TaskDetailsPanel({
   onCleanupWorktree,
   onDelete
 }: Props) {
-  const [tab, setTab] = useState<"overview" | "logs">("overview");
-
-  useEffect(() => {
-    setTab("overview");
-  }, [task?.id]);
-
   const activeRun = useMemo(
     () => runs.find((run) => run.status === "running") ?? null,
     [runs]
@@ -77,6 +79,10 @@ export function TaskDetailsPanel({
   const canCleanupWorktree =
     showWorktree &&
     (task.worktree.status === "ready" || task.worktree.status === "cleanup_pending");
+  const handleRunSelect = (runId: string) => {
+    onSelectRun(runId);
+    onTabChange("logs");
+  };
 
   return (
     <aside className={["details-panel", className].filter(Boolean).join(" ")}>
@@ -107,25 +113,38 @@ export function TaskDetailsPanel({
         </div>
       </div>
 
-      <div className="details-tabs">
+      <div className="details-tabs" role="tablist" aria-label="Task detail sections">
         <button
           type="button"
           className={tab === "overview" ? "tab tab-active" : "tab"}
-          onClick={() => setTab("overview")}
+          role="tab"
+          aria-selected={tab === "overview"}
+          aria-controls="task-details-panel-overview"
+          id="task-details-tab-overview"
+          onClick={() => onTabChange("overview")}
         >
           Overview
         </button>
         <button
           type="button"
           className={tab === "logs" ? "tab tab-active" : "tab"}
-          onClick={() => setTab("logs")}
+          role="tab"
+          aria-selected={tab === "logs"}
+          aria-controls="task-details-panel-logs"
+          id="task-details-tab-logs"
+          onClick={() => onTabChange("logs")}
         >
           Logs
         </button>
       </div>
 
       {tab === "overview" ? (
-        <div className="details-body">
+        <div
+          className="details-body"
+          role="tabpanel"
+          id="task-details-panel-overview"
+          aria-labelledby="task-details-tab-overview"
+        >
           <dl className="details-grid">
             <div>
               <dt>Status</dt>
@@ -193,7 +212,7 @@ export function TaskDetailsPanel({
                     type="button"
                     key={run.id}
                     className={run.id === viewedRun?.id ? "run-row run-row-active" : "run-row"}
-                    onClick={() => onSelectRun(run.id)}
+                    onClick={() => handleRunSelect(run.id)}
                   >
                     <span>{run.status}</span>
                     <span>{formatRelativeTime(run.startedAt)}</span>
@@ -204,13 +223,20 @@ export function TaskDetailsPanel({
           </section>
         </div>
       ) : (
-        <LiveLog
-          task={task}
-          activeRun={activeRun}
-          viewedRun={viewedRun}
-          liveLog={liveLog}
-          runLog={runLog}
-        />
+        <div
+          role="tabpanel"
+          id="task-details-panel-logs"
+          aria-labelledby="task-details-tab-logs"
+        >
+          <LiveLog
+            task={task}
+            activeRun={activeRun}
+            viewedRun={viewedRun}
+            liveLog={liveLog}
+            runLog={runLog}
+            isLoading={runLogLoading}
+          />
+        </div>
       )}
     </aside>
   );
