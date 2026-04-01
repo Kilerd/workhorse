@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import type { Run, RunLogEntry, Workspace } from "@workhorse/contracts";
 
 import { formatRelativeTime, titleCase } from "@/lib/format";
@@ -29,7 +29,16 @@ interface Props {
 
 function formatRunStatusLabel(run: Run | null, task: DisplayTask): string {
   if (run) {
-    return titleCase(run.status);
+    switch (run.status) {
+      case "succeeded":
+        return "Completed";
+      case "canceled":
+        return "Canceled";
+      case "interrupted":
+        return "Interrupted";
+      default:
+        return titleCase(run.status);
+    }
   }
 
   if (task.column === "running") {
@@ -37,10 +46,10 @@ function formatRunStatusLabel(run: Run | null, task: DisplayTask): string {
   }
 
   if (task.lastRunId) {
-    return "Idle";
+    return "Ready";
   }
 
-  return "Not created";
+  return "Ready";
 }
 
 function formatRunStatusCopy(run: Run | null, task: DisplayTask): string {
@@ -75,6 +84,148 @@ function formatRunStatusCopy(run: Run | null, task: DisplayTask): string {
   }
 
   return "This task has not been started yet.";
+}
+
+function getColumnTone(column: DisplayTask["column"]): string {
+  switch (column) {
+    case "todo":
+      return "info";
+    case "running":
+      return "warning";
+    case "review":
+      return "accent";
+    case "done":
+      return "success";
+    default:
+      return "muted";
+  }
+}
+
+function getRunTone(run: Run | null, task: DisplayTask): string {
+  if (run?.status === "running" || (!run && task.column === "running")) {
+    return "warning";
+  }
+
+  if (run?.status === "succeeded") {
+    return "success";
+  }
+
+  if (run?.status === "queued") {
+    return "info";
+  }
+
+  if (run && ["failed", "interrupted", "canceled"].includes(run.status)) {
+    return "danger";
+  }
+
+  return "muted";
+}
+
+function formatCompactId(value?: string): string {
+  if (!value) {
+    return "-";
+  }
+
+  if (value.length <= 12) {
+    return value;
+  }
+
+  return `${value.slice(0, 8)}...`;
+}
+
+function DetailSection({
+  title,
+  children
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="task-detail-section">
+      <div className="task-detail-section-header">
+        <h3>{title}</h3>
+      </div>
+      <div className="task-detail-section-body">{children}</div>
+    </section>
+  );
+}
+
+function DetailField({
+  label,
+  value,
+  mono = false,
+  className
+}: {
+  label: string;
+  value: ReactNode;
+  mono?: boolean;
+  className?: string;
+}) {
+  return (
+    <div
+      className={[
+        "task-detail-field",
+        mono ? "task-detail-field-mono" : null,
+        className
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <div className="task-detail-field-label">{label}</div>
+      <div className="task-detail-field-value">{value}</div>
+    </div>
+  );
+}
+
+function ArrowLeftIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" className="task-detail-icon">
+      <path
+        d="M9.5 3.5 5 8l4.5 4.5M5.5 8h6"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.4"
+      />
+    </svg>
+  );
+}
+
+function FolderRemoveIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" className="task-detail-icon">
+      <path
+        d="M1.5 4.5h4l1.4 1.5h7.6v5.5a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z"
+        fill="none"
+        stroke="currentColor"
+        strokeLinejoin="round"
+        strokeWidth="1.2"
+      />
+      <path
+        d="M5.5 9.5h5"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.2"
+      />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" className="task-detail-icon">
+      <path
+        d="M3.5 4.5h9m-7.5 0v7m3-7v7m3-7-.4 7.2a1 1 0 0 1-1 .8H6.4a1 1 0 0 1-1-.8L5 4.5m1.5 0 .5-1h2l.5 1"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.2"
+      />
+    </svg>
+  );
 }
 
 export function TaskDetailsPanel({
@@ -129,36 +280,55 @@ export function TaskDetailsPanel({
     task.runnerConfig.type === "shell"
       ? task.runnerConfig.command
       : task.runnerConfig.prompt;
+  const summaryRun = activeRun ?? viewedRun;
+  const runTone = getRunTone(summaryRun, task);
 
   return (
     <aside className={["details-panel", className].filter(Boolean).join(" ")}>
-      {onBack ? (
-        <div className="details-toolbar">
-          <button type="button" className="button button-secondary" onClick={onBack}>
-            Back to board
-          </button>
-        </div>
-      ) : null}
-
-      <section className="details-hero">
-        <div className="details-meta-row">
-          <span className="meta-chip">Workspace {workspaceName}</span>
-          <span className={`status status-${task.column}`}>{titleCase(task.column)}</span>
-          <span className={`pill pill-${task.runnerType}`}>{task.runnerType.toUpperCase()}</span>
-          {showWorktree ? (
-            <span className={`status status-worktree-${task.worktree.status}`}>
-              {titleCase(task.worktree.status)}
-            </span>
+      <div className="task-detail-subheader">
+        <div className="task-detail-subheader-main">
+          {onBack ? (
+            <>
+              <button
+                type="button"
+                className="task-detail-back-button"
+                onClick={onBack}
+              >
+                <ArrowLeftIcon />
+                <span>Back to board</span>
+              </button>
+              <span className="task-detail-divider" aria-hidden="true">
+                |
+              </span>
+            </>
           ) : null}
+
+          <span className="task-detail-workspace-label">Workspace {workspaceName}</span>
+          <span className={`task-detail-chip task-detail-chip-column-${getColumnTone(task.column)}`}>
+            {titleCase(task.column)}
+          </span>
+          <span className={`task-detail-chip task-detail-chip-runner-${task.runnerType}`}>
+            {task.runnerType}
+          </span>
+          <span className={`task-detail-chip task-detail-chip-run-${runTone}`}>
+            {formatRunStatusLabel(summaryRun, task)}
+          </span>
         </div>
 
-        <div className="details-title-block">
-          <p className="eyebrow">Task details</p>
-          <h2>{task.title}</h2>
-          <p className="details-subtitle">{workspaceName}</p>
+        <button type="button" className="task-detail-delete-button" onClick={onDelete}>
+          <TrashIcon />
+          <span>Delete</span>
+        </button>
+      </div>
+
+      <div className="task-detail-header">
+        <div className="task-detail-heading">
+          <p className="task-detail-eyebrow">Task details</p>
+          <h1>{task.title}</h1>
+          <p className="task-detail-subtitle">{workspaceName}</p>
         </div>
 
-        <div className="details-actions">
+        <div className="task-detail-header-actions">
           <TaskActionBar
             column={task.column}
             onPlan={onPlan}
@@ -169,130 +339,125 @@ export function TaskDetailsPanel({
             onArchive={onArchive}
           />
           {canCleanupWorktree ? (
-            <button type="button" className="button button-secondary" onClick={onCleanupWorktree}>
-              {task.worktree.status === "cleanup_pending" ? "Retry cleanup" : "Remove worktree"}
+            <button
+              type="button"
+              className="task-detail-inline-button"
+              onClick={onCleanupWorktree}
+            >
+              <FolderRemoveIcon />
+              <span>
+                {task.worktree.status === "cleanup_pending"
+                  ? "Retry cleanup"
+                  : "Remove worktree"}
+              </span>
             </button>
           ) : null}
-          <button type="button" className="button button-danger" onClick={onDelete}>
-            Delete
-          </button>
         </div>
-      </section>
+      </div>
 
-      <div className="details-content-grid">
-        <div className="details-primary-column">
-          <section className="details-section">
-            <h3>Description</h3>
-            <p className="details-description">{task.description || "No description yet."}</p>
-          </section>
+      <div className="task-detail-layout">
+        <div className="task-detail-sidebar">
+          <DetailSection title="Description">
+            <p className="task-detail-description">{task.description || "No description provided."}</p>
+          </DetailSection>
 
-          <div className="details-grid">
-            <section className="details-section">
-              <h3>Run status</h3>
-              <div className="active-run">
-                <div>
-                  <strong>{formatRunStatusLabel(activeRun ?? viewedRun, task)}</strong>
-                  <p>{formatRunStatusCopy(activeRun ?? viewedRun, task)}</p>
-                </div>
-                <span className={`pill pill-${task.runnerType}`}>{task.runnerType}</span>
+          <DetailSection title="Run status">
+            <div className="task-detail-run-overview">
+              <div className="task-detail-run-copy-block">
+                <div className="task-detail-run-label">{formatRunStatusLabel(summaryRun, task)}</div>
+                <p className="task-detail-run-copy">{formatRunStatusCopy(summaryRun, task)}</p>
               </div>
-              {viewedRun ? (
-                <div className="details-kv">
-                  <strong>Viewing run</strong>
-                  <code>{viewedRun.id}</code>
-                </div>
-              ) : null}
-            </section>
+              <span className={`task-detail-chip task-detail-chip-runner-${task.runnerType}`}>
+                {task.runnerType}
+              </span>
+            </div>
 
-            <section className="details-section">
-              <h3>Snapshot</h3>
-              <dl className="details-stats">
-                <div>
-                  <dt>Status</dt>
-                  <dd>{titleCase(task.column)}</dd>
+            {viewedRun ? (
+              <div className="task-detail-inline-block">
+                <div className="task-detail-field-label">Viewing run</div>
+                <div className="task-detail-inline-value task-detail-inline-value-mono">
+                  {viewedRun.id}
                 </div>
-                <div>
-                  <dt>Updated</dt>
-                  <dd>{formatRelativeTime(task.updatedAt)}</dd>
-                </div>
-                <div>
-                  <dt>Created</dt>
-                  <dd>{formatRelativeTime(task.createdAt)}</dd>
-                </div>
-                <div>
-                  <dt>Last run</dt>
-                  <dd>{task.lastRunId ?? "none"}</dd>
-                </div>
-              </dl>
-            </section>
-
-            <section className="details-section">
-              <h3>Runner config</h3>
-              <div className="details-kv">
-                <strong>{task.runnerConfig.type === "shell" ? "Command" : "Prompt"}</strong>
-                <code>{runnerConfig}</code>
               </div>
-            </section>
-
-            {showWorktree ? (
-              <section className="details-section">
-                <h3>Worktree</h3>
-                <dl className="details-stats">
-                  <div>
-                    <dt>Status</dt>
-                    <dd>{titleCase(task.worktree.status)}</dd>
-                  </div>
-                  <div>
-                    <dt>Base ref</dt>
-                    <dd>{task.worktree.baseRef || "none"}</dd>
-                  </div>
-                  <div>
-                    <dt>Branch</dt>
-                    <dd>{task.worktree.branchName}</dd>
-                  </div>
-                  <div>
-                    <dt>Last sync</dt>
-                    <dd>
-                      {task.worktree.lastSyncedBaseAt
-                        ? formatRelativeTime(task.worktree.lastSyncedBaseAt)
-                        : "not yet"}
-                    </dd>
-                  </div>
-                </dl>
-                <div className="details-kv">
-                  <strong>Path</strong>
-                  <code>{task.worktree.path ?? "not created"}</code>
-                </div>
-                {task.worktree.cleanupReason ? (
-                  <p className="details-note">{task.worktree.cleanupReason}</p>
-                ) : null}
-              </section>
             ) : null}
-          </div>
+          </DetailSection>
 
-          <section className="details-section">
-            <h3>Run history</h3>
-            <div className="run-list">
-              {runs.length === 0 ? (
-                <p className="muted">No runs yet.</p>
-              ) : (
-                runs.map((run) => (
+          <DetailSection title="Snapshot">
+            <div className="task-detail-field-grid">
+              <DetailField label="Status" value={titleCase(task.column)} />
+              <DetailField label="Updated" value={formatRelativeTime(task.updatedAt)} />
+              <DetailField label="Created" value={formatRelativeTime(task.createdAt)} />
+              <DetailField label="Last run" value={formatCompactId(task.lastRunId)} mono />
+            </div>
+          </DetailSection>
+
+          {showWorktree ? (
+            <DetailSection title="Worktree">
+              <div className="task-detail-field-grid">
+                <DetailField label="Status" value={titleCase(task.worktree.status)} />
+                <DetailField label="Base ref" value={task.worktree.baseRef || "none"} mono />
+                <DetailField
+                  label="Branch"
+                  value={task.worktree.branchName}
+                  mono
+                  className="task-detail-field-span-2"
+                />
+                <DetailField
+                  label="Last sync"
+                  value={
+                    task.worktree.lastSyncedBaseAt
+                      ? formatRelativeTime(task.worktree.lastSyncedBaseAt)
+                      : "not yet"
+                  }
+                />
+              </div>
+
+              <div className="task-detail-inline-block">
+                <div className="task-detail-field-label">Path</div>
+                <div className="task-detail-inline-value task-detail-inline-value-mono">
+                  {task.worktree.path ?? "not created"}
+                </div>
+              </div>
+
+              {task.worktree.cleanupReason ? (
+                <p className="task-detail-note">{task.worktree.cleanupReason}</p>
+              ) : null}
+            </DetailSection>
+          ) : null}
+
+          <DetailSection title="Runner config">
+            <div className="task-detail-field-label">
+              {task.runnerConfig.type === "shell" ? "Command" : "Prompt"}
+            </div>
+            <pre className="task-detail-config-block">{runnerConfig}</pre>
+          </DetailSection>
+
+          <DetailSection title="Run history">
+            {runs.length === 0 ? (
+              <p className="task-detail-empty-copy">No runs yet.</p>
+            ) : (
+              <div className="task-detail-run-history">
+                {runs.map((run) => (
                   <button
                     type="button"
                     key={run.id}
-                    className={run.id === viewedRun?.id ? "run-row run-row-active" : "run-row"}
+                    className={
+                      run.id === viewedRun?.id
+                        ? "task-detail-run-row task-detail-run-row-active"
+                        : "task-detail-run-row"
+                    }
                     onClick={() => onSelectRun(run.id)}
                   >
-                    <span>{titleCase(run.status)}</span>
+                    <span>{formatRunStatusLabel(run, task)}</span>
                     <span>{formatRelativeTime(run.startedAt)}</span>
                   </button>
-                ))
-              )}
-            </div>
-          </section>
+                ))}
+              </div>
+            )}
+          </DetailSection>
         </div>
 
-        <div className="details-log-column">
+        <div className="task-detail-log-pane">
           <LiveLog
             task={task}
             activeRun={activeRun}

@@ -35,6 +35,31 @@ function formatTimestamp(value: string): string {
   });
 }
 
+function buildCopyPayload(entries: RunLogEntry[]): string {
+  return entries
+    .map((entry) => {
+      const title =
+        entry.kind === "tool_call"
+          ? normalizeToolTitle(entry)
+          : entry.title && !["Agent output", "Tool output"].includes(entry.title)
+            ? entry.title
+            : null;
+      const toolStatus = getToolStatus(entry);
+      const metadata = [
+        formatTimestamp(entry.timestamp),
+        ENTRY_LABELS[entry.kind],
+        title,
+        toolStatus?.label,
+        entry.stream !== "stdout" ? entry.stream : null
+      ]
+        .filter(Boolean)
+        .join(" | ");
+
+      return `${metadata}\n${entry.text}`.trim();
+    })
+    .join("\n\n");
+}
+
 function renderEntryBody(entry: RunLogEntry) {
   const entryMetadata = metadataEntries(entry);
 
@@ -283,6 +308,7 @@ export function LiveLog({
   }, [streamEntries]);
   const streamRef = useRef<HTMLDivElement>(null);
   const [isPinnedToBottom, setIsPinnedToBottom] = useState(true);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const streamTailKey = useMemo(() => {
     const lastEntry = streamEntries.at(-1);
     if (!lastEntry) {
@@ -305,6 +331,18 @@ export function LiveLog({
     node.scrollTop = node.scrollHeight;
   }, [isPinnedToBottom, streamTailKey]);
 
+  useEffect(() => {
+    if (copyState === "idle") {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setCopyState("idle");
+    }, 1600);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [copyState]);
+
   function handleStreamScroll() {
     const node = streamRef.current;
     if (!node) {
@@ -313,6 +351,19 @@ export function LiveLog({
 
     const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
     setIsPinnedToBottom(distanceFromBottom < 32);
+  }
+
+  async function handleCopyLog() {
+    if (streamEntries.length === 0) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(buildCopyPayload(streamEntries));
+      setCopyState("copied");
+    } catch {
+      setCopyState("failed");
+    }
   }
 
   return (
@@ -348,23 +399,44 @@ export function LiveLog({
       ) : null}
 
       <section className="details-section details-section-log">
-        <div className="log-summary-bar">
-          <div className="log-summary-copy">
+        <div className={showStatus ? "log-summary-bar" : "task-detail-log-header"}>
+          <div className={showStatus ? "log-summary-copy" : "task-detail-log-header-copy"}>
             <h3>Live log</h3>
-            {!showStatus && viewedRun ? (
-              <p className="muted">
-                Viewing {viewedRun.status} run {viewedRun.id}
-              </p>
+            {streamEntries.length > 0 ? (
+              <span
+                className="task-detail-log-count"
+                aria-label={`${streamEntries.length} stream entries`}
+                title={`${streamEntries.length} stream entries`}
+              >
+                {streamEntries.length}
+              </span>
             ) : null}
           </div>
-          {aggregatedEntries.length > 0 ? (
-            <div className="log-summary-chips">
-              {streamEntries.length > 0 ? (
-                <span className="meta-chip">{streamEntries.length} stream</span>
-              ) : null}
-            </div>
+          {streamEntries.length > 0 ? (
+            <button
+              type="button"
+              className="task-detail-copy-button"
+              onClick={() => {
+                void handleCopyLog();
+              }}
+            >
+              <CopyIcon />
+              <span>
+                {copyState === "copied"
+                  ? "Copied"
+                  : copyState === "failed"
+                    ? "Retry copy"
+                    : "Copy"}
+              </span>
+            </button>
           ) : null}
         </div>
+        {!showStatus && viewedRun ? (
+          <div className="task-detail-log-context">
+            Viewing {viewedRun.status} run{" "}
+            <code className="task-detail-log-context-code">{viewedRun.id}</code>
+          </div>
+        ) : null}
         {aggregatedEntries.length === 0 ? (
           isLoading ? (
             <div className="log-empty">Loading logs...</div>
@@ -404,5 +476,20 @@ export function LiveLog({
         )}
       </section>
     </div>
+  );
+}
+
+function CopyIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" className="task-detail-icon">
+      <path
+        d="M6 3.5h6.5v8H6zM3.5 6V12.5H10"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.2"
+      />
+    </svg>
   );
 }
