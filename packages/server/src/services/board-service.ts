@@ -518,7 +518,8 @@ export class BoardService {
             );
             if (mergedPr && this.baseRefMatches(task.worktree.baseRef, mergedPr.baseRef)) {
               await this.updateTask(task.id, {
-                column: "done"
+                column: "done",
+                order: this.topOrder("done", task.id)
               });
             }
             continue;
@@ -656,7 +657,7 @@ export class BoardService {
     const plan = this.buildTaskPlan(task);
     task.description = plan;
     task.column = "todo";
-    task.order = this.nextOrder("todo");
+    task.order = this.topOrder("todo", task.id);
     task.updatedAt = new Date().toISOString();
 
     this.store.setTasks(tasks);
@@ -753,6 +754,7 @@ export class BoardService {
     tasks[taskIndex] = {
       ...task,
       column: "running",
+      order: this.topOrder("running", task.id),
       lastRunId: run.id,
       updatedAt: new Date().toISOString()
     };
@@ -865,6 +867,7 @@ export class BoardService {
       tasks[taskIndex] = {
         ...tasks[taskIndex],
         column: "review",
+        order: this.topOrder("review", task.id),
         updatedAt: new Date().toISOString()
       };
       this.store.setRuns(runs);
@@ -1235,6 +1238,7 @@ export class BoardService {
       : runEntry.metadata;
 
     taskEntry.column = "review";
+    taskEntry.order = this.topOrder("review", taskId);
     taskEntry.pullRequestUrl = this.resolveTaskPullRequestUrl(taskEntry, runEntry);
     taskEntry.updatedAt = new Date().toISOString();
 
@@ -1381,6 +1385,16 @@ export class BoardService {
 
     const last = columnTasks.at(-1);
     return last ? last.order + 1_024 : 1_024;
+  }
+
+  private topOrder(column: Task["column"], excludingTaskId?: string): number {
+    const columnTasks = this.store
+      .listTasks()
+      .filter((task) => task.column === column && task.id !== excludingTaskId)
+      .sort((left, right) => left.order - right.order);
+
+    const first = columnTasks[0];
+    return first ? first.order - 1_024 : 1_024;
   }
 
   private resolveOrphanedRunStatus(run: Run): Run["status"] {
