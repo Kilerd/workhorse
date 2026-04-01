@@ -333,6 +333,7 @@ export class BoardService {
     if (workspaceChanged) {
       task.workspaceId = nextWorkspace.id;
       task.worktree = await this.resetTaskWorktree(task, nextWorkspace, input.worktreeBaseRef);
+      task.pullRequestUrl = undefined;
     } else if (input.worktreeBaseRef !== undefined) {
       if (!nextWorkspace.isGitRepo) {
         throw new AppError(
@@ -355,6 +356,7 @@ export class BoardService {
         cleanupReason: undefined,
         status: "not_created"
       };
+      task.pullRequestUrl = undefined;
     }
 
     task.description = input.description?.trim() ?? task.description;
@@ -1060,6 +1062,7 @@ export class BoardService {
       : runEntry.metadata;
 
     taskEntry.column = "review";
+    taskEntry.pullRequestUrl = this.resolveTaskPullRequestUrl(taskEntry, runEntry);
     taskEntry.updatedAt = new Date().toISOString();
 
     this.store.setRuns(currentRuns);
@@ -1084,6 +1087,21 @@ export class BoardService {
       run: runEntry,
       task: taskEntry
     };
+  }
+
+  private resolveTaskPullRequestUrl(task: Task, run: Run): string | undefined {
+    const latestPullRequestUrl = run.metadata?.prUrl?.trim();
+    if (latestPullRequestUrl) {
+      return latestPullRequestUrl;
+    }
+
+    const monitoredPullRequestUrl = run.metadata?.monitorPrUrl?.trim();
+    if (monitoredPullRequestUrl) {
+      return monitoredPullRequestUrl;
+    }
+
+    const existingPullRequestUrl = task.pullRequestUrl?.trim();
+    return existingPullRequestUrl || undefined;
   }
 
   private async ensureReadableDirectory(path: string): Promise<void> {

@@ -84,6 +84,7 @@ export interface Task {
   runnerConfig: RunnerConfig;
   worktree: TaskWorktree;
   lastRunId?: string;
+  pullRequestUrl?: string;
   createdAt: string;
   updatedAt: string;
 }

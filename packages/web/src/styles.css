@@ -471,6 +471,7 @@ pre {
 }
 
 .task-card-tags,
+.task-card-pr,
 .task-card-actions,
 .topbar-meta,
 .details-actions,
@@ -490,6 +491,11 @@ pre {
 
 .task-card-footer {
   align-items: center;
+}
+
+.task-card-pr {
+  align-items: center;
+  min-width: 0;
 }
 
 .task-card-time {
@@ -526,6 +532,20 @@ pre {
 
 .status-review {
   color: var(--accent-strong);
+}
+
+.task-pr-link {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--accent-strong);
+  font-size: 0.72rem;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-pr-link:hover {
+  color: var(--accent);
 }
 
 .status-done {

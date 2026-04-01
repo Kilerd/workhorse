@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { extractGitHubPullRequestUrl } from "./lib/github.js";
 import type { RunnerStartContext } from "./runners/types.js";
 import {
   classifyItemLifecycle,
@@ -60,6 +61,25 @@ describe("CodexAcpRunner prompt", () => {
     expect(prompt).toContain("opening or updating the GitHub PR yourself");
     expect(prompt).toContain("Use Conventional Commits");
     expect(prompt).toContain("Mention the PR URL in your final response");
+  });
+
+  it("attaches the latest pull request url found in captured output", () => {
+    const runner = new CodexAcpRunner() as any;
+
+    const metadata = runner.attachPullRequestMetadata(
+      {
+        threadId: "thread-1"
+      },
+      [
+        "Created PR https://github.com/acme/widgets/pull/17",
+        "Final response: https://github.com/acme/widgets/pull/18."
+      ]
+    );
+
+    expect(metadata).toEqual({
+      threadId: "thread-1",
+      prUrl: "https://github.com/acme/widgets/pull/18"
+    });
   });
 
   it("includes the task description as prompt context when present", () => {
@@ -158,6 +178,19 @@ describe("CodexAcpRunner prompt", () => {
     );
 
     expect(threadId).toBeNull();
+  });
+});
+
+describe("extractGitHubPullRequestUrl", () => {
+  it("returns the latest pull request url and strips trailing punctuation", () => {
+    const url = extractGitHubPullRequestUrl(
+      [
+        "First draft: https://github.com/acme/widgets/pull/17",
+        "Ready now: https://github.com/acme/widgets/pull/18."
+      ].join("\n")
+    );
+
+    expect(url).toBe("https://github.com/acme/widgets/pull/18");
   });
 });
 

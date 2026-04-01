@@ -914,6 +914,9 @@
           "lastRunId": {
             "type": "string"
           },
+          "pullRequestUrl": {
+            "type": "string"
+          },
           "createdAt": {
             "type": "string"
           },

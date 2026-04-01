@@ -4,6 +4,8 @@ import { promisify } from "node:util";
 import { AppError } from "./errors.js";
 
 const execFileAsync = promisify(execFile);
+const GITHUB_PULL_REQUEST_URL_PATTERN =
+  /https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/\d+(?:[?#][^\s<>]*)?/gi;
 
 export type GitHubCheckBucket = "pass" | "fail" | "pending" | "skipping" | "cancel";
 
@@ -118,6 +120,15 @@ export function normalizeGitHubRepositoryFullName(
 
     return undefined;
   }
+}
+
+export function extractGitHubPullRequestUrl(value: string): string | undefined {
+  const matches = value.match(GITHUB_PULL_REQUEST_URL_PATTERN);
+  if (!matches?.length) {
+    return undefined;
+  }
+
+  return matches[matches.length - 1]?.replace(/[),.;!?]+$/u, "");
 }
 
 async function runGh(args: string[]): Promise<{ stdout: string; stderr: string }> {
