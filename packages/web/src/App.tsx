@@ -23,7 +23,7 @@ import { useBoardData } from "@/hooks/useBoardData";
 import { api } from "@/lib/api";
 import { useWorkspaceSocket } from "@/hooks/useWorkspaceSocket";
 import { resolveRunSelectionAfterStart } from "@/lib/run-selection";
-import type { DisplayTaskColumn } from "@/lib/task-view";
+import { isBoardVisibleColumn, type DisplayTaskColumn } from "@/lib/task-view";
 import { queryClient } from "@/lib/query";
 import { applyTheme, getPreferredTheme, type ThemeMode } from "@/lib/theme";
 
@@ -112,21 +112,25 @@ function ReactAppShell() {
   const workspaceNames = useMemo(() => {
     return new Map(workspaces.map((workspace) => [workspace.id, workspace.name]));
   }, [workspaces]);
+  const visibleBoardTasks = useMemo(
+    () => tasks.filter((task) => isBoardVisibleColumn(task.column)),
+    [tasks]
+  );
 
   const boardTasks = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) {
-      return tasks;
+      return visibleBoardTasks;
     }
 
-    return tasks.filter((task) => {
+    return visibleBoardTasks.filter((task) => {
       const workspaceName = workspaceNames.get(task.workspaceId) ?? "";
       return [task.title, task.description, workspaceName, task.runnerType, task.column]
         .join(" ")
         .toLowerCase()
         .includes(query);
     });
-  }, [searchQuery, tasks, workspaceNames]);
+  }, [searchQuery, visibleBoardTasks, workspaceNames]);
 
   const selectedWorkspaceName = useMemo(() => {
     if (board.selectedWorkspaceId === "all") {
