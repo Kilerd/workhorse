@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd";
 import {
   Navigate,
@@ -6,15 +7,17 @@ import {
   Routes,
   useLocation,
   useNavigate,
-  useParams
+  useParams,
+  useSearchParams
 } from "react-router-dom";
-import type { ServerEvent, Workspace } from "@workhorse/contracts";
+import type { RunLogEntry, ServerEvent, Workspace } from "@workhorse/contracts";
 
 import { Board } from "@/components/Board";
-import { TaskDetailsPanel } from "@/components/TaskDetailsPanel";
+import { TaskDetailsPanel, type TaskDetailsTab } from "@/components/TaskDetailsPanel";
 import { TaskModal, WorkspaceModal } from "@/components/WorkspaceModals";
 import { TopBar } from "@/components/TopBar";
 import { useBoardData } from "@/hooks/useBoardData";
+import { api } from "@/lib/api";
 import { useWorkspaceSocket } from "@/hooks/useWorkspaceSocket";
 import type { DisplayTaskColumn } from "@/lib/task-view";
 import { queryClient } from "@/lib/query";
@@ -227,12 +230,49 @@ function TaskDetailsRoute({
 }: TaskDetailsRouteProps) {
   const navigate = useNavigate();
   const { taskId } = useParams<{ taskId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab: TaskDetailsTab = searchParams.get("tab") === "logs" ? "logs" : "overview";
 
   useEffect(() => {
     if (taskId && board.selectedTask?.id !== taskId) {
       board.setTaskSelection(taskId);
     }
   }, [board.selectedTask?.id, board.setTaskSelection, taskId]);
+
+  const handleTabChange = useCallback(
+    (nextTab: TaskDetailsTab) => {
+      const nextSearchParams = new URLSearchParams(searchParams);
+      if (nextTab === "overview") {
+        nextSearchParams.delete("tab");
+      } else {
+        nextSearchParams.set("tab", nextTab);
+      }
+
+      setSearchParams(nextSearchParams, { replace: true });
+    },
+    [searchParams, setSearchParams]
+  );
+
+  const task = taskId ? allTasks.find((entry) => entry.id === taskId) ?? null : null;
+  const isSelectedTaskActive = task ? board.selectedTask?.id === task.id : false;
+  const runs = isSelectedTaskActive ? board.selectedTaskRunsQuery.data ?? [] : [];
+  const activeRunId = isSelectedTaskActive ? board.activeRunId : null;
+  const liveLog = activeRunId ? board.liveLogByRunId[activeRunId] ?? [] : [];
+  const workspaceName = task
+    ? workspaces.find((workspace) => workspace.id === task.workspaceId)?.name ?? "Unknown workspace"
+    : "Unknown workspace";
+  const runLogQuery = useQuery({
+    queryKey: ["run-log", activeRunId ?? ""],
+    queryFn: async (): Promise<RunLogEntry[]> => {
+      if (!activeRunId) {
+        return [];
+      }
+
+      return (await api.getRunLog(activeRunId)).data.items;
+    },
+    enabled: isSelectedTaskActive && tab === "logs" && Boolean(activeRunId)
+  });
+  const runLog = runLogQuery.data ?? [];
 
   if (!taskId) {
     return <Navigate to="/" replace />;
@@ -252,7 +292,6 @@ function TaskDetailsRoute({
     );
   }
 
-  const task = allTasks.find((entry) => entry.id === taskId) ?? null;
   if (!task) {
     return (
       <section className="details-page-shell">
@@ -266,15 +305,6 @@ function TaskDetailsRoute({
       </section>
     );
   }
-
-  const isSelectedTaskActive = board.selectedTask?.id === task.id;
-  const runs = isSelectedTaskActive ? board.selectedTaskRunsQuery.data ?? [] : [];
-  const selectedRun = isSelectedTaskActive ? board.selectedRun : null;
-  const activeRunId = isSelectedTaskActive ? board.activeRunId : null;
-  const liveLog = activeRunId ? board.liveLogByRunId[activeRunId] ?? [] : [];
-  const runLog = isSelectedTaskActive ? board.selectedRunLogQuery.data ?? [] : [];
-  const workspaceName =
-    workspaces.find((workspace) => workspace.id === task.workspaceId)?.name ?? "Unknown workspace";
 
   return (
     <section className="details-page-shell">
@@ -300,9 +330,12 @@ function TaskDetailsRoute({
       <TaskDetailsPanel
         className="details-panel-page"
         task={task}
+        tab={tab}
         runs={runs}
         workspaces={workspaces}
         selectedRunId={board.selectedRunId}
+        runLogLoading={runLogQuery.isLoading}
+        onTabChange={handleTabChange}
         onSelectRun={board.setSelectedRunId}
         liveLog={liveLog}
         runLog={runLog}

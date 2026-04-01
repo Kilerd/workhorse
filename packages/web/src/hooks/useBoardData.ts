@@ -94,16 +94,6 @@ export function useBoardData() {
     enabled: Boolean(selectedTask?.id)
   });
 
-  const selectedRun = useMemo(() => {
-    const runs = selectedTaskRunsQuery.data ?? [];
-    return (
-      runs.find((run) => run.id === selectedRunId) ??
-      runs.find((run) => run.status === "running") ??
-      runs[0] ??
-      null
-    );
-  }, [selectedRunId, selectedTaskRunsQuery.data]);
-
   const activeRunId = useMemo(() => {
     if (selectedRunId) {
       return selectedRunId;
@@ -117,18 +107,6 @@ export function useBoardData() {
       null
     );
   }, [selectedRunId, selectedTask?.lastRunId, selectedTaskRunsQuery.data]);
-
-  const selectedRunLogQuery = useQuery({
-    queryKey: queryKey("run-log", activeRunId ?? ""),
-    queryFn: async (): Promise<RunLogEntry[]> => {
-      if (!activeRunId) {
-        return [];
-      }
-      const response = await api.getRunLog(activeRunId);
-      return unwrap(response).items;
-    },
-    enabled: Boolean(activeRunId)
-  });
 
   const createWorkspaceMutation = useMutation({
     mutationFn: async (input: { name: string; rootPath: string }) => {
@@ -332,9 +310,7 @@ export function useBoardData() {
     selectedWorkspaceTasks,
     selectedTask,
     selectedTaskRunsQuery,
-    selectedRun,
     activeRunId,
-    selectedRunLogQuery,
     selectedRunId,
     liveLogByRunId,
     workspaceModalOpen,
