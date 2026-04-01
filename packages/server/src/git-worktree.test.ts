@@ -495,6 +495,8 @@ describe("git worktree lifecycle", () => {
     const firstPoll = await service.pollGitReviewTasksForBaseUpdates();
     expect(firstPoll.available).toBe(true);
     expect(firstPoll.resumedTaskIds).toEqual([taskB.id]);
+    const firstPolledAt = service.getReviewMonitorLastPolledAt();
+    expect(firstPolledAt).toBeDefined();
 
     const rerun = await waitForRunToFinish(service, taskB.id);
     const updatedTaskA = service.listTasks({}).find((entry) => entry.id === taskA.id);
@@ -512,5 +514,8 @@ describe("git worktree lifecycle", () => {
 
     const secondPoll = await service.pollGitReviewTasksForBaseUpdates();
     expect(secondPoll.resumedTaskIds).toEqual([]);
+    expect(Date.parse(service.getReviewMonitorLastPolledAt() ?? "")).toBeGreaterThanOrEqual(
+      Date.parse(firstPolledAt ?? "")
+    );
   });
 });

@@ -19,11 +19,11 @@ async function main(): Promise<void> {
     console.error(error);
   });
 
-  const app = createApp(service);
+  const reviewMonitorIntervalMs = getGitReviewMonitorIntervalMs();
+  const app = createApp(service, { reviewMonitorIntervalMs });
   const honoListener = getRequestListener(app.fetch);
   const server = createServer();
   const frontend = await createFrontendHandler(server);
-  const reviewMonitorIntervalMs = getGitReviewMonitorIntervalMs();
 
   if (reviewMonitorIntervalMs > 0) {
     const timer = setInterval(() => {

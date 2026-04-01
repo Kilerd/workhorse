@@ -31,6 +31,9 @@ function ReactAppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const [syncedAt, setSyncedAt] = useState<string>(new Date().toISOString());
+  const [reviewMonitorLastPolledAt, setReviewMonitorLastPolledAt] = useState<
+    string | undefined
+  >();
   const [searchQuery, setSearchQuery] = useState("");
   const [theme, setTheme] = useState<ThemeMode>(() => getPreferredTheme());
   const { selectedWorkspaceTasks, displayedTasks, workspacesQuery } = board;
@@ -38,6 +41,21 @@ function ReactAppShell() {
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
+
+  useEffect(() => {
+    const lastPolledAt = board.healthQuery.data?.reviewMonitor.lastPolledAt;
+    if (!lastPolledAt) {
+      return;
+    }
+
+    setReviewMonitorLastPolledAt((current) => {
+      if (!current) {
+        return lastPolledAt;
+      }
+
+      return Date.parse(lastPolledAt) > Date.parse(current) ? lastPolledAt : current;
+    });
+  }, [board.healthQuery.data?.reviewMonitor.lastPolledAt]);
 
   const handleEvent = useCallback(
     (event: ServerEvent) => {
@@ -62,6 +80,9 @@ function ReactAppShell() {
         case "run.finished":
           queryClient.invalidateQueries({ queryKey: ["tasks"] });
           queryClient.invalidateQueries({ queryKey: ["runs"] });
+          break;
+        case "runtime.review-monitor.polled":
+          setReviewMonitorLastPolledAt(event.polledAt);
           break;
         default:
           break;
@@ -103,6 +124,19 @@ function ReactAppShell() {
       "All workspaces"
     );
   }, [board.selectedWorkspaceId, workspaces]);
+
+  const reviewMonitor = useMemo(
+    () => ({
+      intervalMs: board.healthQuery.data?.reviewMonitor.intervalMs ?? 0,
+      lastPolledAt:
+        reviewMonitorLastPolledAt ?? board.healthQuery.data?.reviewMonitor.lastPolledAt
+    }),
+    [
+      board.healthQuery.data?.reviewMonitor.intervalMs,
+      board.healthQuery.data?.reviewMonitor.lastPolledAt,
+      reviewMonitorLastPolledAt
+    ]
+  );
 
   function handleDrop(result: DropResult) {
     if (!result.destination) {
@@ -197,6 +231,7 @@ function ReactAppShell() {
                 <Board
                   tasks={boardTasks}
                   workspaces={workspaces}
+                  reviewMonitor={reviewMonitor}
                   selectedTaskId={board.selectedTask?.id ?? null}
                   onTaskOpen={openTask}
                   onPlan={(taskId) => board.planTask(taskId)}

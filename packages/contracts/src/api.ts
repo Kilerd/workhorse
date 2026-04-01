@@ -160,9 +160,15 @@ export interface RunLogData {
   items: RunLogEntry[];
 }
 
+export interface HealthReviewMonitorData {
+  intervalMs: number;
+  lastPolledAt?: string;
+}
+
 export interface HealthData {
   status: "ok";
   state: Pick<AppState, "schemaVersion">;
+  reviewMonitor: HealthReviewMonitorData;
 }
 
 export type WorkspacesResponse = ApiSuccess<ListWorkspacesData>;

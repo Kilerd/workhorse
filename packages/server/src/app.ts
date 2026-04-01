@@ -20,6 +20,7 @@ import {
   validateUpdateWorkspaceParams
 } from "@workhorse/contracts";
 
+import { getGitReviewMonitorIntervalMs } from "./config.js";
 import { errorStatus, ok, toApiError, validateOrThrow } from "./lib/http.js";
 import type { BoardService } from "./services/board-service.js";
 
@@ -28,9 +29,18 @@ function queryObject(url: string): Record<string, string> {
   return Object.fromEntries(search.entries());
 }
 
-export function createApp(service: BoardService): Hono {
+interface CreateAppOptions {
+  reviewMonitorIntervalMs?: number;
+}
+
+export function createApp(
+  service: BoardService,
+  options: CreateAppOptions = {}
+): Hono {
   const app = new Hono();
   const openApiDocument = buildOpenApiDocument();
+  const reviewMonitorIntervalMs =
+    options.reviewMonitorIntervalMs ?? getGitReviewMonitorIntervalMs();
 
   app.onError((error) =>
     new Response(JSON.stringify(toApiError(error)), {
@@ -44,7 +54,16 @@ export function createApp(service: BoardService): Hono {
   app.get("/openapi.json", (c) => c.json(openApiDocument));
 
   app.get("/api/health", (c) =>
-    c.json(ok({ status: "ok", state: { schemaVersion: service.snapshot().schemaVersion } }))
+    c.json(
+      ok({
+        status: "ok",
+        state: { schemaVersion: service.snapshot().schemaVersion },
+        reviewMonitor: {
+          intervalMs: reviewMonitorIntervalMs,
+          lastPolledAt: service.getReviewMonitorLastPolledAt()
+        }
+      })
+    )
   );
 
   app.get("/api/workspaces", (c) =>

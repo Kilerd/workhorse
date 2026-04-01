@@ -1,3 +1,4 @@
+import { useEffect, useState, type CSSProperties } from "react";
 import { Draggable, Droppable } from "@hello-pangea/dnd";
 import type { Workspace } from "@workhorse/contracts";
 
@@ -5,9 +6,15 @@ import { formatRelativeTime, titleCase } from "@/lib/format";
 import { BOARD_COLUMNS, type DisplayTask, type DisplayTaskColumn } from "@/lib/task-view";
 import { TaskActionBar } from "./TaskActionBar";
 
+interface ReviewMonitor {
+  intervalMs: number;
+  lastPolledAt?: string;
+}
+
 interface Props {
   tasks: DisplayTask[];
   workspaces: Workspace[];
+  reviewMonitor: ReviewMonitor;
   selectedTaskId: string | null;
   onTaskOpen(taskId: string): void;
   onPlan(taskId: string): void;
@@ -29,9 +36,42 @@ function groupTasks(): Record<DisplayTaskColumn, DisplayTask[]> {
   };
 }
 
+function formatReviewCountdown(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes < 1) {
+    return `${seconds}s`;
+  }
+
+  return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+}
+
+function getReviewCountdown(reviewMonitor: ReviewMonitor, nowMs: number) {
+  if (reviewMonitor.intervalMs <= 0 || !reviewMonitor.lastPolledAt) {
+    return null;
+  }
+
+  const lastPolledAtMs = Date.parse(reviewMonitor.lastPolledAt);
+  if (Number.isNaN(lastPolledAtMs)) {
+    return null;
+  }
+
+  const elapsedMs = Math.max(nowMs - lastPolledAtMs, 0);
+  const remainingMs = Math.max(reviewMonitor.intervalMs - elapsedMs, 0);
+  const remainingSeconds = Math.ceil(remainingMs / 1000);
+  const label = formatReviewCountdown(remainingSeconds);
+
+  return {
+    label,
+    shortLabel: remainingSeconds >= 60 ? `${Math.floor(remainingSeconds / 60)}m` : label,
+    progress: Math.min(elapsedMs / reviewMonitor.intervalMs, 1)
+  };
+}
+
 export function Board({
   tasks,
   workspaces,
+  reviewMonitor,
   selectedTaskId,
   onTaskOpen,
   onPlan,
@@ -47,6 +87,25 @@ export function Board({
       .sort((left, right) => left.order - right.order);
     return acc;
   }, groupTasks());
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const showReviewMonitor = tasks.some(
+    (task) => task.column === "review" && Boolean(task.pullRequestUrl)
+  );
+
+  useEffect(() => {
+    if (!showReviewMonitor || reviewMonitor.intervalMs <= 0 || !reviewMonitor.lastPolledAt) {
+      return;
+    }
+
+    setNowMs(Date.now());
+    const timer = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [reviewMonitor.intervalMs, reviewMonitor.lastPolledAt, showReviewMonitor]);
 
   return (
     <section className="board">
@@ -76,6 +135,10 @@ export function Board({
                   const workspace = workspaces.find((entry) => entry.id === task.workspaceId);
                   const workspaceName = workspace?.name ?? "Unknown";
                   const showWorktree = workspace?.isGitRepo ?? false;
+                  const reviewCountdown =
+                    task.column === "review" && task.pullRequestUrl
+                      ? getReviewCountdown(reviewMonitor, nowMs)
+                      : null;
 
                   return (
                     <Draggable draggableId={task.id} index={index} key={task.id}>
@@ -126,19 +189,44 @@ export function Board({
                           </div>
 
                           {task.column === "review" && task.pullRequestUrl ? (
-                            <div className="task-card-pr">
-                              <span className="meta-token">PR</span>
-                              <a
-                                className="task-pr-link"
-                                href={task.pullRequestUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                onClick={(event) => event.stopPropagation()}
-                                onKeyDown={(event) => event.stopPropagation()}
-                              >
-                                {task.pullRequestUrl}
-                              </a>
-                            </div>
+                            <>
+                              <div className="task-card-pr">
+                                <span className="meta-token">PR</span>
+                                <a
+                                  className="task-pr-link"
+                                  href={task.pullRequestUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  onClick={(event) => event.stopPropagation()}
+                                  onKeyDown={(event) => event.stopPropagation()}
+                                >
+                                  {task.pullRequestUrl}
+                                </a>
+                              </div>
+                              {reviewCountdown ? (
+                                <div
+                                  className="task-card-review-monitor"
+                                  aria-label={`Next PR status refresh in ${reviewCountdown.label}`}
+                                  title={`Next PR status refresh in ${reviewCountdown.label}`}
+                                >
+                                  <span
+                                    className="task-card-review-monitor-ring"
+                                    style={
+                                      {
+                                        "--review-progress": `${reviewCountdown.progress}turn`
+                                      } as CSSProperties
+                                    }
+                                  >
+                                    <span className="task-card-review-monitor-core">
+                                      {reviewCountdown.shortLabel}
+                                    </span>
+                                  </span>
+                                  <span className="task-card-review-monitor-text">
+                                    PR status in {reviewCountdown.label}
+                                  </span>
+                                </div>
+                              ) : null}
+                            </>
                           ) : null}
 
                           <div className="task-card-footer">

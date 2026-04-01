@@ -81,6 +81,8 @@ export class BoardService {
 
   private readonly activeRuns = new Map<string, ActiveRun>();
 
+  private reviewMonitorLastPolledAt?: string;
+
   public constructor(
     store: StateStore,
     events: EventBus,
@@ -104,6 +106,10 @@ export class BoardService {
 
   public snapshot(): AppState {
     return this.store.snapshot();
+  }
+
+  public getReviewMonitorLastPolledAt(): string | undefined {
+    return this.reviewMonitorLastPolledAt;
   }
 
   public listWorkspaces(): Workspace[] {
@@ -433,6 +439,13 @@ export class BoardService {
   }
 
   public async pollGitReviewTasksForBaseUpdates(): Promise<GitReviewMonitorResult> {
+    const polledAt = new Date().toISOString();
+    this.reviewMonitorLastPolledAt = polledAt;
+    this.events.publish({
+      type: "runtime.review-monitor.polled",
+      polledAt
+    });
+
     if (!(await this.githubPullRequests.isAvailable())) {
       return {
         available: false,
