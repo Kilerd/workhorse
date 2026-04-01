@@ -178,10 +178,36 @@ export interface HealthReviewMonitorData {
   lastPolledAt?: string;
 }
 
+export type HealthCodexPlanType =
+  | "free"
+  | "go"
+  | "plus"
+  | "pro"
+  | "team"
+  | "business"
+  | "enterprise"
+  | "edu"
+  | "unknown";
+
+export interface HealthCodexQuotaWindowData {
+  usedPercent: number;
+  remainingPercent: number;
+  windowDurationMins?: number;
+  resetsAt?: string;
+}
+
+export interface HealthCodexQuotaData {
+  limitId?: string;
+  planType?: HealthCodexPlanType;
+  primary?: HealthCodexQuotaWindowData;
+  secondary?: HealthCodexQuotaWindowData;
+}
+
 export interface HealthData {
   status: "ok";
   state: Pick<AppState, "schemaVersion">;
   reviewMonitor: HealthReviewMonitorData;
+  codexQuota: HealthCodexQuotaData | null;
 }
 
 export type WorkspacesResponse = ApiSuccess<ListWorkspacesData>;

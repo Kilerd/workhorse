@@ -83,10 +83,12 @@ function ReactAppShell() {
           }
           queryClient.invalidateQueries({ queryKey: ["tasks"] });
           queryClient.invalidateQueries({ queryKey: ["runs"] });
+          queryClient.invalidateQueries({ queryKey: ["health"] });
           break;
         case "run.finished":
           queryClient.invalidateQueries({ queryKey: ["tasks"] });
           queryClient.invalidateQueries({ queryKey: ["runs"] });
+          queryClient.invalidateQueries({ queryKey: ["health"] });
           break;
         case "runtime.review-monitor.polled":
           setReviewMonitorLastPolledAt(event.polledAt);
@@ -219,6 +221,7 @@ function ReactAppShell() {
           onRefresh={() => {
             void queryClient.invalidateQueries({ queryKey: ["workspaces"] });
             void queryClient.invalidateQueries({ queryKey: ["tasks"] });
+            void queryClient.invalidateQueries({ queryKey: ["health"] });
             setSyncedAt(new Date().toISOString());
           }}
           theme={theme}
@@ -228,6 +231,7 @@ function ReactAppShell() {
           lastSyncedAt={syncedAt}
           boardCount={boardTasks.length}
           runtimeStatus={board.healthQuery.data?.status ?? "connecting"}
+          codexQuota={board.healthQuery.data?.codexQuota}
         />
 
         <Routes>

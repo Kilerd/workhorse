@@ -55,7 +55,7 @@ export function createApp(
 
   app.get("/openapi.json", (c) => c.json(openApiDocument));
 
-  app.get("/api/health", (c) =>
+  app.get("/api/health", async (c) =>
     c.json(
       ok({
         status: "ok",
@@ -63,7 +63,8 @@ export function createApp(
         reviewMonitor: {
           intervalMs: reviewMonitorIntervalMs,
           lastPolledAt: service.getReviewMonitorLastPolledAt()
-        }
+        },
+        codexQuota: await service.getCodexQuota()
       })
     )
   );

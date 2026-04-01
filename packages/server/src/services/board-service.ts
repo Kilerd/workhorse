@@ -7,6 +7,7 @@ import type {
   CreateTaskBody,
   CreateWorkspaceBody,
   DeleteResult,
+  HealthCodexQuotaData,
   ListTasksQuery,
   Run,
   RunLogEntry,
@@ -31,7 +32,10 @@ import { createId } from "../lib/id.js";
 import { createRunLogEntry } from "../lib/run-log.js";
 import { createTaskWorktree } from "../lib/task-worktree.js";
 import { StateStore } from "../persistence/state-store.js";
-import { CodexAppServerManager } from "../runners/codex-app-server-manager.js";
+import {
+  CodexAppServerManager,
+  type CodexAppServer
+} from "../runners/codex-app-server-manager.js";
 import { CodexAcpRunner } from "../runners/codex-acp-runner.js";
 import type { RunnerAdapter, RunnerControl } from "../runners/types.js";
 import { ShellRunner } from "../runners/shell-runner.js";
@@ -64,7 +68,7 @@ interface MonitorReason {
 interface BoardServiceDependencies {
   gitWorktrees?: GitWorktreeService;
   githubPullRequests?: GitHubPullRequestProvider;
-  codexAppServer?: CodexAppServerManager;
+  codexAppServer?: CodexAppServer;
 }
 
 export interface GitReviewMonitorResult {
@@ -93,7 +97,7 @@ export class BoardService {
 
   private readonly githubPullRequests: GitHubPullRequestProvider;
 
-  private readonly codexAppServer: CodexAppServerManager;
+  private readonly codexAppServer: CodexAppServer;
 
   private readonly activeRuns = new Map<string, ActiveRun>();
 
@@ -131,6 +135,14 @@ export class BoardService {
 
   public getReviewMonitorLastPolledAt(): string | undefined {
     return this.reviewMonitorLastPolledAt;
+  }
+
+  public async getCodexQuota(): Promise<HealthCodexQuotaData | null> {
+    try {
+      return await this.codexAppServer.readAccountRateLimits();
+    } catch {
+      return null;
+    }
   }
 
   public listWorkspaces(): Workspace[] {

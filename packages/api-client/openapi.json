@@ -2078,12 +2078,23 @@
           },
           "reviewMonitor": {
             "$ref": "#/components/schemas/HealthReviewMonitorData"
+          },
+          "codexQuota": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/HealthCodexQuotaData"
+              }
+            ]
           }
         },
         "required": [
           "status",
           "state",
-          "reviewMonitor"
+          "reviewMonitor",
+          "codexQuota"
         ]
       },
       "PickAppStateschemaVersion": {
@@ -2110,6 +2121,91 @@
         },
         "required": [
           "intervalMs"
+        ]
+      },
+      "HealthCodexQuotaData": {
+        "type": "object",
+        "properties": {
+          "limitId": {
+            "type": "string"
+          },
+          "planType": {
+            "oneOf": [
+              {
+                "enum": [
+                  "free"
+                ]
+              },
+              {
+                "enum": [
+                  "go"
+                ]
+              },
+              {
+                "enum": [
+                  "plus"
+                ]
+              },
+              {
+                "enum": [
+                  "pro"
+                ]
+              },
+              {
+                "enum": [
+                  "team"
+                ]
+              },
+              {
+                "enum": [
+                  "business"
+                ]
+              },
+              {
+                "enum": [
+                  "enterprise"
+                ]
+              },
+              {
+                "enum": [
+                  "edu"
+                ]
+              },
+              {
+                "enum": [
+                  "unknown"
+                ]
+              }
+            ]
+          },
+          "primary": {
+            "$ref": "#/components/schemas/HealthCodexQuotaWindowData"
+          },
+          "secondary": {
+            "$ref": "#/components/schemas/HealthCodexQuotaWindowData"
+          }
+        },
+        "required": []
+      },
+      "HealthCodexQuotaWindowData": {
+        "type": "object",
+        "properties": {
+          "usedPercent": {
+            "type": "number"
+          },
+          "remainingPercent": {
+            "type": "number"
+          },
+          "windowDurationMins": {
+            "type": "number"
+          },
+          "resetsAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "usedPercent",
+          "remainingPercent"
         ]
       }
     }

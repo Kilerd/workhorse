@@ -1,4 +1,8 @@
-import type { Workspace } from "@workhorse/contracts";
+import type {
+  HealthCodexQuotaData,
+  HealthCodexQuotaWindowData,
+  Workspace
+} from "@workhorse/contracts";
 
 import { formatCount, formatRelativeTime } from "@/lib/format";
 import type { ThemeMode } from "@/lib/theme";
@@ -19,6 +23,7 @@ interface Props {
   lastSyncedAt?: string;
   boardCount: number;
   runtimeStatus: string;
+  codexQuota?: HealthCodexQuotaData | null;
 }
 
 function formatRuntimeStatus(runtimeStatus: string) {
@@ -31,6 +36,59 @@ function formatRuntimeStatus(runtimeStatus: string) {
   }
 
   return runtimeStatus;
+}
+
+function formatQuotaWindowLabel(windowDurationMins?: number): string {
+  if (windowDurationMins === 300) {
+    return "5h";
+  }
+
+  if (windowDurationMins === 10_080) {
+    return "week";
+  }
+
+  if (!windowDurationMins) {
+    return "quota";
+  }
+
+  if (windowDurationMins % (60 * 24) === 0) {
+    return `${windowDurationMins / (60 * 24)}d`;
+  }
+
+  if (windowDurationMins % 60 === 0) {
+    return `${windowDurationMins / 60}h`;
+  }
+
+  return `${windowDurationMins}m`;
+}
+
+function getQuotaWindowTone(window: HealthCodexQuotaWindowData): string {
+  if (window.remainingPercent <= 15) {
+    return "meta-chip-quota-critical";
+  }
+
+  if (window.remainingPercent <= 35) {
+    return "meta-chip-quota-low";
+  }
+
+  return "meta-chip-quota";
+}
+
+function buildQuotaTitle(
+  window: HealthCodexQuotaWindowData,
+  codexQuota?: HealthCodexQuotaData | null
+): string | undefined {
+  const details = [`${window.remainingPercent}% remaining`];
+
+  if (codexQuota?.planType) {
+    details.push(`plan ${codexQuota.planType}`);
+  }
+
+  if (window.resetsAt) {
+    details.push(`resets ${new Date(window.resetsAt).toLocaleString()}`);
+  }
+
+  return details.join(" • ");
 }
 
 export function TopBar({
@@ -47,8 +105,31 @@ export function TopBar({
   onToggleTheme,
   lastSyncedAt,
   boardCount,
-  runtimeStatus
+  runtimeStatus,
+  codexQuota
 }: Props) {
+  const quotaWindows = [
+    codexQuota?.primary
+      ? {
+          key: "primary",
+          window: codexQuota.primary
+        }
+      : null,
+    codexQuota?.secondary
+      ? {
+          key: "secondary",
+          window: codexQuota.secondary
+        }
+      : null
+  ].filter(
+    (
+      entry
+    ): entry is {
+      key: string;
+      window: HealthCodexQuotaWindowData;
+    } => entry !== null
+  );
+
   return (
     <header className="topbar">
       <div className="topbar-brand">
@@ -66,6 +147,19 @@ export function TopBar({
             <span className="status-dot" aria-hidden="true" />
             {formatRuntimeStatus(runtimeStatus)}
           </span>
+          {quotaWindows.map(({ key, window }) => (
+            <span
+              key={key}
+              className={`meta-chip ${getQuotaWindowTone(window)}`}
+              title={buildQuotaTitle(window, codexQuota)}
+            >
+              Codex {formatQuotaWindowLabel(window.windowDurationMins)}{" "}
+              {window.remainingPercent}% left
+            </span>
+          ))}
+          {codexQuota === null ? (
+            <span className="meta-chip">Codex quota unavailable</span>
+          ) : null}
           <span className="meta-chip">{formatCount(boardCount, "task")}</span>
           <span className="meta-chip">Updated {formatRelativeTime(lastSyncedAt)}</span>
           <span className="meta-chip">Scope {selectedWorkspaceName}</span>

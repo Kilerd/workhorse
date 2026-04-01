@@ -276,6 +276,24 @@ pre {
   color: var(--text);
 }
 
+.meta-chip-quota {
+  color: var(--text);
+  border-color: rgba(73, 214, 196, 0.26);
+  background: rgba(73, 214, 196, 0.12);
+}
+
+.meta-chip-quota-low {
+  color: var(--text);
+  border-color: rgba(233, 191, 96, 0.3);
+  background: rgba(233, 191, 96, 0.14);
+}
+
+.meta-chip-quota-critical {
+  color: var(--text);
+  border-color: rgba(231, 106, 106, 0.34);
+  background: rgba(231, 106, 106, 0.12);
+}
+
 .status-dot {
   width: 0.45rem;
   height: 0.45rem;
