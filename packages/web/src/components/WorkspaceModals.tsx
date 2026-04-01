@@ -4,6 +4,7 @@ import type { Workspace } from "@workhorse/contracts";
 
 import { api } from "@/lib/api";
 import type { DisplayTaskColumn, TaskFormValues } from "@/lib/task-view";
+import { resolveTaskWorkspaceId } from "@/lib/workspace-selection";
 
 const DEFAULT_CODEX_PROMPT = "请完成用户请求的任务。";
 
@@ -16,6 +17,7 @@ interface WorkspaceModalProps {
 interface TaskModalProps {
   open: boolean;
   workspaces: Workspace[];
+  selectedWorkspaceId: string | "all";
   onClose(): void;
   onSubmit(values: TaskFormValues): void;
 }
@@ -102,15 +104,24 @@ export function WorkspaceModal({ open, onClose, onSubmit }: WorkspaceModalProps)
   );
 }
 
-export function TaskModal({ open, workspaces, onClose, onSubmit }: TaskModalProps) {
+export function TaskModal({
+  open,
+  workspaces,
+  selectedWorkspaceId,
+  onClose,
+  onSubmit
+}: TaskModalProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [workspaceId, setWorkspaceId] = useState(workspaces[0]?.id ?? "");
+  const [workspaceId, setWorkspaceId] = useState(() =>
+    resolveTaskWorkspaceId(workspaces, selectedWorkspaceId)
+  );
   const [runnerType, setRunnerType] = useState<"shell" | "codex">("codex");
   const [shellCommand, setShellCommand] = useState("npm test");
   const [prompt, setPrompt] = useState(DEFAULT_CODEX_PROMPT);
   const [column, setColumn] = useState<TaskFormValues["column"]>("backlog");
   const [worktreeBaseRef, setWorktreeBaseRef] = useState("");
+  const defaultWorkspaceId = resolveTaskWorkspaceId(workspaces, selectedWorkspaceId);
 
   useCloseOnEscape(open, onClose);
 
@@ -134,20 +145,25 @@ export function TaskModal({ open, workspaces, onClose, onSubmit }: TaskModalProp
     if (!open) {
       setTitle("");
       setDescription("");
-      setWorkspaceId(workspaces[0]?.id ?? "");
+      setWorkspaceId(defaultWorkspaceId);
       setRunnerType("codex");
       setShellCommand("npm test");
       setPrompt(DEFAULT_CODEX_PROMPT);
       setColumn("backlog");
       setWorktreeBaseRef("");
     }
-  }, [open, workspaces]);
+  }, [defaultWorkspaceId, open]);
 
   useEffect(() => {
-    if (!workspaceId && workspaces[0]) {
-      setWorkspaceId(workspaces[0].id);
+    if (!workspaceId && defaultWorkspaceId) {
+      setWorkspaceId(defaultWorkspaceId);
+      return;
     }
-  }, [workspaceId, workspaces]);
+
+    if (workspaceId && !workspaces.some((workspace) => workspace.id === workspaceId)) {
+      setWorkspaceId(defaultWorkspaceId);
+    }
+  }, [defaultWorkspaceId, workspaceId, workspaces]);
 
   useEffect(() => {
     if (!selectedWorkspace?.isGitRepo) {
