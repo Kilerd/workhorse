@@ -63,7 +63,6 @@ function getReviewCountdown(reviewMonitor: ReviewMonitor, nowMs: number) {
 
   return {
     label,
-    shortLabel: remainingSeconds >= 60 ? `${Math.floor(remainingSeconds / 60)}m` : label,
     progress: Math.min(elapsedMs / reviewMonitor.intervalMs, 1)
   };
 }
@@ -122,7 +121,7 @@ export function Board({
             >
               <div className="column-header">
                 <h2>{column.title}</h2>
-                <span>{grouped[column.id].length} cards</span>
+                <span>{grouped[column.id]!.length} cards</span>
               </div>
 
               <div
@@ -130,7 +129,7 @@ export function Board({
                 ref={provided.innerRef}
                 {...provided.droppableProps}
               >
-                {grouped[column.id].map((task, index) => {
+                {grouped[column.id]!.map((task, index) => {
                   const isActive = task.id === selectedTaskId;
                   const workspace = workspaces.find((entry) => entry.id === task.workspaceId);
                   const workspaceName = workspace?.name ?? "Unknown";
@@ -166,7 +165,21 @@ export function Board({
                         >
                           <div className="task-card-head">
                             <div className="task-card-title">
-                              <strong>{task.title}</strong>
+                              <div className="task-card-title-row">
+                                {reviewCountdown ? (
+                                  <span
+                                    className="task-card-review-monitor"
+                                    aria-label={`Next PR status refresh in ${reviewCountdown.label}`}
+                                    title={`Next PR status refresh in ${reviewCountdown.label}`}
+                                    style={
+                                      {
+                                        "--review-progress": `${reviewCountdown.progress}turn`
+                                      } as CSSProperties
+                                    }
+                                  />
+                                ) : null}
+                                <strong>{task.title}</strong>
+                              </div>
                               <p className="task-card-desc">
                                 {task.description || "No description"}
                               </p>
@@ -186,44 +199,19 @@ export function Board({
                           </div>
 
                           {task.column === "review" && task.pullRequestUrl ? (
-                            <>
-                              <div className="task-card-pr">
-                                <span className="meta-token">PR</span>
-                                <a
-                                  className="task-pr-link"
-                                  href={task.pullRequestUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  onClick={(event) => event.stopPropagation()}
-                                  onKeyDown={(event) => event.stopPropagation()}
-                                >
-                                  {task.pullRequestUrl}
-                                </a>
-                              </div>
-                              {reviewCountdown ? (
-                                <div
-                                  className="task-card-review-monitor"
-                                  aria-label={`Next PR status refresh in ${reviewCountdown.label}`}
-                                  title={`Next PR status refresh in ${reviewCountdown.label}`}
-                                >
-                                  <span
-                                    className="task-card-review-monitor-ring"
-                                    style={
-                                      {
-                                        "--review-progress": `${reviewCountdown.progress}turn`
-                                      } as CSSProperties
-                                    }
-                                  >
-                                    <span className="task-card-review-monitor-core">
-                                      {reviewCountdown.shortLabel}
-                                    </span>
-                                  </span>
-                                  <span className="task-card-review-monitor-text">
-                                    PR status in {reviewCountdown.label}
-                                  </span>
-                                </div>
-                              ) : null}
-                            </>
+                            <div className="task-card-pr">
+                              <span className="meta-token">PR</span>
+                              <a
+                                className="task-pr-link"
+                                href={task.pullRequestUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(event) => event.stopPropagation()}
+                                onKeyDown={(event) => event.stopPropagation()}
+                              >
+                                {task.pullRequestUrl}
+                              </a>
+                            </div>
                           ) : null}
 
                           <div className="task-card-footer">
