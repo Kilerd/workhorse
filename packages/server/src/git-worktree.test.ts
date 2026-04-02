@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { appendFile, mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
 
@@ -315,6 +315,39 @@ describe("git worktree lifecycle", () => {
     expect(await runGit(["-C", result.task.worktree.path!, "rev-parse", "--abbrev-ref", "HEAD"])).toBe(
       result.task.worktree.branchName
     );
+  });
+
+  it("uses UUID-free worktree directory names for auto-generated task branches", async () => {
+    const { service, workspaceDir } = await createGitRuntime();
+    const workspace = await createGitWorkspace(service, workspaceDir);
+    const task = await createGitTask(service, workspace.id, {
+      title: "Remove auto worktree UUID"
+    });
+
+    const result = await service.planTask(task.id);
+    const worktreePath = result.task.worktree.path;
+
+    if (!worktreePath) {
+      throw new Error("Expected planned task to create a worktree path");
+    }
+
+    expect(basename(worktreePath)).toBe("remove-auto-worktree-uuid");
+    expect(basename(worktreePath)).not.toContain(task.id);
+    expect(result.task.worktree.branchName).toContain(task.id);
+  });
+
+  it("falls back to the UUID-prefixed directory name when the friendly worktree path is taken", async () => {
+    const { service, workspaceDir } = await createGitRuntime();
+    const workspace = await createGitWorkspace(service, workspaceDir);
+    const title = "Same name";
+    const firstTask = await createGitTask(service, workspace.id, { title });
+    const secondTask = await createGitTask(service, workspace.id, { title });
+
+    const firstResult = await service.planTask(firstTask.id);
+    const secondResult = await service.planTask(secondTask.id);
+
+    expect(basename(firstResult.task.worktree.path ?? "")).toBe("same-name");
+    expect(basename(secondResult.task.worktree.path ?? "")).toBe(`${secondTask.id}-same-name`);
   });
 
   it("starts a task from a fetched origin/main worktree and uses the worktree cwd", async () => {

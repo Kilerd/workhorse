@@ -240,13 +240,21 @@ export class GitWorktreeService {
       );
     }
 
-    const nextPath = deriveTaskWorktreePath(workspace, task);
+    let nextPath = deriveTaskWorktreePath(workspace, task);
     if (await pathExists(nextPath)) {
-      throw new AppError(
-        409,
-        "TASK_WORKTREE_PATH_EXISTS",
-        `Task worktree path already exists: ${nextPath}`
-      );
+      const fallbackPath = deriveTaskWorktreePath(workspace, task, {
+        preserveAutoTaskId: true
+      });
+
+      if (fallbackPath !== nextPath && !(await pathExists(fallbackPath))) {
+        nextPath = fallbackPath;
+      } else {
+        throw new AppError(
+          409,
+          "TASK_WORKTREE_PATH_EXISTS",
+          `Task worktree path already exists: ${nextPath}`
+        );
+      }
     }
 
     await mkdir(dirname(nextPath), { recursive: true });
