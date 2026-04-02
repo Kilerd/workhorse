@@ -13,6 +13,7 @@ import type {
   RunLogResponse,
   RunsResponse,
   StartTaskResponse,
+  StartTaskBody,
   StopTaskResponse,
   TaskInputBody,
   TaskInputResponse,
@@ -159,8 +160,11 @@ export function createApiClient(baseUrl: string) {
       (await updateTask({ taskId, ...body })).data,
     deleteTask: async (taskId: string): Promise<DeleteTaskResponse> =>
       (await deleteTask({ taskId })).data,
-    startTask: async (taskId: string): Promise<StartTaskResponse> =>
-      (await startTask({ taskId })).data,
+    startTask: async (
+      taskId: string,
+      body: StartTaskBody = {}
+    ): Promise<StartTaskResponse> =>
+      (await startTask({ taskId, ...body })).data,
     stopTask: async (taskId: string): Promise<StopTaskResponse> =>
       (await stopTask({ taskId })).data,
     sendTaskInput: async (

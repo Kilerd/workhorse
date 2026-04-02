@@ -448,6 +448,9 @@ export interface components {
         StartTaskParams: {
             taskId: string;
         };
+        StartTaskBody: {
+            order?: number;
+        };
         StopTaskParams: {
             taskId: string;
         };
@@ -1055,7 +1058,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartTaskBody"];
+            };
+        };
         responses: {
             /** @description Started run */
             200: {

@@ -130,6 +130,10 @@ export interface StartTaskParams {
   taskId: string;
 }
 
+export interface StartTaskBody {
+  order?: number;
+}
+
 export interface StopTaskParams {
   taskId: string;
 }
@@ -284,6 +288,7 @@ export type SchemaName =
   | "UpdateTaskBody"
   | "DeleteTaskParams"
   | "StartTaskParams"
+  | "StartTaskBody"
   | "StopTaskParams"
   | "TaskInputParams"
   | "TaskInputBody"
@@ -569,6 +574,7 @@ export const endpointRegistry: EndpointSpec[] = [
     summary: "Start task execution",
     tag: "Runs",
     paramsSchema: "StartTaskParams",
+    bodySchema: "StartTaskBody",
     responses: [
       {
         status: 200,

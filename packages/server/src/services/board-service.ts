@@ -13,6 +13,7 @@ import type {
   Run,
   RunLogEntry,
   RunnerConfig,
+  StartTaskBody,
   TaskInputBody,
   Task,
   TaskPullRequest,
@@ -67,6 +68,7 @@ interface StartTaskOptions {
   runnerConfigOverride?: RunnerConfig;
   runMetadata?: Record<string, string>;
   initialInputText?: string;
+  targetOrder?: number;
 }
 
 type MonitorCiStatus = GitHubCheckBucket | "not_required";
@@ -551,8 +553,13 @@ export class BoardService {
     return { id: taskId };
   }
 
-  public async startTask(taskId: string): Promise<{ task: Task; run: Run }> {
-    return this.startTaskInternal(taskId);
+  public async startTask(
+    taskId: string,
+    input: StartTaskBody = {}
+  ): Promise<{ task: Task; run: Run }> {
+    return this.startTaskInternal(taskId, {
+      targetOrder: input.order
+    });
   }
 
   public async pollGitReviewTasksForBaseUpdates(): Promise<GitReviewMonitorResult> {
@@ -1055,7 +1062,7 @@ export class BoardService {
     tasks[taskIndex] = {
       ...task,
       column: "running",
-      order: this.topOrder("running", task.id),
+      order: options.targetOrder ?? this.topOrder("running", task.id),
       lastRunId: run.id,
       updatedAt: new Date().toISOString()
     };

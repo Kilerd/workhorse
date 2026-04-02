@@ -12,6 +12,7 @@ import {
   validateListTasksQuery,
   validatePlanTaskParams,
   validateRunLogParams,
+  validateStartTaskBody,
   validateStartTaskParams,
   validateStopTaskParams,
   validateTaskInputBody,
@@ -24,12 +25,29 @@ import {
 } from "@workhorse/contracts";
 
 import { getGitReviewMonitorIntervalMs } from "./config.js";
+import { AppError } from "./lib/errors.js";
 import { errorStatus, ok, toApiError, validateOrThrow } from "./lib/http.js";
 import type { BoardService } from "./services/board-service.js";
 
 function queryObject(url: string): Record<string, string> {
   const search = new URL(url).searchParams;
   return Object.fromEntries(search.entries());
+}
+
+async function readOptionalJsonBody(
+  request: { text(): Promise<string> },
+  message: string
+): Promise<unknown> {
+  const raw = await request.text();
+  if (!raw.trim()) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    throw new AppError(400, "VALIDATION_ERROR", message);
+  }
 }
 
 interface CreateAppOptions {
@@ -183,7 +201,12 @@ export function createApp(
       validateStartTaskParams,
       "Invalid task params"
     );
-    const result = await service.startTask(params.taskId);
+    const body = validateOrThrow(
+      await readOptionalJsonBody(c.req, "Invalid start task payload"),
+      validateStartTaskBody,
+      "Invalid start task payload"
+    );
+    const result = await service.startTask(params.taskId, body);
     return c.json(ok(result));
   });
 

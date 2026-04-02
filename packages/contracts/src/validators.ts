@@ -20,6 +20,7 @@ import type {
   RunLogResponse,
   RunsResponse,
   SettingsResponse,
+  StartTaskBody,
   StartTaskParams,
   StartTaskResponse,
   StopTaskParams,
@@ -66,6 +67,7 @@ export const validateUpdateTaskParams = typia.createValidate<UpdateTaskParams>()
 export const validateUpdateTaskBody = typia.createValidate<UpdateTaskBody>();
 export const validateDeleteTaskParams = typia.createValidate<DeleteTaskParams>();
 export const validateStartTaskParams = typia.createValidate<StartTaskParams>();
+export const validateStartTaskBody = typia.createValidate<StartTaskBody>();
 export const validateStopTaskParams = typia.createValidate<StopTaskParams>();
 export const validateTaskInputParams = typia.createValidate<TaskInputParams>();
 export const validateTaskInputBody = typia.createValidate<TaskInputBody>();
@@ -95,6 +97,7 @@ export const schemaRegistry = {
   UpdateTaskBody: () => typia.json.schema<UpdateTaskBody>(),
   DeleteTaskParams: () => typia.json.schema<DeleteTaskParams>(),
   StartTaskParams: () => typia.json.schema<StartTaskParams>(),
+  StartTaskBody: () => typia.json.schema<StartTaskBody>(),
   StopTaskParams: () => typia.json.schema<StopTaskParams>(),
   TaskInputParams: () => typia.json.schema<TaskInputParams>(),
   TaskInputBody: () => typia.json.schema<TaskInputBody>(),
