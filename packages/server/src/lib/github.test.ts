@@ -175,12 +175,15 @@ describe("GhCliPullRequestProvider", () => {
     );
   });
 
-  it("treats 'no checks reported' as no required checks", async () => {
+  it.each([
+    "no checks reported on the 'feature' branch",
+    "no required checks reported on the 'feature' branch"
+  ])("treats '%s' as no required checks", async (stderr) => {
     execFileMock.mockImplementation((file, args, options, callback) => {
       callback(Object.assign(new Error("no checks reported"), {
         code: 1,
         stdout: "",
-        stderr: "no checks reported on the 'feature' branch"
+        stderr
       }));
     });
 

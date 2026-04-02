@@ -774,7 +774,7 @@ export class GhCliPullRequestProvider implements GitHubPullRequestProvider {
     } catch (error) {
       if (error instanceof GhCommandError) {
         const combinedOutput = `${error.stdout}\n${error.stderr}`.trim();
-        if (/no checks reported/i.test(combinedOutput)) {
+        if (/no (required )?checks reported/i.test(combinedOutput)) {
           return [];
         }
       }
