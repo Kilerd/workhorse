@@ -507,6 +507,9 @@ describe("git worktree lifecycle", () => {
     github.setOpenPullRequest(repositoryFullName, task.worktree.branchName, {
       number: 91,
       url: pullRequestUrl,
+      title: "Show richer PR status on review tasks",
+      state: "OPEN",
+      isDraft: false,
       headRef: task.worktree.branchName,
       baseRef: "main",
       headSha: taskHeadSha,
@@ -516,6 +519,17 @@ describe("git worktree lifecycle", () => {
       mergeStateStatus: "CLEAN",
       reviewDecision: "APPROVED",
       statusCheckRollupState: "PENDING",
+      statusChecks: {
+        total: 24,
+        passed: 22,
+        failed: 0,
+        pending: 0,
+        skipped: 2
+      },
+      threadCount: 3,
+      reviewCount: 2,
+      approvalCount: 1,
+      changesRequestedCount: 1,
       files: [
         {
           path: "feature-status.txt",
@@ -549,11 +563,25 @@ describe("git worktree lifecycle", () => {
     expect(updatedTask?.pullRequestUrl).toBe(pullRequestUrl);
     expect(updatedTask?.pullRequest).toEqual({
       number: 91,
+      title: "Show richer PR status on review tasks",
+      state: "OPEN",
+      isDraft: false,
       changedFiles: 2,
       mergeable: "MERGEABLE",
       mergeStateStatus: "CLEAN",
       reviewDecision: "APPROVED",
       statusCheckRollupState: "PENDING",
+      statusChecks: {
+        total: 24,
+        passed: 22,
+        failed: 0,
+        pending: 0,
+        skipped: 2
+      },
+      threadCount: 3,
+      reviewCount: 2,
+      approvalCount: 1,
+      changesRequestedCount: 1,
       checks: {
         total: 2,
         passed: 1,
@@ -602,6 +630,9 @@ describe("git worktree lifecycle", () => {
     github.setOpenPullRequest(repositoryFullName, task.worktree.branchName, {
       number: 91,
       url: "https://github.com/workhorse-git-test/remote/pull/91",
+      title: "Preserve PR file changes after rerun",
+      state: "OPEN",
+      isDraft: true,
       headRef: task.worktree.branchName,
       baseRef: "main",
       headSha: taskHeadSha,
@@ -611,6 +642,16 @@ describe("git worktree lifecycle", () => {
       mergeStateStatus: "CLEAN",
       reviewDecision: "APPROVED",
       statusCheckRollupState: "SUCCESS",
+      statusChecks: {
+        total: 24,
+        passed: 22,
+        failed: 0,
+        pending: 0,
+        skipped: 2
+      },
+      threadCount: 1,
+      reviewCount: 1,
+      approvalCount: 1,
       files: [
         {
           path: "feature-status.txt",
@@ -635,11 +676,24 @@ describe("git worktree lifecycle", () => {
     const rerunTask = service.listTasks({}).find((entry) => entry.id === task.id);
     expect(rerunTask?.pullRequest).toEqual({
       number: 91,
+      title: "Preserve PR file changes after rerun",
+      state: "OPEN",
+      isDraft: true,
       changedFiles: 2,
       mergeable: "MERGEABLE",
       mergeStateStatus: "CLEAN",
       reviewDecision: "APPROVED",
       statusCheckRollupState: "SUCCESS",
+      statusChecks: {
+        total: 24,
+        passed: 22,
+        failed: 0,
+        pending: 0,
+        skipped: 2
+      },
+      threadCount: 1,
+      reviewCount: 1,
+      approvalCount: 1,
       checks: undefined,
       files: [
         {

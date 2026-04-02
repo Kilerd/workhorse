@@ -1283,6 +1283,15 @@
           "number": {
             "type": "number"
           },
+          "title": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "isDraft": {
+            "type": "boolean"
+          },
           "changedFiles": {
             "type": "number"
           },
@@ -1298,10 +1307,25 @@
           "statusCheckRollupState": {
             "type": "string"
           },
+          "threadCount": {
+            "type": "number"
+          },
           "unresolvedConversationCount": {
             "type": "number"
           },
+          "reviewCount": {
+            "type": "number"
+          },
+          "approvalCount": {
+            "type": "number"
+          },
+          "changesRequestedCount": {
+            "type": "number"
+          },
           "checks": {
+            "$ref": "#/components/schemas/TaskPullRequestChecks"
+          },
+          "statusChecks": {
             "$ref": "#/components/schemas/TaskPullRequestChecks"
           },
           "files": {
@@ -1326,6 +1350,9 @@
             "type": "number"
           },
           "pending": {
+            "type": "number"
+          },
+          "skipped": {
             "type": "number"
           }
         },
@@ -2311,17 +2338,12 @@
         "oneOf": [
           {
             "enum": [
-              "text"
-            ]
-          },
-          {
-            "enum": [
-              "status"
-            ]
-          },
-          {
-            "enum": [
               "system"
+            ]
+          },
+          {
+            "enum": [
+              "text"
             ]
           },
           {
@@ -2347,6 +2369,11 @@
           {
             "enum": [
               "plan"
+            ]
+          },
+          {
+            "enum": [
+              "status"
             ]
           }
         ]

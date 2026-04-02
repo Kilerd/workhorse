@@ -1,5 +1,14 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { Draggable, Droppable } from "@hello-pangea/dnd";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  GitMerge,
+  GitPullRequest,
+  MessageSquare,
+  XCircle
+} from "lucide-react";
 import type { Workspace } from "@workhorse/contracts";
 
 import { formatRelativeTime, titleCase } from "@/lib/format";
@@ -147,6 +156,175 @@ function getPullRequestChecksBadge(task: DisplayTask) {
   };
 }
 
+function isFeaturedColumn(column: DisplayTaskColumn) {
+  return column === "running" || column === "review";
+}
+
+function getTaskRunBadge(task: DisplayTask) {
+  if (task.column === "running") {
+    return {
+      label: "RUNNING",
+      className: "task-card-run-running"
+    };
+  }
+
+  if (task.column === "review") {
+    return {
+      label: "COMPLETED",
+      className: "task-card-run-completed"
+    };
+  }
+
+  return {
+    label: titleCase(task.column),
+    className: "task-card-run-idle"
+  };
+}
+
+function getPullRequestCiDisplay(task: DisplayTask) {
+  const checks = task.pullRequest?.statusChecks ?? task.pullRequest?.checks;
+  const rollupState = task.pullRequest?.statusCheckRollupState?.toUpperCase();
+  if (!checks || checks.total < 1) {
+    if (rollupState === "SUCCESS") {
+      return {
+        icon: CheckCircle2,
+        className: "pr-compact-stat-success",
+        label: "(0/0)"
+      };
+    }
+    if (rollupState === "PENDING" || rollupState === "EXPECTED") {
+      return {
+        icon: Clock,
+        className: "pr-compact-stat-warning",
+        label: "(0/0)"
+      };
+    }
+    if (rollupState === "FAILURE" || rollupState === "ERROR") {
+      return {
+        icon: XCircle,
+        className: "pr-compact-stat-danger",
+        label: "(0/0)"
+      };
+    }
+
+    return null;
+  }
+
+  if (checks.failed > 0) {
+    return {
+      icon: XCircle,
+      className: "pr-compact-stat-danger",
+      label: `(${checks.passed}/${checks.total})`
+    };
+  }
+
+  if (checks.pending > 0) {
+    return {
+      icon: Clock,
+      className: "pr-compact-stat-warning",
+      label: `(${checks.passed}/${checks.total})`
+    };
+  }
+
+  return {
+    icon: CheckCircle2,
+    className: "pr-compact-stat-success",
+    label: `(${checks.passed}/${checks.total})`
+  };
+}
+
+function CompactPullRequestStatus({ task }: { task: DisplayTask }) {
+  const pullRequest = task.pullRequest;
+  if (!pullRequest || !task.pullRequestUrl) {
+    return null;
+  }
+
+  const hasConflicts =
+    pullRequest.mergeable?.toUpperCase() === "CONFLICTING" ||
+    pullRequest.mergeStateStatus?.toUpperCase() === "DIRTY";
+  const isApproved = pullRequest.reviewDecision?.toUpperCase() === "APPROVED";
+  const changesRequested = pullRequest.reviewDecision?.toUpperCase() === "CHANGES_REQUESTED";
+  const isMerged = pullRequest.state?.toUpperCase() === "MERGED";
+  const isClosed = pullRequest.state?.toUpperCase() === "CLOSED";
+  const threadCount = pullRequest.threadCount ?? 0;
+  const unresolvedThreads = pullRequest.unresolvedConversationCount ?? 0;
+  const resolvedThreads = Math.max(threadCount - unresolvedThreads, 0);
+  const ciDisplay = getPullRequestCiDisplay(task);
+  const PullRequestIcon = isMerged ? GitMerge : GitPullRequest;
+
+  return (
+    <div className="pr-compact">
+      <div className="pr-compact-row">
+        <a
+          href={task.pullRequestUrl}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+          className={[
+            "pr-compact-link",
+            isMerged ? "pr-compact-link-merged" : "",
+            isClosed ? "pr-compact-link-closed" : "",
+            !isMerged && !isClosed ? "pr-compact-link-open" : ""
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          <PullRequestIcon className="pr-compact-link-icon" />
+          {pullRequest.number !== undefined ? `#${pullRequest.number}` : "PR"}
+        </a>
+
+        {pullRequest.isDraft ? <span className="pr-compact-badge pr-compact-badge-muted">DRAFT</span> : null}
+
+        {hasConflicts ? (
+          <span className="pr-compact-badge pr-compact-badge-danger">
+            <AlertTriangle className="pr-compact-badge-icon" />
+            CONFLICTS
+          </span>
+        ) : null}
+
+        {ciDisplay ? (
+          <span className={["pr-compact-stat", ciDisplay.className].join(" ")}>
+            <ciDisplay.icon className="pr-compact-stat-icon" />
+            <span>{ciDisplay.label}</span>
+          </span>
+        ) : null}
+
+        {isApproved ? (
+          <span className="pr-compact-badge pr-compact-badge-success">APPROVED</span>
+        ) : null}
+        {changesRequested ? (
+          <span className="pr-compact-badge pr-compact-badge-warning">CHANGES</span>
+        ) : null}
+
+        {threadCount > 0 ? (
+          <span
+            className={[
+              "pr-compact-stat",
+              unresolvedThreads > 0 ? "pr-compact-stat-warning" : "pr-compact-stat-muted"
+            ].join(" ")}
+          >
+            <MessageSquare className="pr-compact-stat-icon" />
+            <span>{`(${resolvedThreads}/${threadCount})`}</span>
+          </span>
+        ) : null}
+      </div>
+
+      <a
+        href={task.pullRequestUrl}
+        target="_blank"
+        rel="noreferrer"
+        onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => event.stopPropagation()}
+        className="pr-compact-title"
+        title={pullRequest.title ?? task.pullRequestUrl}
+      >
+        {pullRequest.title ?? task.pullRequestUrl}
+      </a>
+    </div>
+  );
+}
+
 export function Board({
   tasks,
   workspaces,
@@ -194,6 +372,7 @@ export function Board({
             <article
               className={[
                 "column",
+                `column-${column.id}`,
                 snapshot.isDraggingOver ? "column-dragging" : ""
               ]
                 .filter(Boolean)
@@ -218,8 +397,10 @@ export function Board({
                     task.column === "review" && task.pullRequestUrl
                       ? getReviewCountdown(reviewMonitor, nowMs)
                       : null;
+                  const isFeaturedCard = isFeaturedColumn(task.column);
                   const pullRequestMergeBadge = getPullRequestMergeBadge(task);
                   const pullRequestChecksBadge = getPullRequestChecksBadge(task);
+                  const taskRunBadge = getTaskRunBadge(task);
 
                   return (
                     <Draggable draggableId={task.id} index={index} key={task.id}>
@@ -227,6 +408,7 @@ export function Board({
                         <article
                           className={[
                             "task-card",
+                            isFeaturedCard ? "task-card-redesign" : "",
                             isActive ? "task-card-active" : "",
                             dragSnapshot.isDragging ? "task-card-dragging" : ""
                           ]
@@ -245,88 +427,125 @@ export function Board({
                             }
                           }}
                         >
-                          <div className="task-card-head">
-                            <div className="task-card-title">
-                              <div className="task-card-title-row">
-                                {reviewCountdown ? (
-                                  <span
-                                    className="task-card-review-monitor"
-                                    aria-label={`Next PR status refresh in ${reviewCountdown.label}`}
-                                    title={`Next PR status refresh in ${reviewCountdown.label}`}
-                                    style={
-                                      {
-                                        "--review-progress": `${reviewCountdown.progress}turn`
-                                      } as CSSProperties
-                                    }
-                                  />
-                                ) : null}
-                                <strong>{task.title}</strong>
+                          {isFeaturedCard ? (
+                            <>
+                              <div className="task-card-redesign-header">
+                                <h3 className="task-card-redesign-title">{task.title}</h3>
                               </div>
-                              <p className="task-card-desc">
-                                {task.description || "No description"}
-                              </p>
-                            </div>
-                          </div>
 
-                          <div className="task-card-tags">
-                            <span className="meta-token">{workspaceName}</span>
-                            <span className={`status status-${task.column}`}>
-                              {titleCase(task.column)}
-                            </span>
-                            {showWorktree ? (
-                              <span className={`status status-worktree-${task.worktree.status}`}>
-                                {titleCase(task.worktree.status)}
-                              </span>
-                            ) : null}
-                          </div>
+                              {task.description ? (
+                                <p className="task-card-redesign-desc">{task.description}</p>
+                              ) : null}
 
-                          {task.column === "review" && task.pullRequestUrl ? (
-                            <div className="task-card-pr">
-                              <div className="task-card-pr-row">
-                                <span className="meta-token">PR</span>
-                                {pullRequestMergeBadge ? (
-                                  <span
-                                    className={`status ${pullRequestMergeBadge.className}`}
-                                  >
-                                    {pullRequestMergeBadge.label}
+                              {task.pullRequestUrl && task.pullRequest ? (
+                                <div className="task-card-redesign-pr">
+                                  <CompactPullRequestStatus task={task} />
+                                </div>
+                              ) : null}
+
+                              <div className="task-card-redesign-footer">
+                                <span className="task-card-redesign-workspace">{workspaceName}</span>
+                                <span
+                                  className={[
+                                    "task-card-run-badge",
+                                    taskRunBadge.className
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" ")}
+                                >
+                                  {taskRunBadge.label}
+                                </span>
+                                <span className="task-card-redesign-time">
+                                  {formatRelativeTime(task.updatedAt)}
+                                </span>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="task-card-head">
+                                <div className="task-card-title">
+                                  <div className="task-card-title-row">
+                                    {reviewCountdown ? (
+                                      <span
+                                        className="task-card-review-monitor"
+                                        aria-label={`Next PR status refresh in ${reviewCountdown.label}`}
+                                        title={`Next PR status refresh in ${reviewCountdown.label}`}
+                                        style={
+                                          {
+                                            "--review-progress": `${reviewCountdown.progress}turn`
+                                          } as CSSProperties
+                                        }
+                                      />
+                                    ) : null}
+                                    <strong>{task.title}</strong>
+                                  </div>
+                                  <p className="task-card-desc">
+                                    {task.description || "No description"}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="task-card-tags">
+                                <span className="meta-token">{workspaceName}</span>
+                                <span className={`status status-${task.column}`}>
+                                  {titleCase(task.column)}
+                                </span>
+                                {showWorktree ? (
+                                  <span className={`status status-worktree-${task.worktree.status}`}>
+                                    {titleCase(task.worktree.status)}
                                   </span>
                                 ) : null}
-                                {pullRequestChecksBadge ? (
-                                  <span
-                                    className={`status ${pullRequestChecksBadge.className}`}
-                                  >
-                                    {pullRequestChecksBadge.label}
-                                  </span>
-                                ) : null}
                               </div>
-                              <a
-                                className="task-pr-link"
-                                href={task.pullRequestUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                onClick={(event) => event.stopPropagation()}
-                                onKeyDown={(event) => event.stopPropagation()}
-                              >
-                                {task.pullRequestUrl}
-                              </a>
-                            </div>
-                          ) : null}
 
-                          <div className="task-card-footer">
-                            <span className="task-card-time">
-                              Updated {formatRelativeTime(task.updatedAt)}
-                            </span>
-                            <TaskActionBar
-                              column={task.column}
-                              compact
-                              onPlan={() => onPlan(task.id)}
-                              onStart={() => onTaskStart(task.id)}
-                              onStop={() => onTaskStop(task.id)}
-                              onMoveToTodo={() => onMoveToTodo(task.id)}
-                              onMarkDone={() => onMarkDone(task.id)}
-                              onArchive={() => onArchive(task.id)}
-                            />
-                          </div>
+                              {task.column === "review" && task.pullRequestUrl ? (
+                                <div className="task-card-pr">
+                                  <div className="task-card-pr-row">
+                                    <span className="meta-token">PR</span>
+                                    {pullRequestMergeBadge ? (
+                                      <span
+                                        className={`status ${pullRequestMergeBadge.className}`}
+                                      >
+                                        {pullRequestMergeBadge.label}
+                                      </span>
+                                    ) : null}
+                                    {pullRequestChecksBadge ? (
+                                      <span
+                                        className={`status ${pullRequestChecksBadge.className}`}
+                                      >
+                                        {pullRequestChecksBadge.label}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  <a
+                                    className="task-pr-link"
+                                    href={task.pullRequestUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    onClick={(event) => event.stopPropagation()}
+                                    onKeyDown={(event) => event.stopPropagation()}
+                                  >
+                                    {task.pullRequestUrl}
+                                  </a>
+                                </div>
+                              ) : null}
+
+                              <div className="task-card-footer">
+                                <span className="task-card-time">
+                                  Updated {formatRelativeTime(task.updatedAt)}
+                                </span>
+                                <TaskActionBar
+                                  column={task.column}
+                                  compact
+                                  onPlan={() => onPlan(task.id)}
+                                  onStart={() => onTaskStart(task.id)}
+                                  onStop={() => onTaskStop(task.id)}
+                                  onMoveToTodo={() => onMoveToTodo(task.id)}
+                                  onMarkDone={() => onMarkDone(task.id)}
+                                  onArchive={() => onArchive(task.id)}
+                                />
+                              </div>
+                            </>
+                          )}
                         </article>
                       )}
                     </Draggable>

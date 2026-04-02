@@ -48,6 +48,7 @@ export interface TaskPullRequestChecks {
   passed: number;
   failed: number;
   pending: number;
+  skipped?: number;
 }
 
 export interface TaskPullRequestFile {
@@ -58,13 +59,21 @@ export interface TaskPullRequestFile {
 
 export interface TaskPullRequest {
   number?: number;
+  title?: string;
+  state?: string;
+  isDraft?: boolean;
   changedFiles?: number;
   mergeable?: string;
   mergeStateStatus?: string;
   reviewDecision?: string;
   statusCheckRollupState?: string;
+  threadCount?: number;
   unresolvedConversationCount?: number;
+  reviewCount?: number;
+  approvalCount?: number;
+  changesRequestedCount?: number;
   checks?: TaskPullRequestChecks;
+  statusChecks?: TaskPullRequestChecks;
   files?: TaskPullRequestFile[];
 }
 

@@ -343,13 +343,21 @@ export interface components {
         };
         TaskPullRequest: {
             number?: number;
+            title?: string;
+            state?: string;
+            isDraft?: boolean;
             changedFiles?: number;
             mergeable?: string;
             mergeStateStatus?: string;
             reviewDecision?: string;
             statusCheckRollupState?: string;
+            threadCount?: number;
             unresolvedConversationCount?: number;
+            reviewCount?: number;
+            approvalCount?: number;
+            changesRequestedCount?: number;
             checks?: components["schemas"]["TaskPullRequestChecks"];
+            statusChecks?: components["schemas"]["TaskPullRequestChecks"];
             files?: components["schemas"]["TaskPullRequestFile"][];
         };
         TaskPullRequestChecks: {
@@ -357,6 +365,7 @@ export interface components {
             passed: number;
             failed: number;
             pending: number;
+            skipped?: number;
         };
         TaskPullRequestFile: {
             path: string;
@@ -593,7 +602,7 @@ export interface components {
             metadata?: components["schemas"]["Recordstringstring"];
         };
         RunLogStream: "stdout" | "stderr" | "system";
-        RunLogKind: "text" | "status" | "system" | "user" | "agent" | "tool_call" | "tool_output" | "plan";
+        RunLogKind: "system" | "text" | "user" | "agent" | "tool_call" | "tool_output" | "plan" | "status";
         HealthResponse: {
             /** @enum {unknown} */
             ok: true;

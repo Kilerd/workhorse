@@ -1346,7 +1346,7 @@ export class BoardService {
     pullRequest: GitHubPullRequestSummary,
     checks: GitHubPullRequestCheck[]
   ): TaskPullRequest {
-    return {
+    const summary: TaskPullRequest = {
       number: pullRequest.number,
       changedFiles: pullRequest.changedFiles,
       mergeable: pullRequest.mergeable,
@@ -1355,8 +1355,33 @@ export class BoardService {
       statusCheckRollupState: pullRequest.statusCheckRollupState,
       unresolvedConversationCount: pullRequest.unresolvedConversationCount,
       checks: this.summarizeTaskPullRequestChecks(checks),
+      statusChecks: pullRequest.statusChecks,
       files: this.mapTaskPullRequestFiles(pullRequest.files)
     };
+
+    if (pullRequest.title) {
+      summary.title = pullRequest.title;
+    }
+    if (pullRequest.state) {
+      summary.state = pullRequest.state;
+    }
+    if (pullRequest.isDraft !== undefined) {
+      summary.isDraft = pullRequest.isDraft;
+    }
+    if (pullRequest.threadCount !== undefined) {
+      summary.threadCount = pullRequest.threadCount;
+    }
+    if (pullRequest.reviewCount !== undefined) {
+      summary.reviewCount = pullRequest.reviewCount;
+    }
+    if (pullRequest.approvalCount !== undefined) {
+      summary.approvalCount = pullRequest.approvalCount;
+    }
+    if (pullRequest.changesRequestedCount !== undefined) {
+      summary.changesRequestedCount = pullRequest.changesRequestedCount;
+    }
+
+    return summary;
   }
 
   private mapTaskPullRequestFiles(
@@ -1459,13 +1484,21 @@ export class BoardService {
 
     return (
       left?.number === right?.number &&
+      left?.title === right?.title &&
+      left?.state === right?.state &&
+      left?.isDraft === right?.isDraft &&
       left?.changedFiles === right?.changedFiles &&
       left?.mergeable === right?.mergeable &&
       left?.mergeStateStatus === right?.mergeStateStatus &&
       left?.reviewDecision === right?.reviewDecision &&
       left?.statusCheckRollupState === right?.statusCheckRollupState &&
+      left?.threadCount === right?.threadCount &&
       left?.unresolvedConversationCount === right?.unresolvedConversationCount &&
+      left?.reviewCount === right?.reviewCount &&
+      left?.approvalCount === right?.approvalCount &&
+      left?.changesRequestedCount === right?.changesRequestedCount &&
       this.taskPullRequestChecksEqual(left?.checks, right?.checks) &&
+      this.taskPullRequestChecksEqual(left?.statusChecks, right?.statusChecks) &&
       this.taskPullRequestFilesEqual(left?.files, right?.files)
     );
   }
@@ -1482,7 +1515,8 @@ export class BoardService {
       left?.total === right?.total &&
       left?.passed === right?.passed &&
       left?.failed === right?.failed &&
-      left?.pending === right?.pending
+      left?.pending === right?.pending &&
+      left?.skipped === right?.skipped
     );
   }
 
@@ -1925,17 +1959,48 @@ export class BoardService {
           }
         : undefined;
 
-    return {
+    const summary: TaskPullRequest = {
       number,
-      changedFiles: task.pullRequest?.changedFiles,
       mergeable: metadata.monitorPrMergeable || undefined,
       mergeStateStatus: metadata.monitorPrMergeState || undefined,
       reviewDecision: metadata.monitorPrReviewDecision || undefined,
       statusCheckRollupState: metadata.monitorPrStatusCheckRollupState || undefined,
       unresolvedConversationCount,
-      checks,
-      files: task.pullRequest?.files
+      checks
     };
+
+    if (task.pullRequest?.title) {
+      summary.title = task.pullRequest.title;
+    }
+    if (task.pullRequest?.state) {
+      summary.state = task.pullRequest.state;
+    }
+    if (task.pullRequest?.isDraft !== undefined) {
+      summary.isDraft = task.pullRequest.isDraft;
+    }
+    if (task.pullRequest?.changedFiles !== undefined) {
+      summary.changedFiles = task.pullRequest.changedFiles;
+    }
+    if (task.pullRequest?.threadCount !== undefined) {
+      summary.threadCount = task.pullRequest.threadCount;
+    }
+    if (task.pullRequest?.reviewCount !== undefined) {
+      summary.reviewCount = task.pullRequest.reviewCount;
+    }
+    if (task.pullRequest?.approvalCount !== undefined) {
+      summary.approvalCount = task.pullRequest.approvalCount;
+    }
+    if (task.pullRequest?.changesRequestedCount !== undefined) {
+      summary.changesRequestedCount = task.pullRequest.changesRequestedCount;
+    }
+    if (task.pullRequest?.files) {
+      summary.files = task.pullRequest.files;
+    }
+    if (task.pullRequest?.statusChecks) {
+      summary.statusChecks = task.pullRequest.statusChecks;
+    }
+
+    return summary;
   }
 
   private async ensureReadableDirectory(path: string): Promise<void> {

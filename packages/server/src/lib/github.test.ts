@@ -42,6 +42,10 @@ describe("GhCliPullRequestProvider", () => {
             stdout: JSON.stringify({
               number: 42,
               url: "https://github.com/acme/widgets/pull/42",
+              title: "Refine review task cards",
+              state: "OPEN",
+              isDraft: false,
+              updatedAt: "2026-04-02T09:20:00.000Z",
               headRefName: "feature/review-files",
               baseRefName: "main",
               headRefOid: "head-sha",
@@ -51,10 +55,34 @@ describe("GhCliPullRequestProvider", () => {
               mergeStateStatus: "CLEAN",
               reviewDecision: "APPROVED",
               statusCheckRollup: {
-                state: "PENDING"
+                state: "SUCCESS",
+                contexts: {
+                  nodes: [
+                    {
+                      state: "SUCCESS"
+                    },
+                    {
+                      state: "SUCCESS"
+                    },
+                    {
+                      state: "SKIPPED"
+                    }
+                  ]
+                }
               },
               comments: [],
-              latestReviews: [],
+              latestReviews: [
+                {
+                  author: {
+                    login: "reviewer"
+                  },
+                  body: "Looks good to me.",
+                  state: "APPROVED",
+                  submittedAt: "2026-04-02T09:15:00.000Z",
+                  updatedAt: "2026-04-02T09:15:00.000Z",
+                  url: "https://github.com/acme/widgets/pull/42#pullrequestreview-1"
+                }
+              ],
               files: [
                 {
                   path: "packages/server/src/lib/github.ts",
@@ -82,6 +110,7 @@ describe("GhCliPullRequestProvider", () => {
                 repository: {
                   pullRequest: {
                     reviewThreads: {
+                      totalCount: 0,
                       nodes: []
                     }
                   }
@@ -107,16 +136,40 @@ describe("GhCliPullRequestProvider", () => {
       url: "https://github.com/acme/widgets/pull/42",
       headRef: "feature/review-files",
       baseRef: "main",
+      title: "Refine review task cards",
+      state: "OPEN",
+      isDraft: false,
       headSha: "head-sha",
       baseSha: "base-sha",
+      updatedAt: "2026-04-02T09:20:00.000Z",
       changedFiles: 2,
       mergeable: "MERGEABLE",
       mergeStateStatus: "CLEAN",
       reviewDecision: "APPROVED",
-      statusCheckRollupState: "PENDING",
-      feedbackCount: 0,
-      feedbackUpdatedAt: undefined,
-      feedbackItems: [],
+      statusCheckRollupState: "SUCCESS",
+      reviewCount: 1,
+      approvalCount: 1,
+      statusChecks: {
+        total: 3,
+        passed: 2,
+        failed: 0,
+        pending: 0,
+        skipped: 1
+      },
+      feedbackCount: 1,
+      feedbackUpdatedAt: "2026-04-02T09:15:00.000Z",
+      feedbackItems: [
+        {
+          source: "review",
+          author: "reviewer",
+          body: "Looks good to me.",
+          url: "https://github.com/acme/widgets/pull/42#pullrequestreview-1",
+          state: "APPROVED",
+          createdAt: "2026-04-02T09:15:00.000Z",
+          updatedAt: "2026-04-02T09:15:00.000Z"
+        }
+      ],
+      threadCount: 0,
       unresolvedConversationCount: 0,
       unresolvedConversationUpdatedAt: undefined,
       unresolvedConversationItems: [],
@@ -144,7 +197,7 @@ describe("GhCliPullRequestProvider", () => {
         "acme/widgets",
         "42",
         "--json",
-        "number,url,headRefName,baseRefName,headRefOid,baseRefOid,changedFiles,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup,comments,latestReviews,files"
+        "number,url,title,state,isDraft,updatedAt,headRefName,baseRefName,headRefOid,baseRefOid,changedFiles,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup,comments,latestReviews,files"
       ],
       expect.objectContaining({
         encoding: "utf8"
@@ -262,6 +315,7 @@ describe("GhCliPullRequestProvider", () => {
                 repository: {
                   pullRequest: {
                     reviewThreads: {
+                      totalCount: 1,
                       nodes: [
                         {
                           id: "thread-1",
@@ -322,6 +376,7 @@ describe("GhCliPullRequestProvider", () => {
       provider.findOpenPullRequest("Kilerd/workhorse", "feature/unresolved-thread")
     ).resolves.toMatchObject({
       number: 13,
+      threadCount: 1,
       unresolvedConversationCount: 1,
       unresolvedConversationUpdatedAt: "2026-04-02T10:05:00.000Z",
       unresolvedConversationItems: [

@@ -16,6 +16,7 @@ query(
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
       reviewThreads(first: 100, after: $endCursor) {
+        totalCount
         nodes {
           id
           isResolved
@@ -86,18 +87,35 @@ export interface GitHubPullRequestFile {
   deletions?: number;
 }
 
+export interface GitHubPullRequestChecksSummary {
+  total: number;
+  passed: number;
+  failed: number;
+  pending: number;
+  skipped: number;
+}
+
 export interface GitHubPullRequestSummary {
   number: number;
   url: string;
   headRef: string;
   baseRef: string;
+  title?: string;
+  state?: string;
+  isDraft?: boolean;
   headSha?: string;
   baseSha?: string;
+  updatedAt?: string;
   changedFiles?: number;
   mergeable?: string;
   mergeStateStatus?: string;
   reviewDecision?: string;
   statusCheckRollupState?: string;
+  threadCount?: number;
+  reviewCount?: number;
+  approvalCount?: number;
+  changesRequestedCount?: number;
+  statusChecks?: GitHubPullRequestChecksSummary;
   feedbackCount?: number;
   feedbackUpdatedAt?: string;
   feedbackItems?: GitHubPullRequestFeedbackItem[];
@@ -280,6 +298,36 @@ function parsePullRequestFile(payload: unknown): GitHubPullRequestFile | null {
     path,
     additions: readNumberField(record, "additions"),
     deletions: readNumberField(record, "deletions")
+  };
+}
+
+function summarizeReviewStates(payload: unknown[]): Pick<
+  GitHubPullRequestSummary,
+  "reviewCount" | "approvalCount" | "changesRequestedCount"
+> {
+  let reviewCount = 0;
+  let approvalCount = 0;
+  let changesRequestedCount = 0;
+
+  for (const item of payload) {
+    const state = readStringField(asRecord(item) ?? {}, "state")?.toUpperCase();
+    if (!state) {
+      continue;
+    }
+
+    reviewCount += 1;
+    if (state === "APPROVED") {
+      approvalCount += 1;
+    }
+    if (state === "CHANGES_REQUESTED") {
+      changesRequestedCount += 1;
+    }
+  }
+
+  return {
+    ...(reviewCount > 0 ? { reviewCount } : {}),
+    ...(approvalCount > 0 ? { approvalCount } : {}),
+    ...(changesRequestedCount > 0 ? { changesRequestedCount } : {})
   };
 }
 
@@ -469,6 +517,87 @@ function parseStatusCheckRollupState(payload: unknown): string | undefined {
   return contextState;
 }
 
+function summarizeStatusCheckRollup(
+  payload: unknown
+): GitHubPullRequestChecksSummary | undefined {
+  const contexts = Array.isArray(payload)
+    ? payload
+    : readNodeArrayField(asRecord(payload) ?? {}, "contexts");
+  if (contexts.length === 0) {
+    return undefined;
+  }
+
+  let total = 0;
+  let passed = 0;
+  let failed = 0;
+  let pending = 0;
+  let skipped = 0;
+
+  for (const context of contexts) {
+    const record = asRecord(context);
+    const rawState = (
+      readStringField(record ?? {}, "state") ??
+      readStringField(record ?? {}, "conclusion")
+    )?.toUpperCase();
+    if (!rawState) {
+      continue;
+    }
+
+    total += 1;
+
+    if (rawState === "SUCCESS") {
+      passed += 1;
+      continue;
+    }
+
+    if (
+      rawState === "FAILURE" ||
+      rawState === "ERROR" ||
+      rawState === "TIMED_OUT" ||
+      rawState === "ACTION_REQUIRED"
+    ) {
+      failed += 1;
+      continue;
+    }
+
+    if (
+      rawState === "PENDING" ||
+      rawState === "EXPECTED" ||
+      rawState === "QUEUED" ||
+      rawState === "IN_PROGRESS" ||
+      rawState === "REQUESTED" ||
+      rawState === "WAITING"
+    ) {
+      pending += 1;
+      continue;
+    }
+
+    if (
+      rawState === "SKIPPED" ||
+      rawState === "NEUTRAL" ||
+      rawState === "CANCELLED" ||
+      rawState === "CANCELED"
+    ) {
+      skipped += 1;
+      continue;
+    }
+
+    pending += 1;
+  }
+
+  if (total === 0) {
+    return undefined;
+  }
+
+  return {
+    total,
+    passed,
+    failed,
+    pending,
+    skipped
+  };
+}
+
 function parsePullRequestDetail(payload: unknown): GitHubPullRequestSummary {
   const record = asRecord(payload);
   if (!record) {
@@ -501,19 +630,31 @@ function parsePullRequestDetail(payload: unknown): GitHubPullRequestSummary {
   ].sort((left, right) =>
     compareOptionalTimestamps(left.updatedAt ?? left.createdAt, right.updatedAt ?? right.createdAt)
   );
+  const latestReviews = readNodeArrayField(record, "latestReviews");
+  const reviewStateSummary = summarizeReviewStates(latestReviews);
+  const title = readStringField(record, "title");
+  const state = readStringField(record, "state");
+  const isDraft = readBooleanField(record, "isDraft");
+  const updatedAt = readStringField(record, "updatedAt");
 
   return {
     number,
     url,
     headRef,
     baseRef,
+    ...(title ? { title } : {}),
+    ...(state ? { state } : {}),
+    ...(isDraft !== undefined ? { isDraft } : {}),
     headSha: readStringField(record, "headRefOid"),
     baseSha: readStringField(record, "baseRefOid"),
+    ...(updatedAt ? { updatedAt } : {}),
     changedFiles: readNumberField(record, "changedFiles"),
     mergeable: readStringField(record, "mergeable"),
     mergeStateStatus: readStringField(record, "mergeStateStatus"),
     reviewDecision: readStringField(record, "reviewDecision"),
     statusCheckRollupState: parseStatusCheckRollupState(record.statusCheckRollup),
+    ...reviewStateSummary,
+    statusChecks: summarizeStatusCheckRollup(record.statusCheckRollup),
     feedbackCount: feedbackItems.length,
     feedbackUpdatedAt: pickLatestTimestamp(
       feedbackItems.map((item) => item.updatedAt ?? item.createdAt)
@@ -525,32 +666,48 @@ function parsePullRequestDetail(payload: unknown): GitHubPullRequestSummary {
   };
 }
 
-function parseReviewThreadPage(payload: unknown): GitHubPullRequestConversationItem[] {
+function parseReviewThreadPage(payload: unknown): {
+  threadCount?: number;
+  items: GitHubPullRequestConversationItem[];
+} {
   const record = asRecord(payload);
   const data = asRecord(record?.data);
   const repository = asRecord(data?.repository);
   const pullRequest = asRecord(repository?.pullRequest);
   if (!pullRequest) {
-    return [];
+    return {
+      items: []
+    };
   }
 
-  return readNodeArrayField(pullRequest, "reviewThreads")
-    .map((item) => parseConversationItem(item))
-    .filter((item): item is GitHubPullRequestConversationItem => Boolean(item));
+  const reviewThreads = asRecord(pullRequest.reviewThreads);
+
+  return {
+    threadCount: readNumberField(reviewThreads ?? {}, "totalCount"),
+    items: readNodeArrayField(pullRequest, "reviewThreads")
+      .map((item) => parseConversationItem(item))
+      .filter((item): item is GitHubPullRequestConversationItem => Boolean(item))
+  };
 }
 
 function parseUnresolvedConversationPages(
   payload: unknown
 ): Pick<
   GitHubPullRequestSummary,
-  "unresolvedConversationCount" | "unresolvedConversationUpdatedAt" | "unresolvedConversationItems"
+  | "threadCount"
+  | "unresolvedConversationCount"
+  | "unresolvedConversationUpdatedAt"
+  | "unresolvedConversationItems"
 > {
   const pages = Array.isArray(payload) ? payload : [payload];
-  const unresolvedConversationItems = pages
-    .flatMap((page) => parseReviewThreadPage(page))
+  const parsedPages = pages.map((page) => parseReviewThreadPage(page));
+  const unresolvedConversationItems = parsedPages
+    .flatMap((page) => page.items)
     .sort((left, right) => compareOptionalTimestamps(left.updatedAt, right.updatedAt));
+  const threadCount = parsedPages.find((page) => page.threadCount !== undefined)?.threadCount;
 
   return {
+    ...(threadCount !== undefined ? { threadCount } : {}),
     unresolvedConversationCount: unresolvedConversationItems.length,
     unresolvedConversationUpdatedAt: pickLatestTimestamp(
       unresolvedConversationItems.map((item) => item.updatedAt ?? item.createdAt)
@@ -660,6 +817,10 @@ export class GhCliPullRequestProvider implements GitHubPullRequestProvider {
         [
           "number",
           "url",
+          "title",
+          "state",
+          "isDraft",
+          "updatedAt",
           "headRefName",
           "baseRefName",
           "headRefOid",
