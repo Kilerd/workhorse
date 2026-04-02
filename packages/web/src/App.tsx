@@ -27,6 +27,7 @@ import { resolveRunSelectionAfterStart } from "@/lib/run-selection";
 import { isBoardVisibleColumn, type DisplayTaskColumn } from "@/lib/task-view";
 import { queryClient } from "@/lib/query";
 import { applyTheme, getPreferredTheme, type ThemeMode } from "@/lib/theme";
+import { Button } from "@/components/ui/button";
 
 export default function App() {
   return <ReactAppShell />;
@@ -474,13 +475,14 @@ function TaskRouteState({
         <p className="eyebrow">{eyebrow}</p>
         <h2>{title}</h2>
         <p>{description}</p>
-        <button
+        <Button
           type="button"
-          className="button button-secondary empty-state-action"
+          variant="secondary"
+          className="empty-state-action"
           onClick={onAction}
         >
           {actionLabel}
-        </button>
+        </Button>
       </div>
     </section>
   );

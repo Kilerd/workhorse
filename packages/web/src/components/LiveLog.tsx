@@ -14,6 +14,8 @@ import {
   normalizeToolTitle,
   prepareLiveLogEntries
 } from "./live-log-entries";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 
 interface Props {
   task: Task;
@@ -607,17 +609,16 @@ export function LiveLog({
                 <strong>{inputMode === "review" ? "Continue thread" : "Intervene live"}</strong>
                 {inputAssistText ? <span>{inputAssistText}</span> : null}
               </div>
-              <button
+              <Button
                 type="submit"
-                className="button"
                 disabled={submitState === "sending" || draft.trim().length === 0}
               >
                 {submitState === "sending" ? "Sending..." : "Send"}
-              </button>
+              </Button>
             </div>
             <label className="log-input-label">
               <span className="sr-only">Send input to Codex</span>
-              <textarea
+              <Textarea
                 value={draft}
                 onChange={(event) => {
                   setDraft(event.target.value);

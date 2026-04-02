@@ -13,6 +13,10 @@ import {
 import { api } from "@/lib/api";
 import { BOARD_COLUMNS, type TaskFormValues } from "@/lib/task-view";
 import { resolveTaskWorkspaceId } from "@/lib/workspace-selection";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Textarea } from "@/components/ui/textarea";
 
 const DEFAULT_CODEX_PROMPT = "请完成用户请求的任务。";
 const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
@@ -224,19 +228,23 @@ export function WorkspaceModal({ open, onClose, onSubmit }: WorkspaceModalProps)
         <h2>Add workspace</h2>
         <label>
           <span>Name</span>
-          <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Frontend" />
+          <Input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Frontend"
+          />
         </label>
         <label>
           <span>Root path</span>
           <div className="input-with-action">
-            <input
+            <Input
               value={rootPath}
               onChange={(event) => setRootPath(event.target.value)}
               placeholder="/Users/you/projects/app"
             />
-            <button
+            <Button
               type="button"
-              className="button button-secondary"
+              variant="secondary"
               disabled={isPickingRoot}
               onClick={() => {
                 setPickerError(null);
@@ -269,18 +277,18 @@ export function WorkspaceModal({ open, onClose, onSubmit }: WorkspaceModalProps)
               }}
             >
               {isPickingRoot ? "Choosing..." : "Choose folder"}
-            </button>
+            </Button>
           </div>
           <p className="field-hint">Pick a local folder or paste an absolute path.</p>
           {pickerError ? <p className="field-error">{pickerError}</p> : null}
         </label>
         <div className="modal-actions">
-          <button type="button" className="button button-secondary" onClick={onClose}>
+          <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
-          </button>
-          <button type="submit" className="button" disabled={!canSubmit}>
+          </Button>
+          <Button type="submit" disabled={!canSubmit}>
             Create
-          </button>
+          </Button>
         </div>
       </form>
     </div>
@@ -341,7 +349,7 @@ export function WorkspaceSettingsModal({
         <div className="modal-grid">
           <label>
             <span>Name</span>
-            <input value={name} onChange={(event) => setName(event.target.value)} />
+            <Input value={name} onChange={(event) => setName(event.target.value)} />
           </label>
           <div className="modal-note">
             <span>Root path</span>
@@ -351,7 +359,7 @@ export function WorkspaceSettingsModal({
           </div>
           <label>
             <span>Approval policy</span>
-            <select
+            <NativeSelect
               value={approvalPolicy}
               onChange={(event) =>
                 setApprovalPolicy(
@@ -364,7 +372,7 @@ export function WorkspaceSettingsModal({
                   {option.label}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </label>
           <div className="modal-note">
             <span>Approval behavior</span>
@@ -372,7 +380,7 @@ export function WorkspaceSettingsModal({
           </div>
           <label>
             <span>Sandbox</span>
-            <select
+            <NativeSelect
               value={sandboxMode}
               onChange={(event) =>
                 setSandboxMode(event.target.value as WorkspaceCodexSettings["sandboxMode"])
@@ -383,7 +391,7 @@ export function WorkspaceSettingsModal({
                   {option.label}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </label>
           <div className="modal-note">
             <span>Sandbox access</span>
@@ -405,12 +413,12 @@ export function WorkspaceSettingsModal({
           </div>
         </div>
         <div className="modal-actions">
-          <button type="button" className="button button-secondary" onClick={onClose}>
+          <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
-          </button>
-          <button type="submit" className="button" disabled={!canSubmit}>
+          </Button>
+          <Button type="submit" disabled={!canSubmit}>
             Save settings
-          </button>
+          </Button>
         </div>
       </form>
     </div>
@@ -471,7 +479,7 @@ export function GlobalSettingsModal({
         <div className="modal-grid">
           <label>
             <span>Language</span>
-            <input
+            <Input
               value={language}
               onChange={(event) => setLanguage(event.target.value)}
               placeholder={DEFAULT_GLOBAL_SETTINGS.language}
@@ -486,7 +494,7 @@ export function GlobalSettingsModal({
           </div>
           <label className="span-2">
             <span>OpenRouter base URL</span>
-            <input
+            <Input
               value={baseUrl}
               onChange={(event) => setBaseUrl(event.target.value)}
               placeholder={DEFAULT_GLOBAL_SETTINGS.openRouter.baseUrl}
@@ -494,7 +502,7 @@ export function GlobalSettingsModal({
           </label>
           <label>
             <span>OpenRouter token</span>
-            <input
+            <Input
               type="password"
               value={token}
               onChange={(event) => setToken(event.target.value)}
@@ -503,7 +511,7 @@ export function GlobalSettingsModal({
           </label>
           <label>
             <span>OpenRouter model</span>
-            <input
+            <Input
               value={model}
               onChange={(event) => setModel(event.target.value)}
               placeholder="openai/gpt-4o-mini"
@@ -518,12 +526,12 @@ export function GlobalSettingsModal({
           </div>
         </div>
         <div className="modal-actions">
-          <button type="button" className="button button-secondary" onClick={onClose}>
+          <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
-          </button>
-          <button type="submit" className="button">
+          </Button>
+          <Button type="submit">
             Save settings
-          </button>
+          </Button>
         </div>
       </form>
     </div>
@@ -685,7 +693,7 @@ export function TaskModal({
         <div className="modal-grid">
           <label>
             <span>Title</span>
-            <input
+            <Input
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               placeholder="Fix onboarding flow"
@@ -693,17 +701,20 @@ export function TaskModal({
           </label>
           <label>
             <span>Workspace</span>
-            <select value={workspaceId} onChange={(event) => setWorkspaceId(event.target.value)}>
+            <NativeSelect
+              value={workspaceId}
+              onChange={(event) => setWorkspaceId(event.target.value)}
+            >
               {workspaces.map((workspace) => (
                 <option key={workspace.id} value={workspace.id}>
                   {workspace.name}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </label>
           <label className="span-2">
             <span>Description</span>
-            <textarea
+            <Textarea
               rows={4}
               value={description}
               onChange={(event) => setDescription(event.target.value)}
@@ -720,7 +731,7 @@ export function TaskModal({
           </div>
           <label>
             <span>Runner</span>
-            <select
+            <NativeSelect
               value={runnerType}
               onChange={(event) =>
                 setRunnerType(event.target.value as "shell" | "codex")
@@ -728,11 +739,11 @@ export function TaskModal({
             >
               <option value="codex">codex</option>
               <option value="shell">shell</option>
-            </select>
+            </NativeSelect>
           </label>
           <label>
             <span>Column</span>
-            <select
+            <NativeSelect
               value={column}
               onChange={(event) => setColumn(event.target.value as TaskFormValues["column"])}
             >
@@ -741,13 +752,13 @@ export function TaskModal({
                   {boardColumn.id}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </label>
           {selectedWorkspace?.isGitRepo ? (
             <>
               <label>
                 <span>Base ref</span>
-                <select
+                <NativeSelect
                   value={worktreeBaseRef}
                   onChange={(event) => setWorktreeBaseRef(event.target.value)}
                   disabled={gitRefsQuery.isLoading || (gitRefsQuery.data?.length ?? 0) === 0}
@@ -757,7 +768,7 @@ export function TaskModal({
                       {ref.name}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </label>
               <div className="modal-note">
                 <span>Task branch</span>
@@ -770,7 +781,7 @@ export function TaskModal({
           {runnerType === "shell" ? (
             <label className="span-2">
               <span>Command</span>
-              <input
+              <Input
                 value={shellCommand}
                 onChange={(event) => setShellCommand(event.target.value)}
                 placeholder="npm test"
@@ -780,7 +791,7 @@ export function TaskModal({
             <>
               <label className="span-2">
                 <span>Prompt</span>
-                <textarea
+                <Textarea
                   rows={5}
                   value={prompt}
                   onChange={(event) => setPrompt(event.target.value)}
@@ -808,12 +819,12 @@ export function TaskModal({
         </div>
         <div className="modal-actions">
           {isSubmitting ? <p className="modal-actions-status">{submitStatusLabel}</p> : null}
-          <button type="button" className="button button-secondary" onClick={onClose}>
+          <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
-          </button>
-          <button type="submit" className="button" disabled={!canSubmit}>
+          </Button>
+          <Button type="submit" disabled={!canSubmit}>
             {isSubmitting ? "Creating..." : "Create task"}
-          </button>
+          </Button>
         </div>
       </form>
     </div>
