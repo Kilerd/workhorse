@@ -62,7 +62,12 @@ interface StartTaskOptions {
 
 type MonitorCiStatus = GitHubCheckBucket | "not_required";
 
-type MonitorReasonCode = "behind" | "conflict" | "ci_failed" | "new_feedback";
+type MonitorReasonCode =
+  | "behind"
+  | "conflict"
+  | "ci_failed"
+  | "new_feedback"
+  | "unresolved_conversations";
 
 interface MonitorReason {
   code: MonitorReasonCode;
@@ -594,6 +599,8 @@ export class BoardService {
             continue;
           }
 
+          const shouldCommentOnUnresolvedConversations =
+            this.shouldCommentOnUnresolvedConversations(task, runsById, openPr);
           await this.startTaskInternal(task.id, {
             allowedColumns: ["review"],
             runnerConfigOverride: this.buildMonitorRunnerConfig(
@@ -605,6 +612,13 @@ export class BoardService {
             runMetadata: this.buildMonitorRunMetadata(openPr, ciStatus, checks)
           });
           resumedTaskIds.push(task.id);
+          if (shouldCommentOnUnresolvedConversations) {
+            await this.postUnresolvedConversationComment(
+              repositoryFullName,
+              task,
+              openPr
+            );
+          }
         } catch {
           skippedTaskIds.push(task.id);
         }
@@ -1136,6 +1150,13 @@ export class BoardService {
       });
     }
 
+    if (this.hasUnresolvedPullRequestConversations(task, runsById, pullRequest)) {
+      reasons.push({
+        code: "unresolved_conversations",
+        description: "the PR has unresolved review conversations"
+      });
+    }
+
     if (this.hasNewPullRequestFeedback(task, runsById, pullRequest)) {
       reasons.push({
         code: "new_feedback",
@@ -1175,7 +1196,13 @@ export class BoardService {
       run.metadata.monitorPrStatusCheckRollupState ===
         (pullRequest.statusCheckRollupState ?? "") &&
       run.metadata.monitorPrFeedbackCount === String(pullRequest.feedbackCount ?? 0) &&
-      run.metadata.monitorPrFeedbackUpdatedAt === (pullRequest.feedbackUpdatedAt ?? "")
+      run.metadata.monitorPrFeedbackUpdatedAt === (pullRequest.feedbackUpdatedAt ?? "") &&
+      run.metadata.monitorPrUnresolvedConversationCount ===
+        String(pullRequest.unresolvedConversationCount ?? 0) &&
+      run.metadata.monitorPrUnresolvedConversationUpdatedAt ===
+        (pullRequest.unresolvedConversationUpdatedAt ?? "") &&
+      run.metadata.monitorPrUnresolvedConversationSignature ===
+        this.buildUnresolvedConversationSignature(pullRequest)
     );
   }
 
@@ -1198,6 +1225,7 @@ export class BoardService {
     }
 
     const feedbackLines = this.formatMonitorFeedback(pullRequest);
+    const unresolvedConversationLines = this.formatMonitorUnresolvedConversations(pullRequest);
     return {
       ...task.runnerConfig,
       prompt: [
@@ -1213,8 +1241,15 @@ export class BoardService {
           : undefined,
         feedbackLines.length > 0 ? "- Recent PR feedback to address:" : undefined,
         ...feedbackLines.map((line) => `  - ${line}`),
+        unresolvedConversationLines.length > 0
+          ? "- Unresolved review conversations to address:"
+          : undefined,
+        ...unresolvedConversationLines.map((line) => `  - ${line}`),
         `- Continue from the existing branch \`${task.worktree.branchName}\`.`,
         `- Fetch the latest \`${task.worktree.baseRef}\`, rebase onto it, resolve any conflicts, rerun the smallest useful verification, and push the updated branch.`,
+        unresolvedConversationLines.length > 0
+          ? "- Resolve each remaining review conversation on GitHub, or explicitly explain in a PR comment why a conversation should stay unresolved."
+          : undefined,
         "- Keep the PR up to date and mention the PR URL in your final response."
       ]
         .filter((line): line is string => Boolean(line))
@@ -1243,6 +1278,13 @@ export class BoardService {
       monitorPrStatusCheckRollupState: pullRequest.statusCheckRollupState ?? "",
       monitorPrFeedbackCount: String(pullRequest.feedbackCount ?? 0),
       monitorPrFeedbackUpdatedAt: pullRequest.feedbackUpdatedAt ?? "",
+      monitorPrUnresolvedConversationCount: String(
+        pullRequest.unresolvedConversationCount ?? 0
+      ),
+      monitorPrUnresolvedConversationUpdatedAt:
+        pullRequest.unresolvedConversationUpdatedAt ?? "",
+      monitorPrUnresolvedConversationSignature:
+        this.buildUnresolvedConversationSignature(pullRequest),
       monitorPrReviewDecision: pullRequest.reviewDecision ?? "",
       monitorPrRequiredChecksTotal: String(checkSummary?.total ?? 0),
       monitorPrRequiredChecksPassed: String(checkSummary?.passed ?? 0),
@@ -1261,6 +1303,7 @@ export class BoardService {
       mergeStateStatus: pullRequest.mergeStateStatus,
       reviewDecision: pullRequest.reviewDecision,
       statusCheckRollupState: pullRequest.statusCheckRollupState,
+      unresolvedConversationCount: pullRequest.unresolvedConversationCount,
       checks: this.summarizeTaskPullRequestChecks(checks)
     };
   }
@@ -1355,6 +1398,7 @@ export class BoardService {
       left?.mergeStateStatus === right?.mergeStateStatus &&
       left?.reviewDecision === right?.reviewDecision &&
       left?.statusCheckRollupState === right?.statusCheckRollupState &&
+      left?.unresolvedConversationCount === right?.unresolvedConversationCount &&
       this.taskPullRequestChecksEqual(left?.checks, right?.checks)
     );
   }
@@ -1443,6 +1487,62 @@ export class BoardService {
     return this.didTimestampOccurAfter(run.endedAt ?? run.startedAt, feedbackUpdatedAt);
   }
 
+  private hasUnresolvedPullRequestConversations(
+    task: Task,
+    runsById: Map<string, Run>,
+    pullRequest: GitHubPullRequestSummary
+  ): boolean {
+    if ((pullRequest.unresolvedConversationCount ?? 0) === 0) {
+      return false;
+    }
+
+    const unresolvedConversationSignature =
+      this.buildUnresolvedConversationSignature(pullRequest);
+    if (!unresolvedConversationSignature) {
+      return false;
+    }
+
+    if (!task.lastRunId) {
+      return true;
+    }
+
+    const run = runsById.get(task.lastRunId);
+    if (!run) {
+      return true;
+    }
+
+    if (run.metadata?.trigger !== "gh_pr_monitor") {
+      return true;
+    }
+
+    return (
+      run.metadata.monitorPrUnresolvedConversationSignature !==
+      unresolvedConversationSignature
+    );
+  }
+
+  private shouldCommentOnUnresolvedConversations(
+    task: Task,
+    runsById: Map<string, Run>,
+    pullRequest: GitHubPullRequestSummary
+  ): boolean {
+    if ((pullRequest.unresolvedConversationCount ?? 0) === 0) {
+      return false;
+    }
+
+    const unresolvedConversationSignature =
+      this.buildUnresolvedConversationSignature(pullRequest);
+    if (!unresolvedConversationSignature) {
+      return false;
+    }
+
+    const run = task.lastRunId ? runsById.get(task.lastRunId) : undefined;
+    return (
+      run?.metadata?.monitorPrUnresolvedConversationSignature !==
+      unresolvedConversationSignature
+    );
+  }
+
   private didTimestampOccurAfter(referenceTime?: string, candidateTime?: string): boolean {
     const referenceMs = referenceTime ? Date.parse(referenceTime) : Number.NaN;
     const candidateMs = candidateTime ? Date.parse(candidateTime) : Number.NaN;
@@ -1481,6 +1581,73 @@ export class BoardService {
         const when = item.updatedAt ?? item.createdAt;
         return `${author}${state}${when ? ` at ${when}` : ""}: ${body}`;
       });
+  }
+
+  private formatMonitorUnresolvedConversations(
+    pullRequest: GitHubPullRequestSummary
+  ): string[] {
+    return (pullRequest.unresolvedConversationItems ?? [])
+      .slice(0, 5)
+      .map((item) => {
+        const author = item.author ? `@${item.author}` : "someone";
+        const location = item.path
+          ? `${item.path}${item.line ? `:${item.line}` : ""}`
+          : "the PR diff";
+        const outdated = item.isOutdated ? " [outdated]" : "";
+        const when = item.updatedAt ?? item.createdAt;
+        return `${author}${when ? ` at ${when}` : ""} in ${location}${outdated}: ${this.summarizeMonitorFeedbackBody(item.body)}`;
+      });
+  }
+
+  private buildUnresolvedConversationSignature(
+    pullRequest: GitHubPullRequestSummary
+  ): string {
+    const ids = (pullRequest.unresolvedConversationItems ?? [])
+      .map((item) => item.id.trim())
+      .filter((value) => value.length > 0)
+      .sort();
+    if (ids.length === 0) {
+      return "";
+    }
+
+    return [
+      String(pullRequest.unresolvedConversationCount ?? ids.length),
+      pullRequest.unresolvedConversationUpdatedAt ?? "",
+      ids.join(",")
+    ].join("|");
+  }
+
+  private async postUnresolvedConversationComment(
+    repositoryFullName: string,
+    task: Task,
+    pullRequest: GitHubPullRequestSummary
+  ): Promise<void> {
+    const count = pullRequest.unresolvedConversationCount ?? 0;
+    if (count === 0) {
+      return;
+    }
+
+    const conversationLabel = count === 1 ? "conversation" : "conversations";
+    const summaryLines = this.formatMonitorUnresolvedConversations(pullRequest)
+      .slice(0, 3)
+      .map((line) => `- ${line}`);
+    const body = [
+      `Detected ${count} unresolved review ${conversationLabel} while this PR was in review, so I'm moving task \`${task.title}\` back to running to address them.`,
+      summaryLines.length > 0 ? summaryLines.join("\n") : undefined,
+      "If you want me to leave any of these conversations unresolved instead of changing the code, reply here and say which ones should stay open."
+    ]
+      .filter((line): line is string => Boolean(line))
+      .join("\n\n");
+
+    try {
+      await this.githubPullRequests.addPullRequestComment(
+        repositoryFullName,
+        pullRequest.number,
+        body
+      );
+    } catch {
+      // Best effort: the task should still resume even if the PR comment fails.
+    }
   }
 
   private summarizeMonitorFeedbackBody(body?: string): string {
@@ -1639,12 +1806,16 @@ export class BoardService {
     const checksPassed = toOptionalNumber(metadata.monitorPrRequiredChecksPassed);
     const checksFailed = toOptionalNumber(metadata.monitorPrRequiredChecksFailed);
     const checksPending = toOptionalNumber(metadata.monitorPrRequiredChecksPending);
+    const unresolvedConversationCount = toOptionalNumber(
+      metadata.monitorPrUnresolvedConversationCount
+    );
     const hasMonitorData =
       number !== undefined ||
       Boolean(metadata.monitorPrMergeable) ||
       Boolean(metadata.monitorPrMergeState) ||
       Boolean(metadata.monitorPrStatusCheckRollupState) ||
       Boolean(metadata.monitorPrReviewDecision) ||
+      unresolvedConversationCount !== undefined ||
       checksTotal !== undefined;
 
     if (!hasMonitorData) {
@@ -1667,6 +1838,7 @@ export class BoardService {
       mergeStateStatus: metadata.monitorPrMergeState || undefined,
       reviewDecision: metadata.monitorPrReviewDecision || undefined,
       statusCheckRollupState: metadata.monitorPrStatusCheckRollupState || undefined,
+      unresolvedConversationCount,
       checks
     };
   }
