@@ -6,6 +6,55 @@ import { AppError } from "./errors.js";
 const execFileAsync = promisify(execFile);
 const GITHUB_PULL_REQUEST_URL_PATTERN =
   /https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/\d+(?:[?#][^\s<>]*)?/gi;
+const GITHUB_PULL_REQUEST_REVIEW_THREADS_QUERY = `
+query(
+  $owner: String!,
+  $name: String!,
+  $number: Int!,
+  $endCursor: String
+) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      reviewThreads(first: 100, after: $endCursor) {
+        nodes {
+          id
+          isResolved
+          isOutdated
+          path
+          line
+          originalLine
+          leadingComment: comments(first: 1) {
+            nodes {
+              author {
+                login
+              }
+              body
+              createdAt
+              updatedAt
+              url
+            }
+          }
+          latestComment: comments(last: 1) {
+            nodes {
+              author {
+                login
+              }
+              body
+              createdAt
+              updatedAt
+              url
+            }
+          }
+        }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+      }
+    }
+  }
+}
+`;
 
 export type GitHubCheckBucket = "pass" | "fail" | "pending" | "skipping" | "cancel";
 
@@ -15,6 +64,18 @@ export interface GitHubPullRequestFeedbackItem {
   body?: string;
   url?: string;
   state?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface GitHubPullRequestConversationItem {
+  id: string;
+  author?: string;
+  body?: string;
+  url?: string;
+  path?: string;
+  line?: number;
+  isOutdated?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -33,6 +94,9 @@ export interface GitHubPullRequestSummary {
   feedbackCount?: number;
   feedbackUpdatedAt?: string;
   feedbackItems?: GitHubPullRequestFeedbackItem[];
+  unresolvedConversationCount?: number;
+  unresolvedConversationUpdatedAt?: string;
+  unresolvedConversationItems?: GitHubPullRequestConversationItem[];
 }
 
 export interface GitHubPullRequestCheck {
@@ -56,6 +120,11 @@ export interface GitHubPullRequestProvider {
     repositoryFullName: string,
     pullRequest: number | string
   ): Promise<GitHubPullRequestCheck[]>;
+  addPullRequestComment(
+    repositoryFullName: string,
+    pullRequest: number | string,
+    body: string
+  ): Promise<void>;
 }
 
 class GhCommandError extends Error {
@@ -105,6 +174,14 @@ function readNumberField(
   return typeof value === "number" ? value : undefined;
 }
 
+function readBooleanField(
+  record: Record<string, unknown>,
+  key: string
+): boolean | undefined {
+  const value = record[key];
+  return typeof value === "boolean" ? value : undefined;
+}
+
 function readNodeArrayField(record: Record<string, unknown>, key: string): unknown[] {
   const value = record[key];
   if (Array.isArray(value)) {
@@ -142,6 +219,41 @@ function parseFeedbackItem(
     state: readStringField(record, "state"),
     createdAt,
     updatedAt
+  };
+}
+
+function parseConversationItem(payload: unknown): GitHubPullRequestConversationItem | null {
+  const record = asRecord(payload);
+  if (!record || readBooleanField(record, "isResolved") !== false) {
+    return null;
+  }
+
+  const id = readStringField(record, "id");
+  if (!id) {
+    return null;
+  }
+
+  const leadingComment = readNodeArrayField(record, "leadingComment")
+    .map((item) => parseFeedbackItem(item, "comment"))
+    .find((item): item is GitHubPullRequestFeedbackItem => Boolean(item));
+  const latestComment = readNodeArrayField(record, "latestComment")
+    .map((item) => parseFeedbackItem(item, "comment"))
+    .find((item): item is GitHubPullRequestFeedbackItem => Boolean(item));
+
+  return {
+    id,
+    author: leadingComment?.author ?? latestComment?.author,
+    body: leadingComment?.body ?? latestComment?.body,
+    url: leadingComment?.url ?? latestComment?.url,
+    path: readStringField(record, "path"),
+    line: readNumberField(record, "line") ?? readNumberField(record, "originalLine"),
+    isOutdated: readBooleanField(record, "isOutdated"),
+    createdAt: leadingComment?.createdAt ?? latestComment?.createdAt,
+    updatedAt:
+      latestComment?.updatedAt ??
+      latestComment?.createdAt ??
+      leadingComment?.updatedAt ??
+      leadingComment?.createdAt
   };
 }
 
@@ -383,6 +495,40 @@ function parsePullRequestDetail(payload: unknown): GitHubPullRequestSummary {
   };
 }
 
+function parseReviewThreadPage(payload: unknown): GitHubPullRequestConversationItem[] {
+  const record = asRecord(payload);
+  const data = asRecord(record?.data);
+  const repository = asRecord(data?.repository);
+  const pullRequest = asRecord(repository?.pullRequest);
+  if (!pullRequest) {
+    return [];
+  }
+
+  return readNodeArrayField(pullRequest, "reviewThreads")
+    .map((item) => parseConversationItem(item))
+    .filter((item): item is GitHubPullRequestConversationItem => Boolean(item));
+}
+
+function parseUnresolvedConversationPages(
+  payload: unknown
+): Pick<
+  GitHubPullRequestSummary,
+  "unresolvedConversationCount" | "unresolvedConversationUpdatedAt" | "unresolvedConversationItems"
+> {
+  const pages = Array.isArray(payload) ? payload : [payload];
+  const unresolvedConversationItems = pages
+    .flatMap((page) => parseReviewThreadPage(page))
+    .sort((left, right) => compareOptionalTimestamps(left.updatedAt, right.updatedAt));
+
+  return {
+    unresolvedConversationCount: unresolvedConversationItems.length,
+    unresolvedConversationUpdatedAt: pickLatestTimestamp(
+      unresolvedConversationItems.map((item) => item.updatedAt ?? item.createdAt)
+    ),
+    unresolvedConversationItems
+  };
+}
+
 export class GhCliPullRequestProvider implements GitHubPullRequestProvider {
   private availability?: boolean;
 
@@ -497,12 +643,72 @@ export class GhCliPullRequestProvider implements GitHubPullRequestProvider {
         ].join(",")
       ]);
 
-      return parsePullRequestDetail(JSON.parse(stdout));
+      const [owner, name] = repository.split("/", 2);
+      if (!owner || !name) {
+        throw new AppError(
+          400,
+          "GITHUB_REPOSITORY_INVALID",
+          `Invalid GitHub repository: ${repositoryFullName}`
+        );
+      }
+
+      const { stdout: reviewThreadsStdout } = await runGh([
+        "api",
+        "graphql",
+        "--paginate",
+        "--slurp",
+        "-f",
+        `owner=${owner}`,
+        "-f",
+        `name=${name}`,
+        "-F",
+        `number=${Number(pullRequest)}`,
+        "-f",
+        `query=${GITHUB_PULL_REQUEST_REVIEW_THREADS_QUERY}`
+      ]);
+
+      return {
+        ...parsePullRequestDetail(JSON.parse(stdout)),
+        ...parseUnresolvedConversationPages(JSON.parse(reviewThreadsStdout))
+      };
     } catch (error) {
       throw new AppError(
         502,
         "GITHUB_MONITOR_REQUEST_FAILED",
         `gh pr view failed for ${repository}#${pullRequest}: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  public async addPullRequestComment(
+    repositoryFullName: string,
+    pullRequest: number | string,
+    body: string
+  ): Promise<void> {
+    const repository = normalizeGitHubRepositoryFullName(repositoryFullName);
+    if (!repository) {
+      throw new AppError(
+        400,
+        "GITHUB_REPOSITORY_INVALID",
+        `Invalid GitHub repository: ${repositoryFullName}`
+      );
+    }
+
+    try {
+      await runGh([
+        "pr",
+        "comment",
+        "--repo",
+        repository,
+        String(pullRequest),
+        "--body",
+        body
+      ]);
+    } catch (error) {
+      throw new AppError(
+        502,
+        "GITHUB_MONITOR_REQUEST_FAILED",
+        `gh pr comment failed for ${repository}#${pullRequest}: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }

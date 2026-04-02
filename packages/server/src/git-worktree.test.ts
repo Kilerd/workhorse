@@ -179,6 +179,11 @@ function createFakeGitHubProvider() {
   const openPullRequests = new Map<string, GitHubPullRequestSummary>();
   const mergedPullRequests = new Map<string, GitHubPullRequestSummary>();
   const checks = new Map<string, GitHubPullRequestCheck[]>();
+  const comments: Array<{
+    repositoryFullName: string;
+    pullRequest: number | string;
+    body: string;
+  }> = [];
 
   const provider: GitHubPullRequestProvider = {
     async isAvailable() {
@@ -192,6 +197,13 @@ function createFakeGitHubProvider() {
     },
     async listRequiredChecks(repositoryFullName, pullRequest) {
       return checks.get(`${repositoryFullName}:${String(pullRequest)}`) ?? [];
+    },
+    async addPullRequestComment(repositoryFullName, pullRequest, body) {
+      comments.push({
+        repositoryFullName,
+        pullRequest,
+        body
+      });
     }
   };
 
@@ -213,7 +225,8 @@ function createFakeGitHubProvider() {
     },
     setChecks(repositoryFullName: string, pullRequestNumber: number, value: GitHubPullRequestCheck[]) {
       checks.set(`${repositoryFullName}:${String(pullRequestNumber)}`, value);
-    }
+    },
+    comments
   };
 }
 
@@ -763,6 +776,90 @@ describe("git worktree lifecycle", () => {
 
     const secondPoll = await service.pollGitReviewTasksForBaseUpdates();
     expect(secondPoll.resumedTaskIds).toEqual([]);
+  });
+
+  it("restarts review tasks for unresolved conversations and comments on the PR once", async () => {
+    const github = createFakeGitHubProvider();
+    const { service, seedDir, workspaceDir } = await createGitRuntimeWithProvider(github.provider);
+    const workspace = await createGitWorkspace(service, workspaceDir);
+    const task = await createGitTask(service, workspace.id, {
+      title: "Resolve unresolved conversations",
+      command: "node -e \"console.log('rerun for unresolved conversations')\""
+    });
+
+    await service.startTask(task.id);
+    await waitForRunToFinish(service, task.id);
+
+    const taskWorktree = service.listTasks({}).find((entry) => entry.id === task.id)?.worktree.path;
+    if (!taskWorktree) {
+      throw new Error("Expected task to have a worktree");
+    }
+
+    const taskHeadSha = await commitAndPushTaskBranch(
+      taskWorktree,
+      "thread-target.txt",
+      "needs thread fix",
+      "fix: add unresolved thread target"
+    );
+    const baseSha = await runGit(["-C", seedDir, "rev-parse", "HEAD"]);
+    const conversationUpdatedAt = new Date().toISOString();
+
+    const repositoryFullName = "workhorse-git-test/remote";
+    github.setOpenPullRequest(repositoryFullName, task.worktree.branchName, {
+      number: 88,
+      url: "https://github.com/workhorse-git-test/remote/pull/88",
+      headRef: task.worktree.branchName,
+      baseRef: "main",
+      headSha: taskHeadSha,
+      baseSha,
+      mergeable: "MERGEABLE",
+      mergeStateStatus: "CLEAN",
+      unresolvedConversationCount: 1,
+      unresolvedConversationUpdatedAt: conversationUpdatedAt,
+      unresolvedConversationItems: [
+        {
+          id: "thread-1",
+          author: "reviewer",
+          body: "Please resolve this unresolved thread before merging.",
+          path: "thread-target.txt",
+          line: 1,
+          url: "https://github.com/workhorse-git-test/remote/pull/88#discussion_r1",
+          createdAt: conversationUpdatedAt,
+          updatedAt: conversationUpdatedAt
+        }
+      ]
+    });
+    github.setChecks(repositoryFullName, 88, [
+      {
+        bucket: "pass",
+        state: "SUCCESS",
+        name: "ci"
+      }
+    ]);
+
+    const firstPoll = await service.pollGitReviewTasksForBaseUpdates();
+    expect(firstPoll.resumedTaskIds).toEqual([task.id]);
+
+    const rerun = await waitForRunToFinish(service, task.id);
+    expect(rerun.status).toBe("succeeded");
+    expect(rerun.metadata?.trigger).toBe("gh_pr_monitor");
+    expect(rerun.metadata?.monitorPrUnresolvedConversationCount).toBe("1");
+    expect(rerun.metadata?.monitorPrUnresolvedConversationUpdatedAt).toBe(
+      conversationUpdatedAt
+    );
+    expect(rerun.metadata?.monitorPrUnresolvedConversationSignature).toContain("thread-1");
+
+    expect(github.comments).toHaveLength(1);
+    expect(github.comments[0]).toMatchObject({
+      repositoryFullName,
+      pullRequest: 88
+    });
+    expect(github.comments[0]?.body).toContain("Detected 1 unresolved review conversation");
+    expect(github.comments[0]?.body).toContain("reply here");
+
+    const secondPoll = await service.pollGitReviewTasksForBaseUpdates();
+    expect(secondPoll.resumedTaskIds).toEqual([]);
+    expect(github.comments).toHaveLength(1);
   });
 
   it("retries conflicting review tasks after a prior monitor rerun failed", async () => {

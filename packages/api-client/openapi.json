@@ -1198,6 +1198,9 @@
           "statusCheckRollupState": {
             "type": "string"
           },
+          "unresolvedConversationCount": {
+            "type": "number"
+          },
           "checks": {
             "$ref": "#/components/schemas/TaskPullRequestChecks"
           }

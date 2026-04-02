@@ -56,6 +56,7 @@ export interface TaskPullRequest {
   mergeStateStatus?: string;
   reviewDecision?: string;
   statusCheckRollupState?: string;
+  unresolvedConversationCount?: number;
   checks?: TaskPullRequestChecks;
 }
 

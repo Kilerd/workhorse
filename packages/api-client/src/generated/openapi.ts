@@ -320,6 +320,7 @@ export interface components {
             mergeStateStatus?: string;
             reviewDecision?: string;
             statusCheckRollupState?: string;
+            unresolvedConversationCount?: number;
             checks?: components["schemas"]["TaskPullRequestChecks"];
         };
         TaskPullRequestChecks: {
