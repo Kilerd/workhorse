@@ -123,6 +123,10 @@ function getTaskRunBadge(task: DisplayTask) {
   };
 }
 
+function shouldShowColumnBadge(column: DisplayTaskColumn) {
+  return column !== "backlog";
+}
+
 function getTaskCardToneClass(column: DisplayTaskColumn) {
   switch (column) {
     case "backlog":
@@ -452,6 +456,7 @@ export function Board({
                       ? getReviewCountdown(reviewMonitor, nowMs)
                       : null;
                   const taskRunBadge = getTaskRunBadge(task);
+                  const showColumnBadge = shouldShowColumnBadge(task.column);
                   const showCardActions = shouldShowCardActions(task.column, isActive);
 
                   return (
@@ -500,16 +505,18 @@ export function Board({
                           <div className="task-card-redesign-footer">
                             <div className="task-card-redesign-footer-meta">
                               <span className="task-card-redesign-workspace">{workspaceName}</span>
-                              <span
-                                className={[
-                                  "task-card-run-badge",
-                                  taskRunBadge.className
-                                ]
-                                  .filter(Boolean)
-                                  .join(" ")}
-                              >
-                                {taskRunBadge.label}
-                              </span>
+                              {showColumnBadge ? (
+                                <span
+                                  className={[
+                                    "task-card-run-badge",
+                                    taskRunBadge.className
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" ")}
+                                >
+                                  {taskRunBadge.label}
+                                </span>
+                              ) : null}
                             </div>
 
                             <div className="task-card-redesign-footer-side">
