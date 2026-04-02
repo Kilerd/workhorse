@@ -100,6 +100,7 @@ export interface CodexAppServer {
   initialize(): Promise<void>;
   createConnection(): Promise<CodexAppServerConnection>;
   readAccountRateLimits(): Promise<HealthCodexQuotaData | null>;
+  archiveThread(threadId: string): Promise<void>;
 }
 
 export class CodexAppServerManager implements CodexAppServer {
@@ -148,6 +149,19 @@ export class CodexAppServerManager implements CodexAppServer {
         ...(primary ? { primary } : {}),
         ...(secondary ? { secondary } : {})
       };
+    });
+  }
+
+  public async archiveThread(threadId: string): Promise<void> {
+    const normalizedThreadId = threadId.trim();
+    if (!normalizedThreadId) {
+      return;
+    }
+
+    await this.withInitializedConnection(async (request) => {
+      await request("thread/archive", {
+        threadId: normalizedThreadId
+      });
     });
   }
 

@@ -8,13 +8,17 @@ import { describe, expect, it } from "vitest";
 import type { HealthCodexQuotaData, Run } from "@workhorse/contracts";
 
 import { createApp } from "./app.js";
+import { createRunLogEntry } from "./lib/run-log.js";
 import { StateStore } from "./persistence/state-store.js";
 import type { CodexAppServer } from "./runners/codex-app-server-manager.js";
 import { BoardService } from "./services/board-service.js";
 import { EventBus } from "./ws/event-bus.js";
 
 function createCodexAppServerStub(
-  quota: HealthCodexQuotaData | null = null
+  quota: HealthCodexQuotaData | null = null,
+  overrides: {
+    archiveThread?(threadId: string): Promise<void> | void;
+  } = {}
 ): CodexAppServer {
   return {
     async initialize() {},
@@ -23,6 +27,9 @@ function createCodexAppServerStub(
     },
     async readAccountRateLimits() {
       return quota;
+    },
+    async archiveThread(threadId: string) {
+      await overrides.archiveThread?.(threadId);
     }
   };
 }
@@ -533,7 +540,7 @@ describe("workhorse runtime", () => {
     expect(completedRun.metadata?.turnId).toBe("turn-2");
   });
 
-  it("starts a fresh run from review when sending follow-up input", async () => {
+  it("reuses the previous run log when sending follow-up input from review", async () => {
     const { service, workspaceDir } = await createRuntime();
     const workspace = await createWorkspace(service, workspaceDir);
     const task = await createCodexTask(service, workspace.id, "review");
@@ -567,6 +574,15 @@ describe("workhorse runtime", () => {
         }
       }
     ]);
+    await store.appendLogEntry(
+      previousRunId,
+      createRunLogEntry(previousRunId, {
+        kind: "agent",
+        stream: "stdout",
+        title: "Agent output",
+        text: "Existing output.\n"
+      })
+    );
     await store.save();
 
     let capturedContext: Record<string, unknown> | undefined;
@@ -615,12 +631,18 @@ describe("workhorse runtime", () => {
     }
     const log = await service.getRunLog(result.run.id);
 
+    expect(result.run.id).toBe(previousRunId);
     expect((capturedContext?.previousRun as Run | undefined)?.metadata?.threadId).toBe(
       "thread-previous"
     );
     expect(capturedContext?.inputText).toBe("Address the review feedback.");
+    expect(service.listRuns(task.id).map((entry) => entry.id)).toEqual([previousRunId]);
     expect(log).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({
+          kind: "agent",
+          text: "Existing output.\n"
+        }),
         expect.objectContaining({
           kind: "user",
           text: "Address the review feedback."
@@ -628,6 +650,102 @@ describe("workhorse runtime", () => {
       ])
     );
     expect(completedRun?.id).toBe(result.run.id);
+  });
+
+  it("reuses the previous codex run when restarting a review task", async () => {
+    const { service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+    const task = await createCodexTask(service, workspace.id, "review");
+    const previousRunId = "run-previous";
+    const now = new Date().toISOString();
+    const store = (service as any).store as StateStore;
+
+    store.setTasks(
+      service.snapshot().tasks.map((entry) =>
+        entry.id === task.id
+          ? {
+              ...entry,
+              lastRunId: previousRunId
+            }
+          : entry
+      )
+    );
+    store.setRuns([
+      {
+        id: previousRunId,
+        taskId: task.id,
+        status: "succeeded",
+        runnerType: "codex",
+        command: "codex test runner",
+        startedAt: now,
+        endedAt: now,
+        logFile: store.createLogPath(previousRunId),
+        metadata: {
+          threadId: "thread-previous",
+          turnId: "turn-previous"
+        }
+      }
+    ]);
+    await store.appendLogEntry(
+      previousRunId,
+      createRunLogEntry(previousRunId, {
+        kind: "agent",
+        stream: "stdout",
+        title: "Agent output",
+        text: "Existing output.\n"
+      })
+    );
+    await store.save();
+
+    let capturedContext: Record<string, unknown> | undefined;
+    (service as any).runners.codex = {
+      type: "codex",
+      async start(context: Record<string, unknown>, hooks: {
+        onExit(result: {
+          status: "succeeded";
+          metadata: Record<string, string>;
+        }): Promise<void>;
+      }) {
+        capturedContext = context;
+        void sleep(25).then(() =>
+          hooks.onExit({
+            status: "succeeded",
+            metadata: {
+              threadId: "thread-previous",
+              turnId: "turn-next"
+            }
+          })
+        );
+
+        return {
+          command: "codex test runner",
+          metadata: {
+            threadId: "thread-previous",
+            turnId: "turn-next"
+          },
+          async stop() {}
+        };
+      }
+    };
+
+    const result = await service.startTask(task.id);
+    const completedRun = await waitForRunToFinish(service, task.id);
+    const log = await service.getRunLog(result.run.id);
+
+    expect(result.run.id).toBe(previousRunId);
+    expect((capturedContext?.previousRun as Run | undefined)?.metadata?.threadId).toBe(
+      "thread-previous"
+    );
+    expect(service.listRuns(task.id).map((entry) => entry.id)).toEqual([previousRunId]);
+    expect(log).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "agent",
+          text: "Existing output.\n"
+        })
+      ])
+    );
+    expect(completedRun.id).toBe(previousRunId);
   });
 
   it("rejects workspace paths that are not directories", async () => {
@@ -922,6 +1040,56 @@ describe("workhorse runtime", () => {
       doneTwo.id,
       movedTask.id
     ]);
+  });
+
+  it("archives the codex thread when a review task moves to done", async () => {
+    const archivedThreadIds: string[] = [];
+    const { service, workspaceDir } = await createRuntime({
+      codexAppServer: createCodexAppServerStub(null, {
+        archiveThread(threadId: string) {
+          archivedThreadIds.push(threadId);
+        }
+      })
+    });
+    const workspace = await createWorkspace(service, workspaceDir);
+    const task = await createCodexTask(service, workspace.id, "review");
+    const previousRunId = "run-previous";
+    const now = new Date().toISOString();
+    const store = (service as any).store as StateStore;
+
+    store.setTasks(
+      service.snapshot().tasks.map((entry) =>
+        entry.id === task.id
+          ? {
+              ...entry,
+              lastRunId: previousRunId
+            }
+          : entry
+      )
+    );
+    store.setRuns([
+      {
+        id: previousRunId,
+        taskId: task.id,
+        status: "succeeded",
+        runnerType: "codex",
+        command: "codex test runner",
+        startedAt: now,
+        endedAt: now,
+        logFile: store.createLogPath(previousRunId),
+        metadata: {
+          threadId: "thread-previous",
+          turnId: "turn-previous"
+        }
+      }
+    ]);
+    await store.save();
+
+    await service.updateTask(task.id, {
+      column: "done"
+    });
+
+    expect(archivedThreadIds).toEqual(["thread-previous"]);
   });
 
   it("lists tasks using board column order", async () => {
