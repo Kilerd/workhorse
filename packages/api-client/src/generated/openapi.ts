@@ -21,6 +21,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read global settings */
+        get: operations["getSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update global settings */
+        patch: operations["updateSettings"];
+        trace?: never;
+    };
     "/api/workspaces": {
         parameters: {
             query?: never;
@@ -247,6 +265,15 @@ export interface components {
             expected: string;
             value: unknown;
         };
+        GlobalSettings: {
+            language: string;
+            openRouter: components["schemas"]["OpenRouterSettings"];
+        };
+        OpenRouterSettings: {
+            baseUrl: string;
+            token: string;
+            model: string;
+        };
         Workspace: {
             id: string;
             name: string;
@@ -354,6 +381,14 @@ export interface components {
         Recordstringstring: {
             [key: string]: string;
         };
+        UpdateSettingsBody: {
+            language: string;
+            openRouter: {
+                baseUrl: string;
+                token: string;
+                model: string;
+            };
+        };
         CreateWorkspaceBody: {
             name: string;
             rootPath: string;
@@ -424,6 +459,14 @@ export interface components {
         };
         RunLogParams: {
             runId: string;
+        };
+        SettingsResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["SettingsData"];
+        };
+        SettingsData: {
+            settings: components["schemas"]["GlobalSettings"];
         };
         WorkspacesResponse: {
             /** @enum {unknown} */
@@ -550,7 +593,7 @@ export interface components {
             metadata?: components["schemas"]["Recordstringstring"];
         };
         RunLogStream: "stdout" | "stderr" | "system";
-        RunLogKind: "system" | "text" | "user" | "agent" | "tool_call" | "tool_output" | "plan" | "status";
+        RunLogKind: "text" | "status" | "system" | "user" | "agent" | "tool_call" | "tool_output" | "plan";
         HealthResponse: {
             /** @enum {unknown} */
             ok: true;
@@ -608,6 +651,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
+    };
+    getSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Global settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsResponse"];
+                };
+            };
+        };
+    };
+    updateSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSettingsBody"];
+            };
+        };
+        responses: {
+            /** @description Updated global settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsResponse"];
+                };
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
         };

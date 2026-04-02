@@ -82,6 +82,7 @@ interface CreateTaskWorktreeOptions {
   workspace?: Workspace;
   baseRef?: string;
   branchName?: string;
+  branchLabel?: string;
   status?: TaskWorktree["status"];
 }
 
@@ -90,7 +91,9 @@ export function createTaskWorktree(
   title: string,
   options: CreateTaskWorktreeOptions = {}
 ): TaskWorktree {
-  const branchName = options.branchName?.trim() || deriveTaskBranchName(taskId, title);
+  const branchName =
+    options.branchName?.trim() ||
+    deriveTaskBranchName(taskId, options.branchLabel?.trim() || title);
   const isGitRepo = options.workspace?.isGitRepo ?? false;
   const baseRef = isGitRepo
     ? options.baseRef?.trim() || DEFAULT_GIT_BASE_REF

@@ -7,6 +7,7 @@ import type {
   CreateTaskBody,
   CreateWorkspaceBody,
   DeleteResult,
+  GlobalSettings,
   HealthCodexQuotaData,
   ListTasksQuery,
   Run,
@@ -18,6 +19,7 @@ import type {
   TaskPullRequestChecks,
   TaskPullRequestFile,
   TaskWorktree,
+  UpdateSettingsBody,
   UpdateTaskBody,
   UpdateWorkspaceBody,
   WorkspaceGitRef,
@@ -37,6 +39,7 @@ import { resolveWorkspaceCodexSettings } from "../lib/codex-settings.js";
 import { createId } from "../lib/id.js";
 import { createRunLogEntry } from "../lib/run-log.js";
 import { createTaskWorktree } from "../lib/task-worktree.js";
+import { resolveGlobalSettings } from "../lib/global-settings.js";
 import { StateStore } from "../persistence/state-store.js";
 import {
   CodexAppServerManager,
@@ -47,6 +50,10 @@ import type { RunnerAdapter, RunnerControl } from "../runners/types.js";
 import { ShellRunner } from "../runners/shell-runner.js";
 import { EventBus } from "../ws/event-bus.js";
 import { GitWorktreeService } from "./git-worktree-service.js";
+import {
+  OpenRouterTaskIdentityGenerator,
+  type TaskIdentityGenerator
+} from "./openrouter-task-naming-service.js";
 
 interface ActiveRun {
   control: RunnerControl;
@@ -80,6 +87,7 @@ interface BoardServiceDependencies {
   gitWorktrees?: GitWorktreeService;
   githubPullRequests?: GitHubPullRequestProvider;
   codexAppServer?: CodexAppServer;
+  taskIdentityGenerator?: TaskIdentityGenerator;
 }
 
 export interface GitReviewMonitorResult {
@@ -119,6 +127,8 @@ export class BoardService {
 
   private readonly codexAppServer: CodexAppServer;
 
+  private readonly taskIdentityGenerator: TaskIdentityGenerator;
+
   private readonly activeRuns = new Map<string, ActiveRun>();
 
   private reviewMonitorLastPolledAt?: string;
@@ -138,6 +148,8 @@ export class BoardService {
     this.gitWorktrees = dependencies.gitWorktrees ?? new GitWorktreeService();
     this.githubPullRequests =
       dependencies.githubPullRequests ?? new GhCliPullRequestProvider();
+    this.taskIdentityGenerator =
+      dependencies.taskIdentityGenerator ?? new OpenRouterTaskIdentityGenerator();
   }
 
   public async initialize(): Promise<void> {
@@ -157,6 +169,10 @@ export class BoardService {
     return this.reviewMonitorLastPolledAt;
   }
 
+  public getSettings(): GlobalSettings {
+    return this.store.getSettings();
+  }
+
   public async getCodexQuota(): Promise<HealthCodexQuotaData | null> {
     try {
       return await this.codexAppServer.readAccountRateLimits();
@@ -169,6 +185,13 @@ export class BoardService {
     return this.store
       .listWorkspaces()
       .sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  public async updateSettings(input: UpdateSettingsBody): Promise<GlobalSettings> {
+    const settings = resolveGlobalSettings(input);
+    this.store.setSettings(settings);
+    await this.store.save();
+    return settings;
   }
 
   public async listWorkspaceGitRefs(workspaceId: string): Promise<WorkspaceGitRef[]> {
@@ -301,29 +324,53 @@ export class BoardService {
       "Workspace not found"
     );
 
-    if (!input.title.trim()) {
+    const description = input.description?.trim() ?? "";
+    const providedTitle = input.title.trim();
+    let title = providedTitle;
+    let branchLabel: string | undefined;
+
+    if (!title) {
+      if (!description) {
+        throw new AppError(
+          400,
+          "INVALID_TASK",
+          "Task title or description is required"
+        );
+      }
+
+      const generatedIdentity = await this.taskIdentityGenerator.generate({
+        description,
+        settings: this.store.getSettings()
+      });
+      title = generatedIdentity.title.trim();
+      branchLabel = generatedIdentity.worktreeName.trim();
+    }
+
+    if (!title) {
       throw new AppError(400, "INVALID_TASK", "Task title is required");
     }
     this.ensureRunnerConfig(input.runnerType, input.runnerConfig);
     const taskId = createId();
     const worktree = workspace.isGitRepo
-      ? createTaskWorktree(taskId, input.title, {
+      ? createTaskWorktree(taskId, title, {
           workspace,
+          branchLabel,
           baseRef: await this.gitWorktrees.resolveBaseRef(
             workspace,
             input.worktreeBaseRef
           )
         })
-      : createTaskWorktree(taskId, input.title, {
-          workspace
+      : createTaskWorktree(taskId, title, {
+          workspace,
+          branchLabel
         });
 
     const now = new Date().toISOString();
     const column = input.column ?? "backlog";
     const task: Task = {
       id: taskId,
-      title: input.title.trim(),
-      description: input.description?.trim() ?? "",
+      title,
+      description,
       workspaceId: workspace.id,
       column,
       order: input.order ?? this.nextOrder(column),

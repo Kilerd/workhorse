@@ -2,18 +2,27 @@ import { access, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import { dirname, join } from "node:path";
 
-import type { AppState, Run, RunLogEntry, Task, Workspace } from "@workhorse/contracts";
+import type {
+  AppState,
+  GlobalSettings,
+  Run,
+  RunLogEntry,
+  Task,
+  Workspace
+} from "@workhorse/contracts";
 
 import {
   parseRunLogEntries,
   serializeRunLogEntry
 } from "../lib/run-log.js";
 import { resolveWorkspaceCodexSettings } from "../lib/codex-settings.js";
+import { resolveGlobalSettings } from "../lib/global-settings.js";
 import { createTaskWorktree } from "../lib/task-worktree.js";
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 function migrateState(state: AppState): AppState {
+  const settings = resolveGlobalSettings(state.settings);
   const workspaces = (Array.isArray(state.workspaces) ? state.workspaces : []).map(
     (workspace) =>
       ({
@@ -38,6 +47,7 @@ function migrateState(state: AppState): AppState {
 
   return {
     schemaVersion: SCHEMA_VERSION,
+    settings,
     workspaces,
     tasks,
     runs: Array.isArray(state.runs) ? state.runs : []
@@ -53,6 +63,7 @@ export class StateStore {
 
   private state: AppState = {
     schemaVersion: SCHEMA_VERSION,
+    settings: resolveGlobalSettings(undefined),
     workspaces: [],
     tasks: [],
     runs: []
@@ -86,9 +97,24 @@ export class StateStore {
   public snapshot(): AppState {
     return {
       schemaVersion: this.state.schemaVersion,
+      settings: {
+        ...this.state.settings,
+        openRouter: {
+          ...this.state.settings.openRouter
+        }
+      },
       workspaces: [...this.state.workspaces],
       tasks: [...this.state.tasks],
       runs: [...this.state.runs]
+    };
+  }
+
+  public getSettings(): GlobalSettings {
+    return {
+      ...this.state.settings,
+      openRouter: {
+        ...this.state.settings.openRouter
+      }
     };
   }
 
@@ -106,6 +132,10 @@ export class StateStore {
 
   public setWorkspaces(workspaces: Workspace[]): void {
     this.state.workspaces = workspaces;
+  }
+
+  public setSettings(settings: GlobalSettings): void {
+    this.state.settings = settings;
   }
 
   public setTasks(tasks: Task[]): void {

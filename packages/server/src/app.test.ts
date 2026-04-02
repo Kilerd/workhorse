@@ -10,6 +10,7 @@ import type { HealthCodexQuotaData, Run } from "@workhorse/contracts";
 import { createApp } from "./app.js";
 import { StateStore } from "./persistence/state-store.js";
 import type { CodexAppServer } from "./runners/codex-app-server-manager.js";
+import type { TaskIdentityGenerator } from "./services/openrouter-task-naming-service.js";
 import { BoardService } from "./services/board-service.js";
 import { EventBus } from "./ws/event-bus.js";
 
@@ -27,16 +28,31 @@ function createCodexAppServerStub(
   };
 }
 
+function createTaskIdentityGeneratorStub(
+  result = {
+    title: "修复引导流程",
+    worktreeName: "fix-onboarding-flow"
+  }
+): TaskIdentityGenerator {
+  return {
+    async generate() {
+      return result;
+    }
+  };
+}
+
 async function createRuntime(options?: {
   reviewMonitorIntervalMs?: number;
   codexAppServer?: CodexAppServer;
+  taskIdentityGenerator?: TaskIdentityGenerator;
 }) {
   const dataDir = await mkdtemp(join(tmpdir(), "workhorse-test-"));
   const workspaceDir = join(dataDir, "workspace");
   await mkdir(workspaceDir, { recursive: true });
 
   const service = new BoardService(new StateStore(dataDir), new EventBus(), {
-    codexAppServer: options?.codexAppServer ?? createCodexAppServerStub()
+    codexAppServer: options?.codexAppServer ?? createCodexAppServerStub(),
+    taskIdentityGenerator: options?.taskIdentityGenerator
   });
   await service.initialize();
 
@@ -209,6 +225,23 @@ describe("workhorse runtime", () => {
     expect(payload.data.codexQuota).toEqual(codexQuota);
   });
 
+  it("reports default global settings", async () => {
+    const { app } = await createRuntime();
+
+    const response = await app.request("/api/settings");
+    expect(response.status).toBe(200);
+
+    const payload = await response.json();
+    expect(payload.data.settings).toEqual({
+      language: "中文",
+      openRouter: {
+        baseUrl: "https://openrouter.ai/api/v1",
+        token: "",
+        model: ""
+      }
+    });
+  });
+
   it("runs a shell task to completion and persists the log", async () => {
     const { service, workspaceDir } = await createRuntime();
     const workspace = await createWorkspace(service, workspaceDir);
@@ -226,6 +259,30 @@ describe("workhorse runtime", () => {
     const log = await service.getRunLog(completedRun.id);
     expect(log.some((entry) => entry.text.includes("hello from shell"))).toBe(true);
     expect(log.some((entry) => entry.kind === "text")).toBe(true);
+  });
+
+  it("generates a task title and worktree name from description when title is blank", async () => {
+    const { service, workspaceDir } = await createRuntime({
+      taskIdentityGenerator: createTaskIdentityGeneratorStub({
+        title: "整理登录错误",
+        worktreeName: "triage-login-errors"
+      })
+    });
+    const workspace = await createWorkspace(service, workspaceDir);
+
+    const task = await service.createTask({
+      title: "   ",
+      description: "梳理登录报错，确认复现路径并补上基础保护。",
+      workspaceId: workspace.id,
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "true"
+      }
+    });
+
+    expect(task.title).toBe("整理登录错误");
+    expect(task.worktree.branchName).toContain("triage-login-errors");
   });
 
   it("stops an active shell task and marks the run canceled", async () => {

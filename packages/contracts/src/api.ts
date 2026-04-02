@@ -1,5 +1,6 @@
 import type {
   AppState,
+  GlobalSettings,
   WorkspaceCodexSettings,
   Run,
   RunLogEntry,
@@ -33,6 +34,19 @@ export interface ApiError {
 
 export interface DeleteResult {
   id: string;
+}
+
+export interface SettingsData {
+  settings: GlobalSettings;
+}
+
+export interface UpdateSettingsBody {
+  language: string;
+  openRouter: {
+    baseUrl: string;
+    token: string;
+    model: string;
+  };
 }
 
 export interface ListWorkspacesData {
@@ -213,6 +227,7 @@ export interface HealthData {
   codexQuota: HealthCodexQuotaData | null;
 }
 
+export type SettingsResponse = ApiSuccess<SettingsData>;
 export type WorkspacesResponse = ApiSuccess<ListWorkspacesData>;
 export type WorkspaceResponse = ApiSuccess<WorkspaceData>;
 export type WorkspaceGitRefsResponse = ApiSuccess<WorkspaceGitRefsData>;
@@ -251,6 +266,9 @@ export interface EndpointSpec {
 
 export type SchemaName =
   | "ApiError"
+  | "GlobalSettings"
+  | "UpdateSettingsBody"
+  | "SettingsResponse"
   | "Workspace"
   | "WorkspaceGitRef"
   | "Task"
@@ -301,6 +319,40 @@ export const endpointRegistry: EndpointSpec[] = [
         status: 200,
         description: "Runtime health information",
         schema: "HealthResponse"
+      }
+    ]
+  },
+  {
+    operationId: "getSettings",
+    method: "get",
+    path: "/api/settings",
+    summary: "Read global settings",
+    tag: "Settings",
+    responses: [
+      {
+        status: 200,
+        description: "Global settings",
+        schema: "SettingsResponse"
+      }
+    ]
+  },
+  {
+    operationId: "updateSettings",
+    method: "patch",
+    path: "/api/settings",
+    summary: "Update global settings",
+    tag: "Settings",
+    bodySchema: "UpdateSettingsBody",
+    responses: [
+      {
+        status: 200,
+        description: "Updated global settings",
+        schema: "SettingsResponse"
+      },
+      {
+        status: 400,
+        description: "Validation error",
+        schema: "ApiError"
       }
     ]
   },

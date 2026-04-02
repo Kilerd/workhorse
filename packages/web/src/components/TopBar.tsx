@@ -17,6 +17,7 @@ interface Props {
   onWorkspaceChange(value: string | "all"): void;
   onCreateWorkspace(): void;
   onOpenWorkspaceSettings(): void;
+  onOpenGlobalSettings(): void;
   onCreateTask(): void;
   onRefresh(): void;
   theme: ThemeMode;
@@ -117,6 +118,7 @@ export function TopBar({
   onWorkspaceChange,
   onCreateWorkspace,
   onOpenWorkspaceSettings,
+  onOpenGlobalSettings,
   onCreateTask,
   onRefresh,
   theme,
@@ -250,6 +252,13 @@ export function TopBar({
         </button>
         <button type="button" className="button" onClick={onCreateTask}>
           New
+        </button>
+        <button
+          type="button"
+          className="button-secondary"
+          onClick={onOpenGlobalSettings}
+        >
+          Settings
         </button>
         <ThemeToggle theme={theme} onToggle={onToggleTheme} />
       </div>

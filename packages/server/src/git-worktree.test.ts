@@ -273,7 +273,15 @@ describe("git worktree lifecycle", () => {
     await store.load();
     const snapshot = store.snapshot();
 
-    expect(snapshot.schemaVersion).toBe(3);
+    expect(snapshot.schemaVersion).toBe(4);
+    expect(snapshot.settings).toEqual({
+      language: "中文",
+      openRouter: {
+        baseUrl: "https://openrouter.ai/api/v1",
+        token: "",
+        model: ""
+      }
+    });
     expect(snapshot.workspaces[0]?.codexSettings).toEqual({
       approvalPolicy: "on-request",
       sandboxMode: "workspace-write"

@@ -92,6 +92,20 @@ export interface WorkspaceCodexSettings {
   sandboxMode: CodexSandboxMode;
 }
 
+export const DEFAULT_GLOBAL_LANGUAGE = "中文";
+export const DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+
+export interface OpenRouterSettings {
+  baseUrl: string;
+  token: string;
+  model: string;
+}
+
+export interface GlobalSettings {
+  language: string;
+  openRouter: OpenRouterSettings;
+}
+
 export interface Workspace {
   id: string;
   name: string;
@@ -161,6 +175,7 @@ export interface RunLogEntry {
 
 export interface AppState {
   schemaVersion: number;
+  settings: GlobalSettings;
   workspaces: Workspace[];
   tasks: Task[];
   runs: Run[];

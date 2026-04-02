@@ -14,6 +14,7 @@ import type { RunLogEntry, ServerEvent, Workspace } from "@workhorse/contracts";
 import { Board } from "@/components/Board";
 import { TaskDetailsPanel } from "@/components/TaskDetailsPanel";
 import {
+  GlobalSettingsModal,
   TaskModal,
   WorkspaceModal,
   WorkspaceSettingsModal
@@ -240,10 +241,12 @@ function ReactAppShell() {
           onWorkspaceChange={board.setWorkspaceSelection}
           onCreateWorkspace={() => board.setWorkspaceModalOpen(true)}
           onOpenWorkspaceSettings={() => board.setWorkspaceSettingsModalOpen(true)}
+          onOpenGlobalSettings={() => board.setGlobalSettingsModalOpen(true)}
           onCreateTask={() => board.setTaskModalOpen(true)}
           onRefresh={() => {
             void queryClient.invalidateQueries({ queryKey: ["workspaces"] });
             void queryClient.invalidateQueries({ queryKey: ["tasks"] });
+            void queryClient.invalidateQueries({ queryKey: ["settings"] });
             void queryClient.invalidateQueries({ queryKey: ["health"] });
             setSyncedAt(new Date().toISOString());
           }}
@@ -317,14 +320,26 @@ function ReactAppShell() {
             });
         }}
       />
+      <GlobalSettingsModal
+        open={board.globalSettingsModalOpen}
+        settings={board.settingsQuery.data ?? null}
+        onClose={() => board.setGlobalSettingsModalOpen(false)}
+        onSubmit={(values) => {
+          void board.updateSettings(values).then(() => {
+            board.setGlobalSettingsModalOpen(false);
+          });
+        }}
+      />
 
       <TaskModal
         open={board.taskModalOpen}
         workspaces={workspaces}
         selectedWorkspaceId={board.selectedWorkspaceId}
+        settings={board.settingsQuery.data ?? null}
+        submitting={board.isCreatingTask}
         onClose={() => board.setTaskModalOpen(false)}
         onSubmit={(values) => {
-          void board.createTask(values);
+          return board.createTask(values).then(() => undefined);
         }}
       />
     </div>

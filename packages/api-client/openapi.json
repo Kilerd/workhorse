@@ -15,6 +15,9 @@
       "name": "Runtime"
     },
     {
+      "name": "Settings"
+    },
+    {
       "name": "Workspaces"
     },
     {
@@ -40,6 +43,66 @@
                 "schema": {
                   "$ref": "#/components/schemas/HealthResponse"
                 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "operationId": "getSettings",
+        "summary": "Read global settings",
+        "tags": [
+          "Settings"
+        ],
+        "responses": {
+          "200": {
+            "description": "Global settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateSettings",
+        "summary": "Update global settings",
+        "tags": [
+          "Settings"
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated global settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSettingsBody"
               }
             }
           }
@@ -826,6 +889,40 @@
           "value"
         ]
       },
+      "GlobalSettings": {
+        "type": "object",
+        "properties": {
+          "language": {
+            "type": "string"
+          },
+          "openRouter": {
+            "$ref": "#/components/schemas/OpenRouterSettings"
+          }
+        },
+        "required": [
+          "language",
+          "openRouter"
+        ]
+      },
+      "OpenRouterSettings": {
+        "type": "object",
+        "properties": {
+          "baseUrl": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "baseUrl",
+          "token",
+          "model"
+        ]
+      },
       "Workspace": {
         "type": "object",
         "properties": {
@@ -1346,6 +1443,37 @@
           "type": "string"
         }
       },
+      "UpdateSettingsBody": {
+        "type": "object",
+        "properties": {
+          "language": {
+            "type": "string"
+          },
+          "openRouter": {
+            "type": "object",
+            "properties": {
+              "baseUrl": {
+                "type": "string"
+              },
+              "token": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "baseUrl",
+              "token",
+              "model"
+            ]
+          }
+        },
+        "required": [
+          "language",
+          "openRouter"
+        ]
+      },
       "CreateWorkspaceBody": {
         "type": "object",
         "properties": {
@@ -1678,6 +1806,34 @@
         },
         "required": [
           "runId"
+        ]
+      },
+      "SettingsResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/SettingsData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "SettingsData": {
+        "type": "object",
+        "properties": {
+          "settings": {
+            "$ref": "#/components/schemas/GlobalSettings"
+          }
+        },
+        "required": [
+          "settings"
         ]
       },
       "WorkspacesResponse": {
@@ -2155,12 +2311,17 @@
         "oneOf": [
           {
             "enum": [
-              "system"
+              "text"
             ]
           },
           {
             "enum": [
-              "text"
+              "status"
+            ]
+          },
+          {
+            "enum": [
+              "system"
             ]
           },
           {
@@ -2186,11 +2347,6 @@
           {
             "enum": [
               "plan"
-            ]
-          },
-          {
-            "enum": [
-              "status"
             ]
           }
         ]

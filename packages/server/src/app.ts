@@ -16,6 +16,7 @@ import {
   validateStopTaskParams,
   validateTaskInputBody,
   validateTaskInputParams,
+  validateUpdateSettingsBody,
   validateUpdateTaskBody,
   validateUpdateTaskParams,
   validateUpdateWorkspaceBody,
@@ -68,6 +69,20 @@ export function createApp(
       })
     )
   );
+
+  app.get("/api/settings", (c) =>
+    c.json(ok({ settings: service.getSettings() }))
+  );
+
+  app.patch("/api/settings", async (c) => {
+    const body = validateOrThrow(
+      await c.req.json(),
+      validateUpdateSettingsBody,
+      "Invalid settings payload"
+    );
+    const settings = await service.updateSettings(body);
+    return c.json(ok({ settings }));
+  });
 
   app.get("/api/workspaces", (c) =>
     c.json(ok({ items: service.listWorkspaces() }))

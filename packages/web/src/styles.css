@@ -2121,6 +2121,13 @@ pre {
   gap: 8px;
 }
 
+.modal-actions-status {
+  margin: 0 auto 0 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 28px;
+}
+
 @media (max-width: 1040px) {
   .topbar {
     grid-template-columns: 1fr;

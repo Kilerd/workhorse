@@ -7,6 +7,7 @@ import type {
   DeleteTaskResponse,
   DeleteWorkspaceResponse,
   HealthResponse,
+  SettingsResponse,
   WorkspaceGitRefsResponse,
   PlanTaskResponse,
   RunLogResponse,
@@ -17,6 +18,7 @@ import type {
   TaskInputResponse,
   TaskResponse,
   TasksResponse,
+  UpdateSettingsBody,
   UpdateTaskBody,
   UpdateWorkspaceBody,
   WorkspaceResponse,
@@ -32,6 +34,14 @@ const errorMiddleware: Middleware = async (url, init, next) => {
   const response = await next(url, init);
   return response;
 };
+
+function resolveRequestUrl(baseUrl: string, path: string): string {
+  if (!baseUrl) {
+    return path;
+  }
+
+  return new URL(path, baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`).toString();
+}
 
 export function createApiClient(baseUrl: string) {
   const fetcher = Fetcher.for<paths>();
@@ -95,8 +105,32 @@ export function createApiClient(baseUrl: string) {
     .create();
   const health = fetcher.path("/api/health").method("get").create();
 
+  async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+    const response = await fetch(resolveRequestUrl(baseUrl, path), {
+      ...init,
+      headers: {
+        ...jsonHeaders,
+        ...(init?.headers ?? {})
+      }
+    });
+    const payload = (await response.json()) as T;
+    if (!response.ok) {
+      throw Object.assign(new Error(response.statusText), {
+        data: payload,
+        status: response.status
+      });
+    }
+    return payload;
+  }
+
   return {
     health: async (): Promise<HealthResponse> => (await health({})).data,
+    getSettings: async (): Promise<SettingsResponse> => requestJson("/api/settings"),
+    updateSettings: async (body: UpdateSettingsBody): Promise<SettingsResponse> =>
+      requestJson("/api/settings", {
+        method: "PATCH",
+        body: JSON.stringify(body)
+      }),
     listWorkspaces: async (): Promise<WorkspacesResponse> =>
       (await listWorkspaces({})).data,
     createWorkspace: async (body: CreateWorkspaceBody): Promise<WorkspaceResponse> =>

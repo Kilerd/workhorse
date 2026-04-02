@@ -6,10 +6,12 @@ import {
 } from "@tanstack/react-query";
 
 import type {
+  GlobalSettings,
   Run,
   RunLogEntry,
   ServerEvent,
   Task,
+  UpdateSettingsBody,
   UpdateWorkspaceBody,
   Workspace
 } from "@workhorse/contracts";
@@ -48,6 +50,7 @@ export function useBoardData() {
   const [liveLogByRunId, setLiveLogByRunId] = useState<Record<string, RunLogEntry[]>>({});
   const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
   const [workspaceSettingsModalOpen, setWorkspaceSettingsModalOpen] = useState(false);
+  const [globalSettingsModalOpen, setGlobalSettingsModalOpen] = useState(false);
   const [taskModalOpen, setTaskModalOpen] = useState(false);
 
   const workspacesQuery = useQuery({
@@ -70,6 +73,14 @@ export function useBoardData() {
     queryKey: queryKey("health"),
     queryFn: async () => unwrap(await api.health()),
     refetchInterval: 60_000
+  });
+
+  const settingsQuery = useQuery({
+    queryKey: queryKey("settings"),
+    queryFn: async (): Promise<GlobalSettings> => {
+      const response = await api.getSettings();
+      return unwrap(response).settings;
+    }
   });
 
   const displayedTasks = useMemo<DisplayTask[]>(
@@ -150,6 +161,16 @@ export function useBoardData() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKey("workspaces") });
+    }
+  });
+
+  const updateSettingsMutation = useMutation({
+    mutationFn: async (body: UpdateSettingsBody) => {
+      const response = await api.updateSettings(body);
+      return unwrap(response).settings;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKey("settings") });
     }
   });
 
@@ -351,6 +372,7 @@ export function useBoardData() {
     healthQuery,
     workspacesQuery,
     tasksQuery,
+    settingsQuery,
     displayedTasks,
     selectedWorkspaceId,
     selectedWorkspaceTasks,
@@ -362,9 +384,11 @@ export function useBoardData() {
     liveLogByRunId,
     workspaceModalOpen,
     workspaceSettingsModalOpen,
+    globalSettingsModalOpen,
     taskModalOpen,
     setWorkspaceModalOpen,
     setWorkspaceSettingsModalOpen,
+    setGlobalSettingsModalOpen,
     setTaskModalOpen,
     setWorkspaceSelection,
     setTaskSelection,
@@ -372,8 +396,10 @@ export function useBoardData() {
     recordLiveOutput,
     clearLiveOutput,
     createWorkspace: createWorkspaceMutation.mutateAsync,
+    updateSettings: updateSettingsMutation.mutateAsync,
     updateWorkspace: updateWorkspaceMutation.mutateAsync,
     createTask: createTaskMutation.mutateAsync,
+    isCreatingTask: createTaskMutation.isPending,
     startTask: startTaskMutation.mutateAsync,
     stopTask: stopTaskMutation.mutateAsync,
     sendTaskInput: sendTaskInputMutation.mutateAsync,
@@ -387,6 +413,7 @@ export function useBoardData() {
     deleteTask: deleteTaskMutation.mutateAsync,
     isBusy:
       createWorkspaceMutation.isPending ||
+      updateSettingsMutation.isPending ||
       updateWorkspaceMutation.isPending ||
       createTaskMutation.isPending ||
       startTaskMutation.isPending ||

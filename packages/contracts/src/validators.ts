@@ -19,6 +19,7 @@ import type {
   RunLogParams,
   RunLogResponse,
   RunsResponse,
+  SettingsResponse,
   StartTaskParams,
   StartTaskResponse,
   StopTaskParams,
@@ -30,14 +31,24 @@ import type {
   TasksResponse,
   UpdateTaskBody,
   UpdateTaskParams,
+  UpdateSettingsBody,
   UpdateWorkspaceBody,
   UpdateWorkspaceParams,
   WorkspaceGitRefsResponse,
   WorkspaceResponse,
   WorkspacesResponse
 } from "./api.js";
-import type { Run, Task, TaskWorktree, Workspace, WorkspaceGitRef } from "./domain.js";
+import type {
+  GlobalSettings,
+  Run,
+  Task,
+  TaskWorktree,
+  Workspace,
+  WorkspaceGitRef
+} from "./domain.js";
 
+export const validateUpdateSettingsBody =
+  typia.createValidate<UpdateSettingsBody>();
 export const validateCreateWorkspaceBody =
   typia.createValidate<CreateWorkspaceBody>();
 export const validateUpdateWorkspaceParams =
@@ -66,11 +77,13 @@ export const validateRunLogParams = typia.createValidate<RunLogParams>();
 
 export const schemaRegistry = {
   ApiError: () => typia.json.schema<ApiError>(),
+  GlobalSettings: () => typia.json.schema<GlobalSettings>(),
   Workspace: () => typia.json.schema<Workspace>(),
   WorkspaceGitRef: () => typia.json.schema<WorkspaceGitRef>(),
   TaskWorktree: () => typia.json.schema<TaskWorktree>(),
   Task: () => typia.json.schema<Task>(),
   Run: () => typia.json.schema<Run>(),
+  UpdateSettingsBody: () => typia.json.schema<UpdateSettingsBody>(),
   CreateWorkspaceBody: () => typia.json.schema<CreateWorkspaceBody>(),
   ListWorkspaceGitRefsParams: () => typia.json.schema<ListWorkspaceGitRefsParams>(),
   UpdateWorkspaceBody: () => typia.json.schema<UpdateWorkspaceBody>(),
@@ -89,6 +102,7 @@ export const schemaRegistry = {
   CleanupTaskWorktreeParams: () => typia.json.schema<CleanupTaskWorktreeParams>(),
   ListRunsParams: () => typia.json.schema<ListRunsParams>(),
   RunLogParams: () => typia.json.schema<RunLogParams>(),
+  SettingsResponse: () => typia.json.schema<SettingsResponse>(),
   WorkspacesResponse: () => typia.json.schema<WorkspacesResponse>(),
   WorkspaceResponse: () => typia.json.schema<WorkspaceResponse>(),
   WorkspaceGitRefsResponse: () => typia.json.schema<WorkspaceGitRefsResponse>(),

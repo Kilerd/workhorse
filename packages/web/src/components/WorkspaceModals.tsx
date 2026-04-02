@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type {
+  GlobalSettings,
   Workspace,
   WorkspaceCodexSettings
+} from "@workhorse/contracts";
+import {
+  DEFAULT_GLOBAL_LANGUAGE,
+  DEFAULT_OPENROUTER_BASE_URL
 } from "@workhorse/contracts";
 
 import { api } from "@/lib/api";
@@ -10,6 +15,14 @@ import { BOARD_COLUMNS, type TaskFormValues } from "@/lib/task-view";
 import { resolveTaskWorkspaceId } from "@/lib/workspace-selection";
 
 const DEFAULT_CODEX_PROMPT = "请完成用户请求的任务。";
+const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
+  language: DEFAULT_GLOBAL_LANGUAGE,
+  openRouter: {
+    baseUrl: DEFAULT_OPENROUTER_BASE_URL,
+    token: "",
+    model: ""
+  }
+};
 
 const APPROVAL_POLICY_OPTIONS: Array<{
   value: WorkspaceCodexSettings["approvalPolicy"];
@@ -74,12 +87,21 @@ interface WorkspaceSettingsModalProps {
   onSubmit(values: { name: string; codexSettings: WorkspaceCodexSettings }): void;
 }
 
+interface GlobalSettingsModalProps {
+  open: boolean;
+  settings: GlobalSettings | null;
+  onClose(): void;
+  onSubmit(values: GlobalSettings): void;
+}
+
 interface TaskModalProps {
   open: boolean;
   workspaces: Workspace[];
   selectedWorkspaceId: string | "all";
+  settings: GlobalSettings | null;
+  submitting: boolean;
   onClose(): void;
-  onSubmit(values: TaskFormValues): void;
+  onSubmit(values: TaskFormValues): Promise<void> | void;
 }
 
 function useCloseOnEscape(open: boolean, onClose: () => void) {
@@ -124,6 +146,14 @@ function describeSandboxMode(value: WorkspaceCodexSettings["sandboxMode"]): stri
   return (
     SANDBOX_MODE_OPTIONS.find((option) => option.value === value)?.description ??
     value
+  );
+}
+
+function hasCompleteOpenRouterConfig(settings: GlobalSettings): boolean {
+  return Boolean(
+    settings.openRouter.baseUrl.trim() &&
+      settings.openRouter.token.trim() &&
+      settings.openRouter.model.trim()
   );
 }
 
@@ -310,10 +340,125 @@ export function WorkspaceSettingsModal({
   );
 }
 
+export function GlobalSettingsModal({
+  open,
+  settings,
+  onClose,
+  onSubmit
+}: GlobalSettingsModalProps) {
+  const resolvedSettings = settings ?? DEFAULT_GLOBAL_SETTINGS;
+  const [language, setLanguage] = useState(DEFAULT_GLOBAL_SETTINGS.language);
+  const [baseUrl, setBaseUrl] = useState(DEFAULT_GLOBAL_SETTINGS.openRouter.baseUrl);
+  const [token, setToken] = useState("");
+  const [model, setModel] = useState("");
+
+  useCloseOnEscape(open, onClose);
+
+  useEffect(() => {
+    if (!open) {
+      setLanguage(DEFAULT_GLOBAL_SETTINGS.language);
+      setBaseUrl(DEFAULT_GLOBAL_SETTINGS.openRouter.baseUrl);
+      setToken("");
+      setModel("");
+      return;
+    }
+
+    setLanguage(resolvedSettings.language);
+    setBaseUrl(resolvedSettings.openRouter.baseUrl);
+    setToken(resolvedSettings.openRouter.token);
+    setModel(resolvedSettings.openRouter.model);
+  }, [open, resolvedSettings]);
+
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+      <form
+        className="modal modal-wide"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit({
+            language,
+            openRouter: {
+              baseUrl,
+              token,
+              model
+            }
+          });
+        }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <h2>Global settings</h2>
+        <div className="modal-grid">
+          <label>
+            <span>Language</span>
+            <input
+              value={language}
+              onChange={(event) => setLanguage(event.target.value)}
+              placeholder={DEFAULT_GLOBAL_SETTINGS.language}
+            />
+          </label>
+          <div className="modal-note">
+            <span>Default behavior</span>
+            <p>
+              When a task is created from description only, AI will generate the title
+              in <code>{language.trim() || DEFAULT_GLOBAL_SETTINGS.language}</code>.
+            </p>
+          </div>
+          <label className="span-2">
+            <span>OpenRouter base URL</span>
+            <input
+              value={baseUrl}
+              onChange={(event) => setBaseUrl(event.target.value)}
+              placeholder={DEFAULT_GLOBAL_SETTINGS.openRouter.baseUrl}
+            />
+          </label>
+          <label>
+            <span>OpenRouter token</span>
+            <input
+              type="password"
+              value={token}
+              onChange={(event) => setToken(event.target.value)}
+              placeholder="sk-or-v1-..."
+            />
+          </label>
+          <label>
+            <span>OpenRouter model</span>
+            <input
+              value={model}
+              onChange={(event) => setModel(event.target.value)}
+              placeholder="openai/gpt-4o-mini"
+            />
+          </label>
+          <div className="modal-note span-2">
+            <span>AI task naming</span>
+            <p>
+              Workhorse uses this OpenRouter config to generate a simple task title and
+              worktree name when the title is left empty.
+            </p>
+          </div>
+        </div>
+        <div className="modal-actions">
+          <button type="button" className="button button-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="button">
+            Save settings
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export function TaskModal({
   open,
   workspaces,
   selectedWorkspaceId,
+  settings,
+  submitting,
   onClose,
   onSubmit
 }: TaskModalProps) {
@@ -327,7 +472,10 @@ export function TaskModal({
   const [prompt, setPrompt] = useState(DEFAULT_CODEX_PROMPT);
   const [column, setColumn] = useState<TaskFormValues["column"]>("backlog");
   const [worktreeBaseRef, setWorktreeBaseRef] = useState("");
+  const [submitLocked, setSubmitLocked] = useState(false);
   const defaultWorkspaceId = resolveTaskWorkspaceId(workspaces, selectedWorkspaceId);
+  const resolvedSettings = settings ?? DEFAULT_GLOBAL_SETTINGS;
+  const canGenerateTitle = hasCompleteOpenRouterConfig(resolvedSettings);
 
   useCloseOnEscape(open, onClose);
 
@@ -357,8 +505,15 @@ export function TaskModal({
       setPrompt(DEFAULT_CODEX_PROMPT);
       setColumn("backlog");
       setWorktreeBaseRef("");
+      setSubmitLocked(false);
     }
   }, [defaultWorkspaceId, open]);
+
+  useEffect(() => {
+    if (!submitting) {
+      setSubmitLocked(false);
+    }
+  }, [submitting]);
 
   useEffect(() => {
     if (!workspaceId && defaultWorkspaceId) {
@@ -396,12 +551,22 @@ export function TaskModal({
     return null;
   }
 
+  const trimmedTitle = title.trim();
+  const trimmedDescription = description.trim();
+  const isSubmitting = submitting || submitLocked;
+  const submitStatusLabel =
+    !trimmedTitle && Boolean(trimmedDescription) && canGenerateTitle
+      ? "Generating AI title and creating task..."
+      : "Creating task...";
   const canSubmit =
     workspaces.length > 0 &&
-    Boolean(title.trim()) &&
     Boolean(workspaceId) &&
-    (!selectedWorkspace?.isGitRepo || Boolean(worktreeBaseRef));
-  const branchPreview = `task/<generated-id>-${slugifyBranchPreview(title)}`;
+    (Boolean(trimmedTitle) || (Boolean(trimmedDescription) && canGenerateTitle)) &&
+    (!selectedWorkspace?.isGitRepo || Boolean(worktreeBaseRef)) &&
+    !isSubmitting;
+  const branchPreview = `task/<generated-id>-${slugifyBranchPreview(
+    trimmedTitle || (canGenerateTitle ? "ai-generated-name" : "task")
+  )}`;
 
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
@@ -409,20 +574,29 @@ export function TaskModal({
         className="modal modal-wide"
         onSubmit={(event) => {
           event.preventDefault();
-          onSubmit({
-            title,
-            description,
-            workspaceId,
-            runnerType,
-            runnerConfig:
-              runnerType === "shell"
-                ? { type: "shell", command: shellCommand }
-                : { type: "codex", prompt },
-            column,
-            worktreeBaseRef:
-              selectedWorkspace?.isGitRepo && worktreeBaseRef
-                ? worktreeBaseRef
-                : undefined
+          if (isSubmitting) {
+            return;
+          }
+
+          setSubmitLocked(true);
+          void Promise.resolve(
+            onSubmit({
+              title,
+              description,
+              workspaceId,
+              runnerType,
+              runnerConfig:
+                runnerType === "shell"
+                  ? { type: "shell", command: shellCommand }
+                  : { type: "codex", prompt },
+              column,
+              worktreeBaseRef:
+                selectedWorkspace?.isGitRepo && worktreeBaseRef
+                  ? worktreeBaseRef
+                  : undefined
+            })
+          ).catch(() => {
+            setSubmitLocked(false);
           });
         }}
         onClick={(event) => event.stopPropagation()}
@@ -434,7 +608,11 @@ export function TaskModal({
         <div className="modal-grid">
           <label>
             <span>Title</span>
-            <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Fix onboarding flow" />
+            <input
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="Fix onboarding flow"
+            />
           </label>
           <label>
             <span>Workspace</span>
@@ -455,9 +633,22 @@ export function TaskModal({
               placeholder="Describe what needs to happen."
             />
           </label>
+          <div className="modal-note span-2">
+            <span>Title generation</span>
+            <p>
+              {canGenerateTitle
+                ? `If title is empty, Workhorse will use AI to generate a simple ${resolvedSettings.language} title and worktree name from the description.`
+                : "To create a task from description only, first fill in OpenRouter base URL, token, and model in global settings."}
+            </p>
+          </div>
           <label>
             <span>Runner</span>
-            <select value={runnerType} onChange={(event) => setRunnerType(event.target.value as "shell" | "codex")}>
+            <select
+              value={runnerType}
+              onChange={(event) =>
+                setRunnerType(event.target.value as "shell" | "codex")
+              }
+            >
               <option value="codex">codex</option>
               <option value="shell">shell</option>
             </select>
@@ -502,7 +693,11 @@ export function TaskModal({
           {runnerType === "shell" ? (
             <label className="span-2">
               <span>Command</span>
-              <input value={shellCommand} onChange={(event) => setShellCommand(event.target.value)} placeholder="npm test" />
+              <input
+                value={shellCommand}
+                onChange={(event) => setShellCommand(event.target.value)}
+                placeholder="npm test"
+              />
             </label>
           ) : (
             <>
@@ -535,11 +730,12 @@ export function TaskModal({
           ) : null}
         </div>
         <div className="modal-actions">
+          {isSubmitting ? <p className="modal-actions-status">{submitStatusLabel}</p> : null}
           <button type="button" className="button button-secondary" onClick={onClose}>
             Cancel
           </button>
           <button type="submit" className="button" disabled={!canSubmit}>
-            Create task
+            {isSubmitting ? "Creating..." : "Create task"}
           </button>
         </div>
       </form>

@@ -209,6 +209,7 @@ export function buildOpenApiDocument(): OpenApiDocument {
     ],
     tags: [
       { name: "Runtime" },
+      { name: "Settings" },
       { name: "Workspaces" },
       { name: "Tasks" },
       { name: "Runs" }
