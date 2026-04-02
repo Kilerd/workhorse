@@ -417,6 +417,7 @@ export class BoardService {
           )
         : currentWorkspace;
     const workspaceChanged = nextWorkspace.id !== currentWorkspace.id;
+    const previousColumn = task.column;
 
     if (
       workspaceChanged &&
@@ -497,6 +498,12 @@ export class BoardService {
 
     this.store.setTasks(tasks);
     await this.store.save();
+    if (
+      previousColumn !== nextColumn &&
+      (nextColumn === "done" || nextColumn === "archived")
+    ) {
+      await this.archiveTaskCodexThread(task);
+    }
     this.events.publish({
       type: "task.updated",
       action: "updated",
@@ -1011,24 +1018,39 @@ export class BoardService {
           runnerConfig: options.runnerConfigOverride
         }
       : task;
-    const previousRun =
+    const currentRuns = this.store.listRuns();
+    const previousRunEntry =
       task.lastRunId !== undefined
-        ? this.store.listRuns().find((entry) => entry.id === task.lastRunId)
+        ? currentRuns.find((entry) => entry.id === task.lastRunId)
         : undefined;
+    const previousRun = previousRunEntry
+      ? this.cloneRun(previousRunEntry)
+      : undefined;
+    const reusableRunEntry = this.canContinueCodexRun(
+      executionTask.runnerType,
+      previousRunEntry
+    )
+      ? previousRunEntry
+      : undefined;
+    const run: Run = reusableRunEntry
+      ? this.buildContinuationRun(reusableRunEntry, options.runMetadata)
+      : (() => {
+          const runId = createId();
+          return {
+            id: runId,
+            taskId: task.id,
+            status: "queued",
+            runnerType: executionTask.runnerType,
+            command: "",
+            startedAt: new Date().toISOString(),
+            logFile: this.store.createLogPath(runId),
+            metadata: options.runMetadata
+          } satisfies Run;
+        })();
 
-    const runId = createId();
-    const run: Run = {
-      id: runId,
-      taskId: task.id,
-      status: "queued",
-      runnerType: executionTask.runnerType,
-      command: "",
-      startedAt: new Date().toISOString(),
-      logFile: this.store.createLogPath(runId),
-      metadata: options.runMetadata
-    };
-
-    const runs = [...this.store.listRuns(), run];
+    const runs = reusableRunEntry
+      ? currentRuns.map((entry) => (entry.id === reusableRunEntry.id ? run : entry))
+      : [...currentRuns, run];
     const taskIndex = tasks.findIndex((entry) => entry.id === task.id);
     tasks[taskIndex] = {
       ...task,
@@ -1164,6 +1186,75 @@ export class BoardService {
         task: tasks[taskIndex]
       });
       throw error;
+    }
+  }
+
+  private cloneRun(run: Run): Run {
+    return {
+      ...run,
+      metadata: run.metadata ? { ...run.metadata } : undefined
+    };
+  }
+
+  private canContinueCodexRun(
+    runnerType: Run["runnerType"],
+    previousRun?: Run
+  ): previousRun is Run {
+    if (runnerType !== "codex" || previousRun?.runnerType !== "codex") {
+      return false;
+    }
+
+    return Boolean(previousRun.metadata?.threadId?.trim());
+  }
+
+  private buildContinuationRun(
+    previousRun: Run,
+    runMetadata?: Record<string, string>
+  ): Run {
+    return {
+      id: previousRun.id,
+      taskId: previousRun.taskId,
+      status: "queued",
+      runnerType: previousRun.runnerType,
+      command: "",
+      startedAt: new Date().toISOString(),
+      logFile: this.store.createLogPath(previousRun.id),
+      metadata: this.buildContinuationRunMetadata(previousRun.metadata, runMetadata)
+    };
+  }
+
+  private buildContinuationRunMetadata(
+    previousMetadata?: Record<string, string>,
+    nextMetadata?: Record<string, string>
+  ): Record<string, string> | undefined {
+    const metadata = {
+      ...(previousMetadata?.threadId ? { threadId: previousMetadata.threadId } : {}),
+      ...(previousMetadata?.turnId ? { turnId: previousMetadata.turnId } : {}),
+      ...(previousMetadata?.prUrl ? { prUrl: previousMetadata.prUrl } : {}),
+      ...(nextMetadata ?? {})
+    };
+
+    return Object.keys(metadata).length > 0 ? metadata : undefined;
+  }
+
+  private async archiveTaskCodexThread(task: Task): Promise<void> {
+    if (this.activeRuns.has(task.id) || !task.lastRunId) {
+      return;
+    }
+
+    const run = this.store.listRuns().find((entry) => entry.id === task.lastRunId);
+    const threadId =
+      run?.runnerType === "codex"
+        ? run.metadata?.threadId?.trim()
+        : undefined;
+    if (!threadId) {
+      return;
+    }
+
+    try {
+      await this.codexAppServer.archiveThread(threadId);
+    } catch {
+      // Archiving the remote thread is best-effort and should not block task completion.
     }
   }
 
