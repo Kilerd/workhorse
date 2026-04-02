@@ -294,6 +294,40 @@ pre {
   background: rgba(231, 106, 106, 0.12);
 }
 
+.meta-chip-quota-group {
+  gap: 6px;
+  padding-right: 4px;
+}
+
+.meta-chip-quota-label {
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.meta-chip-quota-windows {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.meta-chip-quota-window {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 16px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.meta-chip-quota-window-label {
+  color: var(--muted);
+}
+
+.meta-chip-quota-window-value {
+  color: var(--text);
+}
+
 .status-dot {
   width: 0.45rem;
   height: 0.45rem;

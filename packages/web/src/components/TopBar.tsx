@@ -92,6 +92,22 @@ function buildQuotaTitle(
   return details.join(" • ");
 }
 
+function buildQuotaGroupTitle(
+  quotaWindows: Array<{ window: HealthCodexQuotaWindowData }>,
+  codexQuota?: HealthCodexQuotaData | null
+): string | undefined {
+  if (quotaWindows.length === 0) {
+    return undefined;
+  }
+
+  return quotaWindows
+    .map(
+      ({ window }) =>
+        `${formatQuotaWindowLabel(window.windowDurationMins)}: ${buildQuotaTitle(window, codexQuota)}`
+    )
+    .join("\n");
+}
+
 export function TopBar({
   workspaces,
   selectedWorkspaceId,
@@ -149,16 +165,30 @@ export function TopBar({
             <span className="status-dot" aria-hidden="true" />
             {formatRuntimeStatus(runtimeStatus)}
           </span>
-          {quotaWindows.map(({ key, window }) => (
+          {quotaWindows.length > 0 ? (
             <span
-              key={key}
-              className={`meta-chip ${getQuotaWindowTone(window)}`}
-              title={buildQuotaTitle(window, codexQuota)}
+              className="meta-chip meta-chip-quota-group"
+              title={buildQuotaGroupTitle(quotaWindows, codexQuota)}
             >
-              Codex {formatQuotaWindowLabel(window.windowDurationMins)}{" "}
-              {window.remainingPercent}% left
+              <span className="meta-chip-quota-label">Codex</span>
+              <span className="meta-chip-quota-windows" aria-label="Codex quota windows">
+                {quotaWindows.map(({ key, window }) => (
+                  <span
+                    key={key}
+                    className={`meta-chip-quota-window ${getQuotaWindowTone(window)}`}
+                    title={buildQuotaTitle(window, codexQuota)}
+                  >
+                    <span className="meta-chip-quota-window-label">
+                      {formatQuotaWindowLabel(window.windowDurationMins)}
+                    </span>
+                    <span className="meta-chip-quota-window-value">
+                      {window.remainingPercent}%
+                    </span>
+                  </span>
+                ))}
+              </span>
             </span>
-          ))}
+          ) : null}
           {codexQuota === null ? (
             <span className="meta-chip">Codex quota unavailable</span>
           ) : null}
