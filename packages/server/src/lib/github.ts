@@ -80,6 +80,12 @@ export interface GitHubPullRequestConversationItem {
   updatedAt?: string;
 }
 
+export interface GitHubPullRequestFile {
+  path: string;
+  additions?: number;
+  deletions?: number;
+}
+
 export interface GitHubPullRequestSummary {
   number: number;
   url: string;
@@ -87,6 +93,7 @@ export interface GitHubPullRequestSummary {
   baseRef: string;
   headSha?: string;
   baseSha?: string;
+  changedFiles?: number;
   mergeable?: string;
   mergeStateStatus?: string;
   reviewDecision?: string;
@@ -97,6 +104,7 @@ export interface GitHubPullRequestSummary {
   unresolvedConversationCount?: number;
   unresolvedConversationUpdatedAt?: string;
   unresolvedConversationItems?: GitHubPullRequestConversationItem[];
+  files?: GitHubPullRequestFile[];
 }
 
 export interface GitHubPullRequestCheck {
@@ -254,6 +262,24 @@ function parseConversationItem(payload: unknown): GitHubPullRequestConversationI
       latestComment?.createdAt ??
       leadingComment?.updatedAt ??
       leadingComment?.createdAt
+  };
+}
+
+function parsePullRequestFile(payload: unknown): GitHubPullRequestFile | null {
+  const record = asRecord(payload);
+  if (!record) {
+    return null;
+  }
+
+  const path = readStringField(record, "path");
+  if (!path) {
+    return null;
+  }
+
+  return {
+    path,
+    additions: readNumberField(record, "additions"),
+    deletions: readNumberField(record, "deletions")
   };
 }
 
@@ -483,6 +509,7 @@ function parsePullRequestDetail(payload: unknown): GitHubPullRequestSummary {
     baseRef,
     headSha: readStringField(record, "headRefOid"),
     baseSha: readStringField(record, "baseRefOid"),
+    changedFiles: readNumberField(record, "changedFiles"),
     mergeable: readStringField(record, "mergeable"),
     mergeStateStatus: readStringField(record, "mergeStateStatus"),
     reviewDecision: readStringField(record, "reviewDecision"),
@@ -491,7 +518,10 @@ function parsePullRequestDetail(payload: unknown): GitHubPullRequestSummary {
     feedbackUpdatedAt: pickLatestTimestamp(
       feedbackItems.map((item) => item.updatedAt ?? item.createdAt)
     ),
-    feedbackItems
+    feedbackItems,
+    files: readNodeArrayField(record, "files")
+      .map((item) => parsePullRequestFile(item))
+      .filter((item): item is GitHubPullRequestFile => Boolean(item))
   };
 }
 
@@ -634,12 +664,14 @@ export class GhCliPullRequestProvider implements GitHubPullRequestProvider {
           "baseRefName",
           "headRefOid",
           "baseRefOid",
+          "changedFiles",
           "mergeable",
           "mergeStateStatus",
           "reviewDecision",
           "statusCheckRollup",
           "comments",
-          "latestReviews"
+          "latestReviews",
+          "files"
         ].join(",")
       ]);
 

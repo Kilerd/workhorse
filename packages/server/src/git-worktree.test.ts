@@ -503,10 +503,23 @@ describe("git worktree lifecycle", () => {
       baseRef: "main",
       headSha: taskHeadSha,
       baseSha,
+      changedFiles: 2,
       mergeable: "MERGEABLE",
       mergeStateStatus: "CLEAN",
       reviewDecision: "APPROVED",
-      statusCheckRollupState: "PENDING"
+      statusCheckRollupState: "PENDING",
+      files: [
+        {
+          path: "feature-status.txt",
+          additions: 1,
+          deletions: 0
+        },
+        {
+          path: "marker.txt",
+          additions: 0,
+          deletions: 1
+        }
+      ]
     });
     github.setChecks(repositoryFullName, 91, [
       {
@@ -528,6 +541,7 @@ describe("git worktree lifecycle", () => {
     expect(updatedTask?.pullRequestUrl).toBe(pullRequestUrl);
     expect(updatedTask?.pullRequest).toEqual({
       number: 91,
+      changedFiles: 2,
       mergeable: "MERGEABLE",
       mergeStateStatus: "CLEAN",
       reviewDecision: "APPROVED",
@@ -537,7 +551,100 @@ describe("git worktree lifecycle", () => {
         passed: 1,
         failed: 0,
         pending: 1
-      }
+      },
+      files: [
+        {
+          path: "feature-status.txt",
+          additions: 1,
+          deletions: 0
+        },
+        {
+          path: "marker.txt",
+          additions: 0,
+          deletions: 1
+        }
+      ]
+    });
+  });
+
+  it("preserves PR file changes when a review task is started again", async () => {
+    const github = createFakeGitHubProvider();
+    const { service, seedDir, workspaceDir } = await createGitRuntimeWithProvider(github.provider);
+    const workspace = await createGitWorkspace(service, workspaceDir);
+    const task = await createGitTask(service, workspace.id);
+
+    await service.startTask(task.id);
+    const initialRun = await waitForRunToFinish(service, task.id);
+    expect(initialRun.status).toBe("succeeded");
+
+    const taskWorktree = service.listTasks({}).find((entry) => entry.id === task.id)?.worktree.path;
+    if (!taskWorktree) {
+      throw new Error("Expected task to have a worktree");
+    }
+
+    const taskHeadSha = await commitAndPushTaskBranch(
+      taskWorktree,
+      "feature-status.txt",
+      "status ready",
+      "feat: add status branch change"
+    );
+    const baseSha = await runGit(["-C", seedDir, "rev-parse", "HEAD"]);
+
+    const repositoryFullName = "workhorse-git-test/remote";
+    github.setOpenPullRequest(repositoryFullName, task.worktree.branchName, {
+      number: 91,
+      url: "https://github.com/workhorse-git-test/remote/pull/91",
+      headRef: task.worktree.branchName,
+      baseRef: "main",
+      headSha: taskHeadSha,
+      baseSha,
+      changedFiles: 2,
+      mergeable: "MERGEABLE",
+      mergeStateStatus: "CLEAN",
+      reviewDecision: "APPROVED",
+      statusCheckRollupState: "SUCCESS",
+      files: [
+        {
+          path: "feature-status.txt",
+          additions: 1,
+          deletions: 0
+        },
+        {
+          path: "marker.txt",
+          additions: 0,
+          deletions: 1
+        }
+      ]
+    });
+
+    const poll = await service.pollGitReviewTasksForBaseUpdates();
+    expect(poll.resumedTaskIds).toEqual([]);
+
+    await service.startTask(task.id);
+    const rerun = await waitForRunToFinish(service, task.id);
+    expect(rerun.status).toBe("succeeded");
+
+    const rerunTask = service.listTasks({}).find((entry) => entry.id === task.id);
+    expect(rerunTask?.pullRequest).toEqual({
+      number: 91,
+      changedFiles: 2,
+      mergeable: "MERGEABLE",
+      mergeStateStatus: "CLEAN",
+      reviewDecision: "APPROVED",
+      statusCheckRollupState: "SUCCESS",
+      checks: undefined,
+      files: [
+        {
+          path: "feature-status.txt",
+          additions: 1,
+          deletions: 0
+        },
+        {
+          path: "marker.txt",
+          additions: 0,
+          deletions: 1
+        }
+      ]
     });
   });
 

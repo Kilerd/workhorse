@@ -11,6 +11,170 @@ describe("GhCliPullRequestProvider", () => {
     execFileMock.mockReset();
   });
 
+  it("loads changed files when fetching an open pull request", async () => {
+    execFileMock.mockImplementation((file, args, options, callback) => {
+      if (args[0] === "pr" && args[1] === "list") {
+        callback(
+          null,
+          {
+            stdout: JSON.stringify([
+              {
+                number: 42,
+                url: "https://github.com/acme/widgets/pull/42",
+                headRefName: "feature/review-files",
+                baseRefName: "main",
+                headRefOid: "head-sha",
+                baseRefOid: "base-sha",
+                mergeable: "MERGEABLE",
+                mergeStateStatus: "CLEAN"
+              }
+            ]),
+            stderr: ""
+          }
+        );
+        return;
+      }
+
+      if (args[0] === "pr" && args[1] === "view") {
+        callback(
+          null,
+          {
+            stdout: JSON.stringify({
+              number: 42,
+              url: "https://github.com/acme/widgets/pull/42",
+              headRefName: "feature/review-files",
+              baseRefName: "main",
+              headRefOid: "head-sha",
+              baseRefOid: "base-sha",
+              changedFiles: 2,
+              mergeable: "MERGEABLE",
+              mergeStateStatus: "CLEAN",
+              reviewDecision: "APPROVED",
+              statusCheckRollup: {
+                state: "PENDING"
+              },
+              comments: [],
+              latestReviews: [],
+              files: [
+                {
+                  path: "packages/server/src/lib/github.ts",
+                  additions: 12,
+                  deletions: 4
+                },
+                {
+                  path: "packages/web/src/components/TaskDetailsPanel.tsx",
+                  additions: 28,
+                  deletions: 1
+                }
+              ]
+            }),
+            stderr: ""
+          }
+        );
+        return;
+      }
+
+      if (args[0] === "api" && args[1] === "graphql") {
+        callback(null, {
+          stdout: JSON.stringify([
+            {
+              data: {
+                repository: {
+                  pullRequest: {
+                    reviewThreads: {
+                      nodes: []
+                    }
+                  }
+                }
+              }
+            }
+          ]),
+          stderr: ""
+        });
+        return;
+      }
+
+      callback(new Error(`Unexpected gh invocation: ${String(args.join(" "))}`));
+    });
+
+    const { GhCliPullRequestProvider } = await import("./github.js");
+    const provider = new GhCliPullRequestProvider();
+
+    await expect(
+      provider.findOpenPullRequest("Acme/widgets", "feature/review-files")
+    ).resolves.toEqual({
+      number: 42,
+      url: "https://github.com/acme/widgets/pull/42",
+      headRef: "feature/review-files",
+      baseRef: "main",
+      headSha: "head-sha",
+      baseSha: "base-sha",
+      changedFiles: 2,
+      mergeable: "MERGEABLE",
+      mergeStateStatus: "CLEAN",
+      reviewDecision: "APPROVED",
+      statusCheckRollupState: "PENDING",
+      feedbackCount: 0,
+      feedbackUpdatedAt: undefined,
+      feedbackItems: [],
+      unresolvedConversationCount: 0,
+      unresolvedConversationUpdatedAt: undefined,
+      unresolvedConversationItems: [],
+      files: [
+        {
+          path: "packages/server/src/lib/github.ts",
+          additions: 12,
+          deletions: 4
+        },
+        {
+          path: "packages/web/src/components/TaskDetailsPanel.tsx",
+          additions: 28,
+          deletions: 1
+        }
+      ]
+    });
+
+    expect(execFileMock).toHaveBeenNthCalledWith(
+      2,
+      "gh",
+      [
+        "pr",
+        "view",
+        "--repo",
+        "acme/widgets",
+        "42",
+        "--json",
+        "number,url,headRefName,baseRefName,headRefOid,baseRefOid,changedFiles,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup,comments,latestReviews,files"
+      ],
+      expect.objectContaining({
+        encoding: "utf8"
+      }),
+      expect.any(Function)
+    );
+    expect(execFileMock).toHaveBeenNthCalledWith(
+      3,
+      "gh",
+      [
+        "api",
+        "graphql",
+        "--paginate",
+        "--slurp",
+        "-f",
+        "owner=acme",
+        "-f",
+        "name=widgets",
+        "-F",
+        "number=42",
+        "-f",
+        expect.stringContaining("reviewThreads(first: 100")
+      ],
+      expect.objectContaining({
+        encoding: "utf8"
+      }),
+      expect.any(Function)
+    );
+  });
+
   it("treats 'no checks reported' as no required checks", async () => {
     execFileMock.mockImplementation((file, args, options, callback) => {
       callback(Object.assign(new Error("no checks reported"), {
