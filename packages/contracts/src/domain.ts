@@ -50,14 +50,22 @@ export interface TaskPullRequestChecks {
   pending: number;
 }
 
+export interface TaskPullRequestFile {
+  path: string;
+  additions?: number;
+  deletions?: number;
+}
+
 export interface TaskPullRequest {
   number?: number;
+  changedFiles?: number;
   mergeable?: string;
   mergeStateStatus?: string;
   reviewDecision?: string;
   statusCheckRollupState?: string;
   unresolvedConversationCount?: number;
   checks?: TaskPullRequestChecks;
+  files?: TaskPullRequestFile[];
 }
 
 export type WorkspaceGitRefKind = "remote" | "local";

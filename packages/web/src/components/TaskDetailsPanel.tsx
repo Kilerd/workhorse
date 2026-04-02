@@ -1,7 +1,7 @@
 import { useMemo, type ReactNode } from "react";
 import type { Run, RunLogEntry, Workspace } from "@workhorse/contracts";
 
-import { formatRelativeTime, titleCase } from "@/lib/format";
+import { formatCount, formatRelativeTime, titleCase } from "@/lib/format";
 import type { DisplayTask } from "@/lib/task-view";
 import { LiveLog } from "./LiveLog";
 import { TaskActionBar } from "./TaskActionBar";
@@ -178,6 +178,54 @@ function DetailField({
   );
 }
 
+function formatPullRequestState(value?: string): string {
+  if (!value) {
+    return "-";
+  }
+
+  return titleCase(value.toLowerCase());
+}
+
+function getPullRequestChangedFilesCount(
+  pullRequest?: DisplayTask["pullRequest"]
+): number | undefined {
+  if (pullRequest?.changedFiles !== undefined) {
+    return pullRequest.changedFiles;
+  }
+
+  return pullRequest?.files?.length;
+}
+
+function formatPullRequestChecksSummary(
+  pullRequest?: DisplayTask["pullRequest"]
+): string {
+  const checks = pullRequest?.checks;
+  if (!checks || checks.total < 1) {
+    return "No required checks";
+  }
+
+  const parts = [`${checks.passed}/${checks.total} passing`];
+  if (checks.failed > 0) {
+    parts.push(`${checks.failed} failing`);
+  }
+  if (checks.pending > 0) {
+    parts.push(`${checks.pending} pending`);
+  }
+
+  return parts.join(", ");
+}
+
+function formatPullRequestFilesSummary(
+  pullRequest?: DisplayTask["pullRequest"]
+): string {
+  const changedFiles = getPullRequestChangedFilesCount(pullRequest);
+  if (changedFiles === undefined) {
+    return "Sync pending";
+  }
+
+  return formatCount(changedFiles, "file");
+}
+
 function ArrowLeftIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true" className="task-detail-icon">
@@ -294,6 +342,10 @@ export function TaskDetailsPanel({
       : !activeRun && task.column === "review" && viewedRun?.id === task.lastRunId
         ? "review"
         : null;
+  const pullRequest = task.pullRequest;
+  const showPullRequest = Boolean(task.pullRequestUrl || pullRequest);
+  const pullRequestFiles = pullRequest?.files ?? [];
+  const changedFiles = getPullRequestChangedFilesCount(pullRequest);
 
   return (
     <aside className={["details-panel", className].filter(Boolean).join(" ")}>
@@ -434,6 +486,88 @@ export function TaskDetailsPanel({
               {task.worktree.cleanupReason ? (
                 <p className="task-detail-note">{task.worktree.cleanupReason}</p>
               ) : null}
+            </DetailSection>
+          ) : null}
+
+          {showPullRequest ? (
+            <DetailSection title="Pull request">
+              <div className="task-detail-field-grid">
+                <DetailField
+                  label="Number"
+                  value={pullRequest?.number !== undefined ? `#${pullRequest.number}` : "-"}
+                  mono
+                />
+                <DetailField
+                  label="Merge"
+                  value={formatPullRequestState(
+                    pullRequest?.mergeStateStatus ?? pullRequest?.mergeable
+                  )}
+                />
+                <DetailField
+                  label="Review"
+                  value={formatPullRequestState(pullRequest?.reviewDecision)}
+                />
+                <DetailField
+                  label="Checks"
+                  value={formatPullRequestChecksSummary(pullRequest)}
+                />
+                <DetailField label="Files" value={formatPullRequestFilesSummary(pullRequest)} />
+              </div>
+
+              {task.pullRequestUrl ? (
+                <div className="task-detail-inline-block">
+                  <div className="task-detail-field-label">Link</div>
+                  <a
+                    className="task-detail-link task-detail-inline-value task-detail-inline-value-mono"
+                    href={task.pullRequestUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {task.pullRequestUrl}
+                  </a>
+                </div>
+              ) : null}
+
+              <div className="task-detail-file-group">
+                <div className="task-detail-field-label">
+                  {changedFiles === undefined
+                    ? "Files changed"
+                    : `Files changed (${formatCount(changedFiles, "file")})`}
+                </div>
+
+                {pullRequestFiles.length > 0 ? (
+                  <>
+                    <div className="task-detail-file-list">
+                      {pullRequestFiles.map((file) => (
+                        <div className="task-detail-file-row" key={file.path}>
+                          <code className="task-detail-file-path">{file.path}</code>
+                          <div className="task-detail-file-stats" aria-label={`${file.path} stats`}>
+                            <span className="task-detail-file-stat task-detail-file-stat-add">
+                              +{file.additions ?? 0}
+                            </span>
+                            <span className="task-detail-file-stat task-detail-file-stat-delete">
+                              -{file.deletions ?? 0}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {changedFiles !== undefined && changedFiles > pullRequestFiles.length ? (
+                      <p className="task-detail-file-caption">
+                        Showing {formatCount(pullRequestFiles.length, "file")} of{" "}
+                        {formatCount(changedFiles, "file")} reported by GitHub.
+                      </p>
+                    ) : null}
+                  </>
+                ) : (
+                  <p className="task-detail-empty-copy">
+                    {changedFiles === 0
+                      ? "No changed files reported by GitHub."
+                      : "Waiting for GitHub to sync file changes."}
+                  </p>
+                )}
+              </div>
             </DetailSection>
           ) : null}
 

@@ -316,18 +316,25 @@ export interface components {
         };
         TaskPullRequest: {
             number?: number;
+            changedFiles?: number;
             mergeable?: string;
             mergeStateStatus?: string;
             reviewDecision?: string;
             statusCheckRollupState?: string;
             unresolvedConversationCount?: number;
             checks?: components["schemas"]["TaskPullRequestChecks"];
+            files?: components["schemas"]["TaskPullRequestFile"][];
         };
         TaskPullRequestChecks: {
             total: number;
             passed: number;
             failed: number;
             pending: number;
+        };
+        TaskPullRequestFile: {
+            path: string;
+            additions?: number;
+            deletions?: number;
         };
         Run: {
             id: string;

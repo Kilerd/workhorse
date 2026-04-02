@@ -1220,6 +1220,15 @@ pre {
   border-top: 1px solid var(--border);
 }
 
+.task-detail-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.task-detail-link:hover {
+  text-decoration: underline;
+}
+
 .task-detail-note {
   padding-top: 12px;
   border-top: 1px solid var(--border);
@@ -1268,6 +1277,69 @@ pre {
 
 .task-detail-run-row-active {
   background: var(--accent-soft);
+}
+
+.task-detail-file-group {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.task-detail-file-list {
+  display: grid;
+  border: 1px solid var(--border);
+  background: var(--surface-soft);
+}
+
+.task-detail-file-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.task-detail-file-row:last-child {
+  border-bottom: 0;
+}
+
+.task-detail-file-path {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.task-detail-file-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.task-detail-file-stat {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+}
+
+.task-detail-file-stat-add {
+  color: var(--success);
+}
+
+.task-detail-file-stat-delete {
+  color: var(--danger);
+}
+
+.task-detail-file-caption {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.5;
 }
 
 .task-detail-log-pane .live-log-panel {

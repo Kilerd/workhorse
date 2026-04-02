@@ -16,6 +16,7 @@ import type {
   Task,
   TaskPullRequest,
   TaskPullRequestChecks,
+  TaskPullRequestFile,
   TaskWorktree,
   UpdateTaskBody,
   UpdateWorkspaceBody,
@@ -28,6 +29,7 @@ import {
   GhCliPullRequestProvider,
   type GitHubCheckBucket,
   type GitHubPullRequestCheck,
+  type GitHubPullRequestFile,
   type GitHubPullRequestProvider,
   type GitHubPullRequestSummary
 } from "../lib/github.js";
@@ -1299,13 +1301,29 @@ export class BoardService {
   ): TaskPullRequest {
     return {
       number: pullRequest.number,
+      changedFiles: pullRequest.changedFiles,
       mergeable: pullRequest.mergeable,
       mergeStateStatus: pullRequest.mergeStateStatus,
       reviewDecision: pullRequest.reviewDecision,
       statusCheckRollupState: pullRequest.statusCheckRollupState,
       unresolvedConversationCount: pullRequest.unresolvedConversationCount,
-      checks: this.summarizeTaskPullRequestChecks(checks)
+      checks: this.summarizeTaskPullRequestChecks(checks),
+      files: this.mapTaskPullRequestFiles(pullRequest.files)
     };
+  }
+
+  private mapTaskPullRequestFiles(
+    files?: GitHubPullRequestFile[]
+  ): TaskPullRequestFile[] | undefined {
+    if (!files?.length) {
+      return undefined;
+    }
+
+    return files.map((file) => ({
+      path: file.path,
+      additions: file.additions,
+      deletions: file.deletions
+    }));
   }
 
   private summarizeTaskPullRequestChecks(
@@ -1394,12 +1412,14 @@ export class BoardService {
 
     return (
       left?.number === right?.number &&
+      left?.changedFiles === right?.changedFiles &&
       left?.mergeable === right?.mergeable &&
       left?.mergeStateStatus === right?.mergeStateStatus &&
       left?.reviewDecision === right?.reviewDecision &&
       left?.statusCheckRollupState === right?.statusCheckRollupState &&
       left?.unresolvedConversationCount === right?.unresolvedConversationCount &&
-      this.taskPullRequestChecksEqual(left?.checks, right?.checks)
+      this.taskPullRequestChecksEqual(left?.checks, right?.checks) &&
+      this.taskPullRequestFilesEqual(left?.files, right?.files)
     );
   }
 
@@ -1417,6 +1437,32 @@ export class BoardService {
       left?.failed === right?.failed &&
       left?.pending === right?.pending
     );
+  }
+
+  private taskPullRequestFilesEqual(
+    left?: TaskPullRequestFile[],
+    right?: TaskPullRequestFile[]
+  ): boolean {
+    if (left === right) {
+      return true;
+    }
+
+    if (!left || !right) {
+      return left === right;
+    }
+
+    if (left.length !== right.length) {
+      return false;
+    }
+
+    return left.every((file, index) => {
+      const other = right[index];
+      return (
+        file.path === other?.path &&
+        file.additions === other?.additions &&
+        file.deletions === other?.deletions
+      );
+    });
   }
 
   private summarizeRequiredChecks(checks: { bucket: GitHubCheckBucket }[]): MonitorCiStatus {
@@ -1754,7 +1800,7 @@ export class BoardService {
     taskEntry.column = "review";
     taskEntry.order = this.topOrder("review", taskId);
     taskEntry.pullRequestUrl = this.resolveTaskPullRequestUrl(taskEntry, runEntry);
-    taskEntry.pullRequest = this.resolveTaskPullRequestSummary(runEntry);
+    taskEntry.pullRequest = this.resolveTaskPullRequestSummary(taskEntry, runEntry);
     taskEntry.updatedAt = new Date().toISOString();
 
     this.store.setRuns(currentRuns);
@@ -1795,10 +1841,10 @@ export class BoardService {
     return existingPullRequestUrl || undefined;
   }
 
-  private resolveTaskPullRequestSummary(run: Run): TaskPullRequest | undefined {
+  private resolveTaskPullRequestSummary(task: Task, run: Run): TaskPullRequest | undefined {
     const metadata = run.metadata;
     if (!metadata) {
-      return undefined;
+      return task.pullRequest;
     }
 
     const number = toOptionalNumber(metadata.monitorPrNumber);
@@ -1819,7 +1865,7 @@ export class BoardService {
       checksTotal !== undefined;
 
     if (!hasMonitorData) {
-      return undefined;
+      return task.pullRequest;
     }
 
     const checks =
@@ -1834,12 +1880,14 @@ export class BoardService {
 
     return {
       number,
+      changedFiles: task.pullRequest?.changedFiles,
       mergeable: metadata.monitorPrMergeable || undefined,
       mergeStateStatus: metadata.monitorPrMergeState || undefined,
       reviewDecision: metadata.monitorPrReviewDecision || undefined,
       statusCheckRollupState: metadata.monitorPrStatusCheckRollupState || undefined,
       unresolvedConversationCount,
-      checks
+      checks,
+      files: task.pullRequest?.files
     };
   }
 
