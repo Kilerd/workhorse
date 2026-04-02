@@ -61,6 +61,10 @@ export interface WorkspaceGitRefsData {
   items: WorkspaceGitRef[];
 }
 
+export interface PickWorkspaceRootData {
+  rootPath: string | null;
+}
+
 export interface CreateWorkspaceBody {
   name: string;
   rootPath: string;
@@ -235,6 +239,7 @@ export type SettingsResponse = ApiSuccess<SettingsData>;
 export type WorkspacesResponse = ApiSuccess<ListWorkspacesData>;
 export type WorkspaceResponse = ApiSuccess<WorkspaceData>;
 export type WorkspaceGitRefsResponse = ApiSuccess<WorkspaceGitRefsData>;
+export type PickWorkspaceRootResponse = ApiSuccess<PickWorkspaceRootData>;
 export type DeleteWorkspaceResponse = ApiSuccess<DeleteResult>;
 export type TasksResponse = ApiSuccess<ListTasksData>;
 export type TaskResponse = ApiSuccess<TaskData>;
@@ -275,6 +280,7 @@ export type SchemaName =
   | "SettingsResponse"
   | "Workspace"
   | "WorkspaceGitRef"
+  | "PickWorkspaceRootResponse"
   | "Task"
   | "Run"
   | "CreateWorkspaceBody"
@@ -372,6 +378,25 @@ export const endpointRegistry: EndpointSpec[] = [
         status: 200,
         description: "Workspace collection",
         schema: "WorkspacesResponse"
+      }
+    ]
+  },
+  {
+    operationId: "pickWorkspaceRoot",
+    method: "post",
+    path: "/api/workspaces/pick-root",
+    summary: "Open a local folder picker for a workspace root",
+    tag: "Workspaces",
+    responses: [
+      {
+        status: 200,
+        description: "Selected workspace root path, or null when canceled",
+        schema: "PickWorkspaceRootResponse"
+      },
+      {
+        status: 501,
+        description: "Folder picker is unavailable on this platform",
+        schema: "ApiError"
       }
     ]
   },

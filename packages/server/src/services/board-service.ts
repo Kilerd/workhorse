@@ -55,6 +55,10 @@ import {
   OpenRouterTaskIdentityGenerator,
   type TaskIdentityGenerator
 } from "./openrouter-task-naming-service.js";
+import {
+  NativeWorkspaceRootPicker,
+  type WorkspaceRootPicker
+} from "./workspace-root-picker.js";
 
 interface ActiveRun {
   control: RunnerControl;
@@ -90,6 +94,7 @@ interface BoardServiceDependencies {
   githubPullRequests?: GitHubPullRequestProvider;
   codexAppServer?: CodexAppServer;
   taskIdentityGenerator?: TaskIdentityGenerator;
+  workspaceRootPicker?: WorkspaceRootPicker;
 }
 
 export interface GitReviewMonitorResult {
@@ -131,6 +136,8 @@ export class BoardService {
 
   private readonly taskIdentityGenerator: TaskIdentityGenerator;
 
+  private readonly workspaceRootPicker: WorkspaceRootPicker;
+
   private readonly activeRuns = new Map<string, ActiveRun>();
 
   private reviewMonitorLastPolledAt?: string;
@@ -152,6 +159,8 @@ export class BoardService {
       dependencies.githubPullRequests ?? new GhCliPullRequestProvider();
     this.taskIdentityGenerator =
       dependencies.taskIdentityGenerator ?? new OpenRouterTaskIdentityGenerator();
+    this.workspaceRootPicker =
+      dependencies.workspaceRootPicker ?? new NativeWorkspaceRootPicker();
   }
 
   public async initialize(): Promise<void> {
@@ -181,6 +190,10 @@ export class BoardService {
     } catch {
       return null;
     }
+  }
+
+  public async pickWorkspaceRootPath(): Promise<string | null> {
+    return this.workspaceRootPicker.pickRootPath();
   }
 
   public listWorkspaces(): Workspace[] {

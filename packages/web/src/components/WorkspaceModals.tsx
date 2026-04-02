@@ -157,9 +157,36 @@ function hasCompleteOpenRouterConfig(settings: GlobalSettings): boolean {
   );
 }
 
+function deriveWorkspaceNameFromPath(path: string): string {
+  const normalized = path.trim().replace(/[\\/]+$/, "");
+  if (!normalized) {
+    return "";
+  }
+
+  const segments = normalized.split(/[\\/]/);
+  return segments[segments.length - 1] ?? "";
+}
+
+function readApiErrorMessage(error: unknown, fallback: string): string {
+  if (typeof error === "object" && error !== null && "data" in error) {
+    const data = (error as { data?: { error?: { message?: string } } }).data;
+    if (data?.error?.message) {
+      return data.error.message;
+    }
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return fallback;
+}
+
 export function WorkspaceModal({ open, onClose, onSubmit }: WorkspaceModalProps) {
   const [name, setName] = useState("");
   const [rootPath, setRootPath] = useState("");
+  const [isPickingRoot, setIsPickingRoot] = useState(false);
+  const [pickerError, setPickerError] = useState<string | null>(null);
 
   useCloseOnEscape(open, onClose);
 
@@ -167,6 +194,8 @@ export function WorkspaceModal({ open, onClose, onSubmit }: WorkspaceModalProps)
     if (!open) {
       setName("");
       setRootPath("");
+      setIsPickingRoot(false);
+      setPickerError(null);
     }
   }, [open]);
 
@@ -174,13 +203,21 @@ export function WorkspaceModal({ open, onClose, onSubmit }: WorkspaceModalProps)
     return null;
   }
 
+  const trimmedName = name.trim();
+  const trimmedRootPath = rootPath.trim();
+  const canSubmit = Boolean(trimmedName && trimmedRootPath) && !isPickingRoot;
+
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
       <form
         className="modal"
         onSubmit={(event) => {
           event.preventDefault();
-          onSubmit({ name, rootPath });
+          if (!canSubmit) {
+            return;
+          }
+
+          onSubmit({ name: trimmedName, rootPath: trimmedRootPath });
         }}
         onClick={(event) => event.stopPropagation()}
       >
@@ -191,17 +228,57 @@ export function WorkspaceModal({ open, onClose, onSubmit }: WorkspaceModalProps)
         </label>
         <label>
           <span>Root path</span>
-          <input
-            value={rootPath}
-            onChange={(event) => setRootPath(event.target.value)}
-            placeholder="/Users/you/projects/app"
-          />
+          <div className="input-with-action">
+            <input
+              value={rootPath}
+              onChange={(event) => setRootPath(event.target.value)}
+              placeholder="/Users/you/projects/app"
+            />
+            <button
+              type="button"
+              className="button button-secondary"
+              disabled={isPickingRoot}
+              onClick={() => {
+                setPickerError(null);
+                setIsPickingRoot(true);
+
+                void api
+                  .pickWorkspaceRoot()
+                  .then((response) => {
+                    const selectedRootPath = response.data.rootPath;
+                    if (!selectedRootPath) {
+                      return;
+                    }
+
+                    setRootPath(selectedRootPath);
+                    setName((current) =>
+                      current.trim() ? current : deriveWorkspaceNameFromPath(selectedRootPath)
+                    );
+                  })
+                  .catch((error: unknown) => {
+                    setPickerError(
+                      readApiErrorMessage(
+                        error,
+                        "Unable to open the folder picker. Enter the path manually."
+                      )
+                    );
+                  })
+                  .finally(() => {
+                    setIsPickingRoot(false);
+                  });
+              }}
+            >
+              {isPickingRoot ? "Choosing..." : "Choose folder"}
+            </button>
+          </div>
+          <p className="field-hint">Pick a local folder or paste an absolute path.</p>
+          {pickerError ? <p className="field-error">{pickerError}</p> : null}
         </label>
         <div className="modal-actions">
           <button type="button" className="button button-secondary" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" className="button">
+          <button type="submit" className="button" disabled={!canSubmit}>
             Create
           </button>
         </div>

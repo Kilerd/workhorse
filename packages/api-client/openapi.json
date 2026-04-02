@@ -169,6 +169,37 @@
         }
       }
     },
+    "/api/workspaces/pick-root": {
+      "post": {
+        "operationId": "pickWorkspaceRoot",
+        "summary": "Open a local folder picker for a workspace root",
+        "tags": [
+          "Workspaces"
+        ],
+        "responses": {
+          "200": {
+            "description": "Selected workspace root path, or null when canceled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PickWorkspaceRootResponse"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Folder picker is unavailable on this platform",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/workspaces/{workspaceId}": {
       "patch": {
         "operationId": "updateWorkspace",
@@ -1970,6 +2001,41 @@
         },
         "required": [
           "items"
+        ]
+      },
+      "PickWorkspaceRootResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/PickWorkspaceRootData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "PickWorkspaceRootData": {
+        "type": "object",
+        "properties": {
+          "rootPath": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "rootPath"
         ]
       },
       "DeleteWorkspaceResponse": {

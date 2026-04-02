@@ -2635,6 +2635,13 @@ pre {
   gap: 8px;
 }
 
+.input-with-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: stretch;
+}
+
 .modal input,
 .modal textarea,
 .modal select {
@@ -2681,6 +2688,20 @@ pre {
   color: var(--muted);
   font-size: 0.75rem;
   line-height: 28px;
+}
+
+.field-hint,
+.field-error {
+  margin: 0;
+  font-size: 0.75rem;
+}
+
+.field-hint {
+  color: var(--muted);
+}
+
+.field-error {
+  color: var(--danger);
 }
 
 @media (max-width: 1040px) {
@@ -2809,5 +2830,11 @@ pre {
   .task-detail-log-pane .log-console,
   .task-detail-log-pane .log-empty {
     margin: 8px 12px 12px;
+  }
+}
+
+@media (max-width: 640px) {
+  .input-with-action {
+    grid-template-columns: 1fr;
   }
 }
