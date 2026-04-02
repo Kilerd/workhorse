@@ -929,13 +929,54 @@ pre {
 }
 
 .pr-compact-title {
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
   overflow: hidden;
   color: var(--muted);
   font-size: 0.6875rem;
-  line-height: 1.4;
+  line-height: 1.3;
+}
+
+.pr-compact-title-text {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.pr-compact-title-indicator {
+  --review-progress: 0turn;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 11px;
+  height: 11px;
+  flex: 0 0 auto;
+}
+
+.pr-compact-title-indicator-pending {
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at center, var(--panel) 56%, transparent 60%),
+    conic-gradient(var(--accent-strong) var(--review-progress), rgba(73, 214, 196, 0.14) 0);
+  transform: rotate(-90deg);
+  box-shadow: inset 0 0 0 1px rgba(73, 214, 196, 0.2);
+}
+
+.pr-compact-title-indicator-success {
+  color: var(--success);
+}
+
+.pr-compact-title-indicator-danger {
+  color: var(--danger);
+}
+
+.pr-compact-title-indicator-icon {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 auto;
 }
 
 .task-card-review-monitor {

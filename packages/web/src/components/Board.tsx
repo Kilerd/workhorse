@@ -20,6 +20,11 @@ interface ReviewMonitor {
   lastPolledAt?: string;
 }
 
+interface ReviewCountdown {
+  label: string;
+  progress: number;
+}
+
 interface Props {
   tasks: DisplayTask[];
   workspaces: Workspace[];
@@ -55,7 +60,7 @@ function formatReviewCountdown(totalSeconds: number): string {
   return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
 }
 
-function getReviewCountdown(reviewMonitor: ReviewMonitor, nowMs: number) {
+function getReviewCountdown(reviewMonitor: ReviewMonitor, nowMs: number): ReviewCountdown | null {
   if (reviewMonitor.intervalMs <= 0 || !reviewMonitor.lastPolledAt) {
     return null;
   }
@@ -233,7 +238,56 @@ function getPullRequestCiDisplay(task: DisplayTask) {
   };
 }
 
-function CompactPullRequestStatus({ task }: { task: DisplayTask }) {
+function getPullRequestReadinessIndicator(task: DisplayTask): "pending" | "success" | "danger" {
+  const pullRequest = task.pullRequest;
+  if (!pullRequest) {
+    return "pending";
+  }
+
+  const mergeable = pullRequest.mergeable?.toUpperCase();
+  const mergeStateStatus = pullRequest.mergeStateStatus?.toUpperCase();
+  const rollupState = pullRequest.statusCheckRollupState?.toUpperCase();
+  const statusChecks = pullRequest.statusChecks ?? pullRequest.checks;
+  const unresolvedThreads = pullRequest.unresolvedConversationCount ?? 0;
+
+  const hasFailingChecks =
+    (statusChecks?.failed ?? 0) > 0 ||
+    rollupState === "FAILURE" ||
+    rollupState === "ERROR";
+  const hasPendingChecks =
+    (statusChecks?.pending ?? 0) > 0 ||
+    rollupState === "PENDING" ||
+    rollupState === "EXPECTED";
+  const hasConflicts = mergeable === "CONFLICTING" || mergeStateStatus === "DIRTY";
+  const needsAttention =
+    unresolvedThreads > 0 ||
+    hasConflicts ||
+    hasFailingChecks ||
+    mergeStateStatus === "BEHIND" ||
+    pullRequest.reviewDecision?.toUpperCase() === "CHANGES_REQUESTED";
+
+  if (needsAttention) {
+    return "danger";
+  }
+
+  if (hasPendingChecks || mergeable === "UNKNOWN") {
+    return "pending";
+  }
+
+  if (mergeable === "MERGEABLE") {
+    return "success";
+  }
+
+  return "pending";
+}
+
+function CompactPullRequestStatus({
+  task,
+  reviewCountdown
+}: {
+  task: DisplayTask;
+  reviewCountdown: ReviewCountdown | null;
+}) {
   const pullRequest = task.pullRequest;
   if (!pullRequest || !task.pullRequestUrl) {
     return null;
@@ -251,6 +305,15 @@ function CompactPullRequestStatus({ task }: { task: DisplayTask }) {
   const resolvedThreads = Math.max(threadCount - unresolvedThreads, 0);
   const ciDisplay = getPullRequestCiDisplay(task);
   const PullRequestIcon = isMerged ? GitMerge : GitPullRequest;
+  const readiness = getPullRequestReadinessIndicator(task);
+  const reviewIndicatorTitle =
+    reviewCountdown && readiness === "pending"
+      ? `Next PR status refresh in ${reviewCountdown.label}`
+      : readiness === "success"
+        ? "PR is ready to merge"
+        : readiness === "danger"
+          ? "PR needs attention before it can merge"
+          : "PR status is being refreshed";
 
   return (
     <div className="pr-compact">
@@ -319,7 +382,33 @@ function CompactPullRequestStatus({ task }: { task: DisplayTask }) {
         className="pr-compact-title"
         title={pullRequest.title ?? task.pullRequestUrl}
       >
-        {pullRequest.title ?? task.pullRequestUrl}
+        <span
+          className={[
+            "pr-compact-title-indicator",
+            readiness === "pending" ? "pr-compact-title-indicator-pending" : "",
+            readiness === "success" ? "pr-compact-title-indicator-success" : "",
+            readiness === "danger" ? "pr-compact-title-indicator-danger" : ""
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          aria-label={reviewIndicatorTitle}
+          title={reviewIndicatorTitle}
+          style={
+            readiness === "pending" && reviewCountdown
+              ? ({
+                  "--review-progress": `${reviewCountdown.progress}turn`
+                } as CSSProperties)
+              : undefined
+          }
+        >
+          {readiness === "success" ? (
+            <CheckCircle2 className="pr-compact-title-indicator-icon" />
+          ) : null}
+          {readiness === "danger" ? (
+            <AlertTriangle className="pr-compact-title-indicator-icon" />
+          ) : null}
+        </span>
+        <span className="pr-compact-title-text">{pullRequest.title ?? task.pullRequestUrl}</span>
       </a>
     </div>
   );
@@ -439,7 +528,10 @@ export function Board({
 
                               {task.pullRequestUrl && task.pullRequest ? (
                                 <div className="task-card-redesign-pr">
-                                  <CompactPullRequestStatus task={task} />
+                                  <CompactPullRequestStatus
+                                    task={task}
+                                    reviewCountdown={reviewCountdown}
+                                  />
                                 </div>
                               ) : null}
 
