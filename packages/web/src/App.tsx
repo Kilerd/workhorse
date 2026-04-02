@@ -206,7 +206,7 @@ function ReactAppShell() {
 
     const body: Record<string, unknown> = { order };
     if (destinationColumn === "running" && task.column !== "running") {
-      void board.startTask(task.id);
+      void board.startTask(task.id, { order });
       return;
     }
 

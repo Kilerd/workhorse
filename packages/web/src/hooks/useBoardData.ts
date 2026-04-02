@@ -10,6 +10,7 @@ import type {
   Run,
   RunLogEntry,
   ServerEvent,
+  StartTaskBody,
   Task,
   UpdateSettingsBody,
   UpdateWorkspaceBody,
@@ -23,6 +24,7 @@ import {
   resolveRunSelectionAfterStart,
   resolveViewedRunId
 } from "@/lib/run-selection";
+import { applyOptimisticStartTask } from "@/lib/start-task";
 import { type DisplayTask, type TaskFormValues } from "@/lib/task-view";
 
 const STORAGE_KEYS = {
@@ -175,11 +177,36 @@ export function useBoardData() {
   });
 
   const startTaskMutation = useMutation({
-    mutationFn: async (taskId: string) => {
-      const response = await api.startTask(taskId);
+    mutationFn: async ({
+      taskId,
+      body
+    }: {
+      taskId: string;
+      body?: StartTaskBody;
+    }) => {
+      const response = await api.startTask(taskId, body);
       return unwrap(response);
     },
-    onSuccess: async (result, taskId) => {
+    onMutate: async ({ taskId, body }) => {
+      await queryClient.cancelQueries({ queryKey: queryKey("tasks") });
+      const previousTasks = queryClient.getQueryData<Task[]>(queryKey("tasks"));
+      if (previousTasks) {
+        queryClient.setQueryData<Task[]>(
+          queryKey("tasks"),
+          applyOptimisticStartTask(previousTasks, taskId, body)
+        );
+      }
+      return { previousTasks };
+    },
+    onError: async (_error, _variables, context) => {
+      if (context?.previousTasks) {
+        queryClient.setQueryData(queryKey("tasks"), context.previousTasks);
+      }
+
+      await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
+      await queryClient.invalidateQueries({ queryKey: queryKey("runs") });
+    },
+    onSuccess: async (result, { taskId }) => {
       if (taskId === selectedTaskId) {
         setSelectedRunId((current) =>
           resolveRunSelectionAfterStart({
@@ -344,6 +371,12 @@ export function useBoardData() {
     setSelectedRunId(null);
   }, []);
 
+  const startTask = useCallback(
+    (taskId: string, body?: StartTaskBody) =>
+      startTaskMutation.mutateAsync({ taskId, body }),
+    [startTaskMutation]
+  );
+
   const recordLiveOutput = useCallback((event: ServerEvent) => {
     if (event.type !== "run.output") {
       return;
@@ -400,7 +433,7 @@ export function useBoardData() {
     updateWorkspace: updateWorkspaceMutation.mutateAsync,
     createTask: createTaskMutation.mutateAsync,
     isCreatingTask: createTaskMutation.isPending,
-    startTask: startTaskMutation.mutateAsync,
+    startTask,
     stopTask: stopTaskMutation.mutateAsync,
     sendTaskInput: sendTaskInputMutation.mutateAsync,
     updateTask: updateTaskMutation.mutateAsync,

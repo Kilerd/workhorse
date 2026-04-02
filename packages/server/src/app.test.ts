@@ -907,6 +907,25 @@ describe("workhorse runtime", () => {
     });
   });
 
+  it("starts tasks from the API without a request body", async () => {
+    const { app, service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+    const task = await createShellTask(
+      service,
+      workspace.id,
+      "node -e \"setInterval(() => {}, 50)\""
+    );
+
+    const response = await app.request(`/api/tasks/${task.id}/start`, {
+      method: "POST"
+    });
+
+    expect(response.status).toBe(200);
+
+    await service.stopTask(task.id);
+    await waitForRunToFinish(service, task.id);
+  });
+
   it("plans backlog tasks and moves them into todo", async () => {
     const { app, service, workspaceDir } = await createRuntime();
     const workspace = await createWorkspace(service, workspaceDir);
@@ -1047,6 +1066,60 @@ describe("workhorse runtime", () => {
       reviewOne.id,
       reviewTwo.id
     ]);
+  });
+
+  it("places started tasks at the requested running order", async () => {
+    const { app, service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+
+    const runningOne = await service.createTask({
+      title: "Running one",
+      workspaceId: workspace.id,
+      column: "running",
+      order: 1_024,
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "true"
+      }
+    });
+    const runningTwo = await service.createTask({
+      title: "Running two",
+      workspaceId: workspace.id,
+      column: "running",
+      order: 3_072,
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "true"
+      }
+    });
+    const task = await createShellTask(
+      service,
+      workspace.id,
+      "node -e \"setInterval(() => {}, 50)\""
+    );
+
+    const response = await app.request(`/api/tasks/${task.id}/start`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        order: 2_048
+      })
+    });
+
+    expect(response.status).toBe(200);
+    const runningTasks = service.listTasks({}).filter((entry) => entry.column === "running");
+    expect(runningTasks.map((entry) => entry.id)).toEqual([
+      runningOne.id,
+      task.id,
+      runningTwo.id
+    ]);
+
+    await service.stopTask(task.id);
+    await waitForRunToFinish(service, task.id);
   });
 
   it("moves tasks to the end of the destination column by default", async () => {
