@@ -13,6 +13,7 @@ import { StateStore } from "./persistence/state-store.js";
 import type { CodexAppServer } from "./runners/codex-app-server-manager.js";
 import type { TaskIdentityGenerator } from "./services/openrouter-task-naming-service.js";
 import { BoardService } from "./services/board-service.js";
+import type { WorkspaceRootPicker } from "./services/workspace-root-picker.js";
 import { EventBus } from "./ws/event-bus.js";
 
 function createCodexAppServerStub(
@@ -52,6 +53,7 @@ async function createRuntime(options?: {
   reviewMonitorIntervalMs?: number;
   codexAppServer?: CodexAppServer;
   taskIdentityGenerator?: TaskIdentityGenerator;
+  workspaceRootPicker?: WorkspaceRootPicker;
 }) {
   const dataDir = await mkdtemp(join(tmpdir(), "workhorse-test-"));
   const workspaceDir = join(dataDir, "workspace");
@@ -59,7 +61,8 @@ async function createRuntime(options?: {
 
   const service = new BoardService(new StateStore(dataDir), new EventBus(), {
     codexAppServer: options?.codexAppServer ?? createCodexAppServerStub(),
-    taskIdentityGenerator: options?.taskIdentityGenerator
+    taskIdentityGenerator: options?.taskIdentityGenerator,
+    workspaceRootPicker: options?.workspaceRootPicker
   });
   await service.initialize();
 
@@ -188,6 +191,30 @@ describe("workhorse runtime", () => {
     expect(openApiPayload.openapi).toBe("3.0.3");
     expect(openApiPayload.paths["/api/tasks"]).toBeDefined();
     expect(openApiPayload.paths["/api/tasks/{taskId}/plan"]).toBeDefined();
+    expect(openApiPayload.paths["/api/workspaces/pick-root"]).toBeDefined();
+  });
+
+  it("returns the selected workspace root path over HTTP", async () => {
+    const { app } = await createRuntime({
+      workspaceRootPicker: {
+        async pickRootPath() {
+          return "/tmp/workspaces/frontend";
+        }
+      }
+    });
+
+    const response = await app.request("/api/workspaces/pick-root", {
+      method: "POST"
+    });
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload).toEqual({
+      ok: true,
+      data: {
+        rootPath: "/tmp/workspaces/frontend"
+      }
+    });
   });
 
   it("reports review monitor timing in health responses", async () => {

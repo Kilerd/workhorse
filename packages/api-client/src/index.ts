@@ -7,6 +7,7 @@ import type {
   DeleteTaskResponse,
   DeleteWorkspaceResponse,
   HealthResponse,
+  PickWorkspaceRootResponse,
   SettingsResponse,
   WorkspaceGitRefsResponse,
   PlanTaskResponse,
@@ -54,6 +55,10 @@ export function createApiClient(baseUrl: string) {
   });
 
   const listWorkspaces = fetcher.path("/api/workspaces").method("get").create();
+  const pickWorkspaceRoot = fetcher
+    .path("/api/workspaces/pick-root")
+    .method("post")
+    .create();
   const createWorkspace = fetcher.path("/api/workspaces").method("post").create();
   const updateWorkspace = fetcher
     .path("/api/workspaces/{workspaceId}")
@@ -133,6 +138,8 @@ export function createApiClient(baseUrl: string) {
       }),
     listWorkspaces: async (): Promise<WorkspacesResponse> =>
       (await listWorkspaces({})).data,
+    pickWorkspaceRoot: async (): Promise<PickWorkspaceRootResponse> =>
+      (await pickWorkspaceRoot({})).data,
     createWorkspace: async (body: CreateWorkspaceBody): Promise<WorkspaceResponse> =>
       (await createWorkspace(body)).data,
     updateWorkspace: async (

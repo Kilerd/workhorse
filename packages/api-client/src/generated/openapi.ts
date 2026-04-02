@@ -57,6 +57,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/pick-root": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Open a local folder picker for a workspace root */
+        post: operations["pickWorkspaceRoot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspaces/{workspaceId}": {
         parameters: {
             query?: never;
@@ -501,6 +518,14 @@ export interface components {
         WorkspaceGitRefsData: {
             items: components["schemas"]["WorkspaceGitRef"][];
         };
+        PickWorkspaceRootResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["PickWorkspaceRootData"];
+        };
+        PickWorkspaceRootData: {
+            rootPath: null | string;
+        };
         DeleteWorkspaceResponse: {
             /** @enum {unknown} */
             ok: true;
@@ -761,6 +786,35 @@ export interface operations {
             };
             /** @description Validation error */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    pickWorkspaceRoot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Selected workspace root path, or null when canceled */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PickWorkspaceRootResponse"];
+                };
+            };
+            /** @description Folder picker is unavailable on this platform */
+            501: {
                 headers: {
                     [name: string]: unknown;
                 };

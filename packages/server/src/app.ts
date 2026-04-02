@@ -88,6 +88,14 @@ export function createApp(
     c.json(ok({ items: service.listWorkspaces() }))
   );
 
+  app.post("/api/workspaces/pick-root", async (c) =>
+    c.json(
+      ok({
+        rootPath: await service.pickWorkspaceRootPath()
+      })
+    )
+  );
+
   app.post("/api/workspaces", async (c) => {
     const body = validateOrThrow(
       await c.req.json(),
