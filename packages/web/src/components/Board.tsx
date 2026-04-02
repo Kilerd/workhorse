@@ -13,6 +13,7 @@ import type { Workspace } from "@workhorse/contracts";
 
 import { formatRelativeTime, titleCase } from "@/lib/format";
 import { BOARD_COLUMNS, type DisplayTask, type DisplayTaskColumn } from "@/lib/task-view";
+import { cn } from "@/lib/utils";
 import { TaskActionBar } from "./TaskActionBar";
 
 interface ReviewMonitor {
@@ -38,6 +39,21 @@ interface Props {
   onMarkDone(taskId: string): void;
   onArchive(taskId: string): void;
 }
+
+const boardClass =
+  "grid h-full min-h-0 auto-cols-[minmax(260px,1fr)] grid-flow-col overflow-x-auto overflow-y-hidden bg-[var(--panel)] max-[720px]:auto-cols-[minmax(250px,88vw)]";
+const columnClass =
+  "grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-r border-border bg-transparent last:border-r-0";
+const columnHeaderClass =
+  "flex min-h-9 items-center justify-between gap-3 border-b border-border bg-[var(--surface-soft)] px-3 py-2";
+const columnListClass =
+  "grid min-h-0 content-start gap-2 overflow-x-hidden overflow-y-auto overscroll-contain p-2";
+const taskCardClass =
+  "grid gap-0 rounded-none border bg-[var(--panel)] p-4 text-left transition-[border-color,transform,background-color] hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] focus:outline-none";
+const compactPrRowClass = "flex min-w-0 flex-wrap items-center gap-1.5";
+const compactBadgeClass =
+  "inline-flex min-h-[18px] items-center gap-1 whitespace-nowrap rounded-none border px-1.5 font-mono text-[0.6rem] uppercase tracking-[0.08em]";
+const compactStatClass = "inline-flex items-center gap-1 font-mono text-[0.625rem]";
 
 function groupTasks(): Record<DisplayTaskColumn, DisplayTask[]> {
   return {
@@ -85,41 +101,41 @@ function getTaskRunBadge(task: DisplayTask) {
   if (task.column === "running") {
     return {
       label: "RUNNING",
-      className: "task-card-run-running"
+      className: "border-[rgba(242,195,92,0.24)] bg-[rgba(242,195,92,0.1)] text-[var(--warning)]"
     };
   }
 
   if (task.column === "review") {
     return {
       label: "COMPLETED",
-      className: "task-card-run-completed"
+      className: "border-[rgba(99,216,158,0.26)] bg-[rgba(99,216,158,0.1)] text-[var(--success)]"
     };
   }
 
   if (task.column === "todo") {
     return {
       label: "TODO",
-      className: "task-card-run-todo"
+      className: "border-[rgba(104,199,246,0.24)] bg-[rgba(104,199,246,0.1)] text-[var(--info)]"
     };
   }
 
   if (task.column === "done") {
     return {
       label: "DONE",
-      className: "task-card-run-done"
+      className: "border-[rgba(99,216,158,0.26)] bg-[rgba(99,216,158,0.1)] text-[var(--success)]"
     };
   }
 
   if (task.column === "backlog") {
     return {
       label: "BACKLOG",
-      className: "task-card-run-backlog"
+      className: "border-[rgba(128,146,152,0.24)] bg-[rgba(128,146,152,0.08)] text-[var(--muted)]"
     };
   }
 
   return {
     label: titleCase(task.column),
-    className: "task-card-run-idle"
+    className: "text-[var(--muted)]"
   };
 }
 
@@ -130,17 +146,17 @@ function shouldShowColumnBadge(column: DisplayTaskColumn) {
 function getTaskCardToneClass(column: DisplayTaskColumn) {
   switch (column) {
     case "backlog":
-      return "task-card-redesign-backlog";
+      return "border-[rgba(128,146,152,0.28)]";
     case "todo":
-      return "task-card-redesign-todo";
+      return "border-[rgba(104,199,246,0.28)]";
     case "running":
-      return "task-card-redesign-running";
+      return "border-[rgba(242,195,92,0.32)]";
     case "review":
-      return "task-card-redesign-review";
+      return "border-[rgba(73,214,196,0.34)]";
     case "done":
-      return "task-card-redesign-done";
+      return "border-[rgba(99,216,158,0.3)]";
     case "archived":
-      return "task-card-redesign-archived";
+      return "border-[rgba(164,145,145,0.28)]";
   }
 }
 
@@ -163,21 +179,21 @@ function getPullRequestCiDisplay(task: DisplayTask) {
     if (rollupState === "SUCCESS") {
       return {
         icon: CheckCircle2,
-        className: "pr-compact-stat-success",
+        className: "text-[var(--success)]",
         label: "(0/0)"
       };
     }
     if (rollupState === "PENDING" || rollupState === "EXPECTED") {
       return {
         icon: Clock,
-        className: "pr-compact-stat-warning",
+        className: "text-[var(--warning)]",
         label: "(0/0)"
       };
     }
     if (rollupState === "FAILURE" || rollupState === "ERROR") {
       return {
         icon: XCircle,
-        className: "pr-compact-stat-danger",
+        className: "text-[var(--danger)]",
         label: "(0/0)"
       };
     }
@@ -188,7 +204,7 @@ function getPullRequestCiDisplay(task: DisplayTask) {
   if (checks.failed > 0) {
     return {
       icon: XCircle,
-      className: "pr-compact-stat-danger",
+      className: "text-[var(--danger)]",
       label: `(${checks.passed}/${checks.total})`
     };
   }
@@ -196,14 +212,14 @@ function getPullRequestCiDisplay(task: DisplayTask) {
   if (checks.pending > 0) {
     return {
       icon: Clock,
-      className: "pr-compact-stat-warning",
+      className: "text-[var(--warning)]",
       label: `(${checks.passed}/${checks.total})`
     };
   }
 
   return {
     icon: CheckCircle2,
-    className: "pr-compact-stat-success",
+    className: "text-[var(--success)]",
     label: `(${checks.passed}/${checks.total})`
   };
 }
@@ -286,58 +302,77 @@ function CompactPullRequestStatus({
           : "PR status is being refreshed";
 
   return (
-    <div className="pr-compact">
-      <div className="pr-compact-row">
+    <div className="grid min-w-0 gap-1.5">
+      <div className={compactPrRowClass}>
         <a
           href={task.pullRequestUrl}
           target="_blank"
           rel="noreferrer"
           onClick={(event) => event.stopPropagation()}
           onKeyDown={(event) => event.stopPropagation()}
-          className={[
-            "pr-compact-link",
-            isMerged ? "pr-compact-link-merged" : "",
-            isClosed ? "pr-compact-link-closed" : "",
-            !isMerged && !isClosed ? "pr-compact-link-open" : ""
-          ]
-            .filter(Boolean)
-            .join(" ")}
+          className={cn(
+            "inline-flex items-center gap-1 font-mono text-[0.625rem] no-underline hover:underline",
+            isMerged && "text-[var(--accent-strong)]",
+            isClosed && "text-[var(--muted)]",
+            !isMerged && !isClosed && "text-[var(--success)]"
+          )}
         >
-          <PullRequestIcon className="pr-compact-link-icon" />
+          <PullRequestIcon className="size-3 shrink-0" />
           {pullRequest.number !== undefined ? `#${pullRequest.number}` : "PR"}
         </a>
 
-        {pullRequest.isDraft ? <span className="pr-compact-badge pr-compact-badge-muted">DRAFT</span> : null}
+        {pullRequest.isDraft ? (
+          <span className={cn(compactBadgeClass, "text-[var(--muted)]")}>DRAFT</span>
+        ) : null}
 
         {hasConflicts ? (
-          <span className="pr-compact-badge pr-compact-badge-danger">
-            <AlertTriangle className="pr-compact-badge-icon" />
+          <span
+            className={cn(
+              compactBadgeClass,
+              "border-[rgba(240,113,113,0.26)] bg-[rgba(240,113,113,0.1)] text-[var(--danger)]"
+            )}
+          >
+            <AlertTriangle className="size-2.5 shrink-0" />
             CONFLICTS
           </span>
         ) : null}
 
         {ciDisplay ? (
-          <span className={["pr-compact-stat", ciDisplay.className].join(" ")}>
-            <ciDisplay.icon className="pr-compact-stat-icon" />
+          <span className={cn(compactStatClass, ciDisplay.className)}>
+            <ciDisplay.icon className="size-3 shrink-0" />
             <span>{ciDisplay.label}</span>
           </span>
         ) : null}
 
         {isApproved ? (
-          <span className="pr-compact-badge pr-compact-badge-success">APPROVED</span>
+          <span
+            className={cn(
+              compactBadgeClass,
+              "border-[rgba(99,216,158,0.26)] bg-[rgba(99,216,158,0.1)] text-[var(--success)]"
+            )}
+          >
+            APPROVED
+          </span>
         ) : null}
         {changesRequested ? (
-          <span className="pr-compact-badge pr-compact-badge-warning">CHANGES</span>
+          <span
+            className={cn(
+              compactBadgeClass,
+              "border-[rgba(242,195,92,0.24)] bg-[rgba(242,195,92,0.1)] text-[var(--warning)]"
+            )}
+          >
+            CHANGES
+          </span>
         ) : null}
 
         {threadCount > 0 ? (
           <span
-            className={[
-              "pr-compact-stat",
-              unresolvedThreads > 0 ? "pr-compact-stat-warning" : "pr-compact-stat-muted"
-            ].join(" ")}
+            className={cn(
+              compactStatClass,
+              unresolvedThreads > 0 ? "text-[var(--warning)]" : "text-[var(--muted)]"
+            )}
           >
-            <MessageSquare className="pr-compact-stat-icon" />
+            <MessageSquare className="size-3 shrink-0" />
             <span>{`(${resolvedThreads}/${threadCount})`}</span>
           </span>
         ) : null}
@@ -349,36 +384,36 @@ function CompactPullRequestStatus({
         rel="noreferrer"
         onClick={(event) => event.stopPropagation()}
         onKeyDown={(event) => event.stopPropagation()}
-        className="pr-compact-title"
+        className="inline-flex min-w-0 items-center gap-1 overflow-hidden text-[0.6875rem] leading-[1.3] text-[var(--muted)] no-underline hover:underline"
         title={pullRequest.title ?? task.pullRequestUrl}
       >
         <span
-          className={[
-            "pr-compact-title-indicator",
-            readiness === "pending" ? "pr-compact-title-indicator-pending" : "",
-            readiness === "success" ? "pr-compact-title-indicator-success" : "",
-            readiness === "danger" ? "pr-compact-title-indicator-danger" : ""
-          ]
-            .filter(Boolean)
-            .join(" ")}
+          className={cn(
+            "inline-flex size-[11px] shrink-0 items-center justify-center",
+            readiness === "success" && "text-[var(--success)]",
+            readiness === "danger" && "text-[var(--danger)]",
+            readiness === "pending" &&
+              "rounded-full bg-[radial-gradient(circle_at_center,var(--panel)_56%,transparent_60%),conic-gradient(var(--accent-strong)_var(--review-progress),rgba(73,214,196,0.14)_0)] shadow-[inset_0_0_0_1px_rgba(73,214,196,0.2)]"
+          )}
           aria-label={reviewIndicatorTitle}
           title={reviewIndicatorTitle}
           style={
             readiness === "pending" && reviewCountdown
               ? ({
-                  "--review-progress": `${reviewCountdown.progress}turn`
+                  "--review-progress": `${reviewCountdown.progress}turn`,
+                  transform: "rotate(-90deg)"
                 } as CSSProperties)
               : undefined
           }
         >
           {readiness === "success" ? (
-            <CheckCircle2 className="pr-compact-title-indicator-icon" />
+            <CheckCircle2 className="size-[11px] shrink-0" />
           ) : null}
           {readiness === "danger" ? (
-            <AlertTriangle className="pr-compact-title-indicator-icon" />
+            <AlertTriangle className="size-[11px] shrink-0" />
           ) : null}
         </span>
-        <span className="pr-compact-title-text">{pullRequest.title ?? task.pullRequestUrl}</span>
+        <span className="min-w-0 truncate">{pullRequest.title ?? task.pullRequestUrl}</span>
       </a>
     </div>
   );
@@ -424,26 +459,22 @@ export function Board({
   }, [reviewMonitor.intervalMs, reviewMonitor.lastPolledAt, showReviewMonitor]);
 
   return (
-    <section className="board">
+    <section className={boardClass}>
       {BOARD_COLUMNS.map((column) => (
         <Droppable droppableId={column.id} key={column.id}>
           {(provided, snapshot) => (
             <article
-              className={[
-                "column",
-                `column-${column.id}`,
-                snapshot.isDraggingOver ? "column-dragging" : ""
-              ]
-                .filter(Boolean)
-                .join(" ")}
+              className={cn(columnClass, snapshot.isDraggingOver && "bg-[rgba(73,214,196,0.05)]")}
             >
-              <div className="column-header">
-                <h2>{column.title}</h2>
-                <span>{grouped[column.id]!.length} cards</span>
+              <div className={columnHeaderClass}>
+                <h2 className="m-0 text-[0.875rem] font-semibold">{column.title}</h2>
+                <span className="text-[0.7rem] text-[var(--muted)]">
+                  {grouped[column.id]!.length} cards
+                </span>
               </div>
 
               <div
-                className="column-list"
+                className={columnListClass}
                 ref={provided.innerRef}
                 {...provided.droppableProps}
               >
@@ -463,15 +494,12 @@ export function Board({
                     <Draggable draggableId={task.id} index={index} key={task.id}>
                       {(dragProvided, dragSnapshot) => (
                         <article
-                          className={[
-                            "task-card",
-                            "task-card-redesign",
+                          className={cn(
+                            taskCardClass,
                             getTaskCardToneClass(task.column),
-                            isActive ? "task-card-active" : "",
-                            dragSnapshot.isDragging ? "task-card-dragging" : ""
-                          ]
-                            .filter(Boolean)
-                            .join(" ")}
+                            isActive && "border-[var(--border-strong)]",
+                            dragSnapshot.isDragging && "rotate-1"
+                          )}
                           ref={dragProvided.innerRef}
                           {...dragProvided.draggableProps}
                           {...dragProvided.dragHandleProps}
@@ -485,16 +513,20 @@ export function Board({
                             }
                           }}
                         >
-                          <div className="task-card-redesign-header">
-                            <h3 className="task-card-redesign-title">{task.title}</h3>
+                          <div className="flex items-start justify-between gap-2">
+                            <h3 className="m-0 min-w-0 overflow-hidden text-[0.84rem] font-semibold leading-[1.4] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+                              {task.title}
+                            </h3>
                           </div>
 
                           {task.description ? (
-                            <p className="task-card-redesign-desc">{task.description}</p>
+                            <p className="mt-2 m-0 overflow-hidden text-[0.7rem] leading-[1.55] text-[var(--muted)] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+                              {task.description}
+                            </p>
                           ) : null}
 
                           {task.pullRequestUrl && task.pullRequest ? (
-                            <div className="task-card-redesign-pr">
+                            <div className="mt-3 border-t border-border pt-3">
                               <CompactPullRequestStatus
                                 task={task}
                                 reviewCountdown={reviewCountdown}
@@ -502,25 +534,25 @@ export function Board({
                             </div>
                           ) : null}
 
-                          <div className="task-card-redesign-footer">
-                            <div className="task-card-redesign-footer-meta">
-                              <span className="task-card-redesign-workspace">{workspaceName}</span>
+                          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-[0.625rem]">
+                            <div className="flex min-w-0 flex-wrap items-center gap-2">
+                              <span className="min-w-0 truncate text-[0.66rem] leading-[1.3] text-[var(--muted)]">
+                                {workspaceName}
+                              </span>
                               {showColumnBadge ? (
                                 <span
-                                  className={[
-                                    "task-card-run-badge",
+                                  className={cn(
+                                    "inline-flex min-h-[18px] items-center whitespace-nowrap rounded-none border px-1.5 font-mono text-[0.6rem] uppercase tracking-[0.08em]",
                                     taskRunBadge.className
-                                  ]
-                                    .filter(Boolean)
-                                    .join(" ")}
+                                  )}
                                 >
                                   {taskRunBadge.label}
                                 </span>
                               ) : null}
                             </div>
 
-                            <div className="task-card-redesign-footer-side">
-                              <span className="task-card-redesign-time">
+                            <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
+                              <span className="whitespace-nowrap text-[0.68rem] leading-[1.3] text-[var(--muted)]">
                                 {formatRelativeTime(task.updatedAt)}
                               </span>
                               {showCardActions ? (

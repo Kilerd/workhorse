@@ -100,12 +100,13 @@ export async function createFrontendHandler(
 ): Promise<FrontendHandler> {
   if (process.env.WORKHORSE_DEV_SERVER === "1") {
     const reactPlugin = (await import("@vitejs/plugin-react")).default;
+    const tailwindcss = (await import("@tailwindcss/vite")).default;
     const { createServer } = await import("vite");
     const vite = await createServer({
       root: FRONTEND_ROOT,
       configFile: false,
       appType: "spa",
-      plugins: [reactPlugin()],
+      plugins: [reactPlugin(), tailwindcss()],
       resolve: {
         alias: {
           "@": FRONTEND_SRC

@@ -13,6 +13,7 @@ import {
 import { api } from "@/lib/api";
 import { BOARD_COLUMNS, type TaskFormValues } from "@/lib/task-view";
 import { resolveTaskWorkspaceId } from "@/lib/workspace-selection";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -27,6 +28,24 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
     model: ""
   }
 };
+
+const modalBackdropClass =
+  "fixed inset-0 z-20 grid place-items-center bg-[var(--backdrop)] p-4";
+const modalCardClass =
+  "grid w-[min(92vw,640px)] gap-4 rounded-none border border-border bg-[var(--panel)] p-4 shadow-[var(--shadow)]";
+const modalWideClass = "w-[min(92vw,820px)]";
+const modalTitleClass = "text-base font-semibold";
+const modalGridClass = "grid grid-cols-2 gap-4 max-[1040px]:grid-cols-1";
+const modalLabelClass = "grid gap-2";
+const modalLabelTextClass =
+  "m-0 font-mono text-[0.64rem] uppercase tracking-[0.14em] text-[var(--accent)]";
+const modalNoteClass =
+  "grid gap-2 rounded-none border border-border bg-[var(--panel)] p-3 [&_p]:m-0 [&_p]:text-[var(--muted)] [&_code]:break-words";
+const modalActionsClass = "flex flex-wrap justify-end gap-2";
+const span2Class = "col-span-2 max-[1040px]:col-span-1";
+const fieldHintClass = "m-0 text-[0.75rem] text-[var(--muted)]";
+const fieldErrorClass = "m-0 text-[0.75rem] text-[var(--danger)]";
+const mutedTextClass = "text-[var(--muted)]";
 
 const APPROVAL_POLICY_OPTIONS: Array<{
   value: WorkspaceCodexSettings["approvalPolicy"];
@@ -212,9 +231,9 @@ export function WorkspaceModal({ open, onClose, onSubmit }: WorkspaceModalProps)
   const canSubmit = Boolean(trimmedName && trimmedRootPath) && !isPickingRoot;
 
   return (
-    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+    <div className={modalBackdropClass} role="presentation" onClick={onClose}>
       <form
-        className="modal"
+        className={modalCardClass}
         onSubmit={(event) => {
           event.preventDefault();
           if (!canSubmit) {
@@ -225,18 +244,18 @@ export function WorkspaceModal({ open, onClose, onSubmit }: WorkspaceModalProps)
         }}
         onClick={(event) => event.stopPropagation()}
       >
-        <h2>Add workspace</h2>
-        <label>
-          <span>Name</span>
+        <h2 className={modalTitleClass}>Add workspace</h2>
+        <label className={modalLabelClass}>
+          <span className={modalLabelTextClass}>Name</span>
           <Input
             value={name}
             onChange={(event) => setName(event.target.value)}
             placeholder="Frontend"
           />
         </label>
-        <label>
-          <span>Root path</span>
-          <div className="input-with-action">
+        <label className={modalLabelClass}>
+          <span className={modalLabelTextClass}>Root path</span>
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-stretch gap-2 max-[640px]:grid-cols-1">
             <Input
               value={rootPath}
               onChange={(event) => setRootPath(event.target.value)}
@@ -279,10 +298,10 @@ export function WorkspaceModal({ open, onClose, onSubmit }: WorkspaceModalProps)
               {isPickingRoot ? "Choosing..." : "Choose folder"}
             </Button>
           </div>
-          <p className="field-hint">Pick a local folder or paste an absolute path.</p>
-          {pickerError ? <p className="field-error">{pickerError}</p> : null}
+          <p className={fieldHintClass}>Pick a local folder or paste an absolute path.</p>
+          {pickerError ? <p className={fieldErrorClass}>{pickerError}</p> : null}
         </label>
-        <div className="modal-actions">
+        <div className={modalActionsClass}>
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
@@ -330,9 +349,9 @@ export function WorkspaceSettingsModal({
   const canSubmit = Boolean(name.trim());
 
   return (
-    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+    <div className={modalBackdropClass} role="presentation" onClick={onClose}>
       <form
-        className="modal modal-wide"
+        className={cn(modalCardClass, modalWideClass)}
         onSubmit={(event) => {
           event.preventDefault();
           onSubmit({
@@ -345,20 +364,20 @@ export function WorkspaceSettingsModal({
         }}
         onClick={(event) => event.stopPropagation()}
       >
-        <h2>Workspace settings</h2>
-        <div className="modal-grid">
-          <label>
-            <span>Name</span>
+        <h2 className={modalTitleClass}>Workspace settings</h2>
+        <div className={modalGridClass}>
+          <label className={modalLabelClass}>
+            <span className={modalLabelTextClass}>Name</span>
             <Input value={name} onChange={(event) => setName(event.target.value)} />
           </label>
-          <div className="modal-note">
-            <span>Root path</span>
+          <div className={modalNoteClass}>
+            <span className={modalLabelTextClass}>Root path</span>
             <p>
               <code>{workspace.rootPath}</code>
             </p>
           </div>
-          <label>
-            <span>Approval policy</span>
+          <label className={modalLabelClass}>
+            <span className={modalLabelTextClass}>Approval policy</span>
             <NativeSelect
               value={approvalPolicy}
               onChange={(event) =>
@@ -374,12 +393,12 @@ export function WorkspaceSettingsModal({
               ))}
             </NativeSelect>
           </label>
-          <div className="modal-note">
-            <span>Approval behavior</span>
+          <div className={modalNoteClass}>
+            <span className={modalLabelTextClass}>Approval behavior</span>
             <p>{describeApprovalPolicy(approvalPolicy)}</p>
           </div>
-          <label>
-            <span>Sandbox</span>
+          <label className={modalLabelClass}>
+            <span className={modalLabelTextClass}>Sandbox</span>
             <NativeSelect
               value={sandboxMode}
               onChange={(event) =>
@@ -393,26 +412,26 @@ export function WorkspaceSettingsModal({
               ))}
             </NativeSelect>
           </label>
-          <div className="modal-note">
-            <span>Sandbox access</span>
+          <div className={modalNoteClass}>
+            <span className={modalLabelTextClass}>Sandbox access</span>
             <p>{describeSandboxMode(sandboxMode)}</p>
           </div>
-          <div className="modal-note span-2">
-            <span>Applies to future Codex runs</span>
+          <div className={cn(modalNoteClass, span2Class)}>
+            <span className={modalLabelTextClass}>Applies to future Codex runs</span>
             <p>
               Codex tasks in this workspace will use <code>{approvalPolicy}</code> and{" "}
               <code>{sandboxMode}</code>. Shell tasks are unchanged.
             </p>
           </div>
-          <div className="modal-note span-2">
-            <span>Workspace context</span>
+          <div className={cn(modalNoteClass, span2Class)}>
+            <span className={modalLabelTextClass}>Workspace context</span>
             <p>
               {workspace.isGitRepo ? "Git repository" : "Non-Git directory"} with {taskCount}{" "}
               {taskCount === 1 ? "task" : "tasks"}.
             </p>
           </div>
         </div>
-        <div className="modal-actions">
+        <div className={modalActionsClass}>
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
@@ -459,9 +478,9 @@ export function GlobalSettingsModal({
   }
 
   return (
-    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+    <div className={modalBackdropClass} role="presentation" onClick={onClose}>
       <form
-        className="modal modal-wide"
+        className={cn(modalCardClass, modalWideClass)}
         onSubmit={(event) => {
           event.preventDefault();
           onSubmit({
@@ -475,33 +494,33 @@ export function GlobalSettingsModal({
         }}
         onClick={(event) => event.stopPropagation()}
       >
-        <h2>Global settings</h2>
-        <div className="modal-grid">
-          <label>
-            <span>Language</span>
+        <h2 className={modalTitleClass}>Global settings</h2>
+        <div className={modalGridClass}>
+          <label className={modalLabelClass}>
+            <span className={modalLabelTextClass}>Language</span>
             <Input
               value={language}
               onChange={(event) => setLanguage(event.target.value)}
               placeholder={DEFAULT_GLOBAL_SETTINGS.language}
             />
           </label>
-          <div className="modal-note">
-            <span>Default behavior</span>
+          <div className={modalNoteClass}>
+            <span className={modalLabelTextClass}>Default behavior</span>
             <p>
               When a task is created from description only, AI will generate the title
               in <code>{language.trim() || DEFAULT_GLOBAL_SETTINGS.language}</code>.
             </p>
           </div>
-          <label className="span-2">
-            <span>OpenRouter base URL</span>
+          <label className={cn(modalLabelClass, span2Class)}>
+            <span className={modalLabelTextClass}>OpenRouter base URL</span>
             <Input
               value={baseUrl}
               onChange={(event) => setBaseUrl(event.target.value)}
               placeholder={DEFAULT_GLOBAL_SETTINGS.openRouter.baseUrl}
             />
           </label>
-          <label>
-            <span>OpenRouter token</span>
+          <label className={modalLabelClass}>
+            <span className={modalLabelTextClass}>OpenRouter token</span>
             <Input
               type="password"
               value={token}
@@ -509,23 +528,23 @@ export function GlobalSettingsModal({
               placeholder="sk-or-v1-..."
             />
           </label>
-          <label>
-            <span>OpenRouter model</span>
+          <label className={modalLabelClass}>
+            <span className={modalLabelTextClass}>OpenRouter model</span>
             <Input
               value={model}
               onChange={(event) => setModel(event.target.value)}
               placeholder="openai/gpt-4o-mini"
             />
           </label>
-          <div className="modal-note span-2">
-            <span>AI task naming</span>
+          <div className={cn(modalNoteClass, span2Class)}>
+            <span className={modalLabelTextClass}>AI task naming</span>
             <p>
               Workhorse uses this OpenRouter config to generate a simple task title and
               worktree name when the title is left empty.
             </p>
           </div>
         </div>
-        <div className="modal-actions">
+        <div className={modalActionsClass}>
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
@@ -654,9 +673,9 @@ export function TaskModal({
   )}`;
 
   return (
-    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+    <div className={modalBackdropClass} role="presentation" onClick={onClose}>
       <form
-        className="modal modal-wide"
+        className={cn(modalCardClass, modalWideClass)}
         onSubmit={(event) => {
           event.preventDefault();
           if (isSubmitting) {
@@ -686,21 +705,21 @@ export function TaskModal({
         }}
         onClick={(event) => event.stopPropagation()}
       >
-        <h2>Create task</h2>
+        <h2 className={modalTitleClass}>Create task</h2>
         {workspaces.length === 0 ? (
-          <p className="muted">Add a workspace before creating tasks.</p>
+          <p className={cn("m-0", mutedTextClass)}>Add a workspace before creating tasks.</p>
         ) : null}
-        <div className="modal-grid">
-          <label>
-            <span>Title</span>
+        <div className={modalGridClass}>
+          <label className={modalLabelClass}>
+            <span className={modalLabelTextClass}>Title</span>
             <Input
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               placeholder="Fix onboarding flow"
             />
           </label>
-          <label>
-            <span>Workspace</span>
+          <label className={modalLabelClass}>
+            <span className={modalLabelTextClass}>Workspace</span>
             <NativeSelect
               value={workspaceId}
               onChange={(event) => setWorkspaceId(event.target.value)}
@@ -712,8 +731,8 @@ export function TaskModal({
               ))}
             </NativeSelect>
           </label>
-          <label className="span-2">
-            <span>Description</span>
+          <label className={cn(modalLabelClass, span2Class)}>
+            <span className={modalLabelTextClass}>Description</span>
             <Textarea
               rows={4}
               value={description}
@@ -721,16 +740,16 @@ export function TaskModal({
               placeholder="Describe what needs to happen."
             />
           </label>
-          <div className="modal-note span-2">
-            <span>Title generation</span>
+          <div className={cn(modalNoteClass, span2Class)}>
+            <span className={modalLabelTextClass}>Title generation</span>
             <p>
               {canGenerateTitle
                 ? `If title is empty, Workhorse will use AI to generate a simple ${resolvedSettings.language} title and worktree name from the description.`
                 : "To create a task from description only, first fill in OpenRouter base URL, token, and model in global settings."}
             </p>
           </div>
-          <label>
-            <span>Runner</span>
+          <label className={modalLabelClass}>
+            <span className={modalLabelTextClass}>Runner</span>
             <NativeSelect
               value={runnerType}
               onChange={(event) =>
@@ -741,8 +760,8 @@ export function TaskModal({
               <option value="shell">shell</option>
             </NativeSelect>
           </label>
-          <label>
-            <span>Column</span>
+          <label className={modalLabelClass}>
+            <span className={modalLabelTextClass}>Column</span>
             <NativeSelect
               value={column}
               onChange={(event) => setColumn(event.target.value as TaskFormValues["column"])}
@@ -756,8 +775,8 @@ export function TaskModal({
           </label>
           {selectedWorkspace?.isGitRepo ? (
             <>
-              <label>
-                <span>Base ref</span>
+              <label className={modalLabelClass}>
+                <span className={modalLabelTextClass}>Base ref</span>
                 <NativeSelect
                   value={worktreeBaseRef}
                   onChange={(event) => setWorktreeBaseRef(event.target.value)}
@@ -770,8 +789,8 @@ export function TaskModal({
                   ))}
                 </NativeSelect>
               </label>
-              <div className="modal-note">
-                <span>Task branch</span>
+              <div className={modalNoteClass}>
+                <span className={modalLabelTextClass}>Task branch</span>
                 <p>
                   Workhorse will generate a stable branch like <code>{branchPreview}</code>.
                 </p>
@@ -779,8 +798,8 @@ export function TaskModal({
             </>
           ) : null}
           {runnerType === "shell" ? (
-            <label className="span-2">
-              <span>Command</span>
+            <label className={cn(modalLabelClass, span2Class)}>
+              <span className={modalLabelTextClass}>Command</span>
               <Input
                 value={shellCommand}
                 onChange={(event) => setShellCommand(event.target.value)}
@@ -789,8 +808,8 @@ export function TaskModal({
             </label>
           ) : (
             <>
-              <label className="span-2">
-                <span>Prompt</span>
+              <label className={cn(modalLabelClass, span2Class)}>
+                <span className={modalLabelTextClass}>Prompt</span>
                 <Textarea
                   rows={5}
                   value={prompt}
@@ -799,8 +818,8 @@ export function TaskModal({
                 />
               </label>
               {selectedWorkspace ? (
-                <div className="modal-note span-2">
-                  <span>Workspace Codex settings</span>
+                <div className={cn(modalNoteClass, span2Class)}>
+                  <span className={modalLabelTextClass}>Workspace Codex settings</span>
                   <p>
                     This task will use <code>{selectedWorkspace.codexSettings.approvalPolicy}</code>{" "}
                     approval with <code>{selectedWorkspace.codexSettings.sandboxMode}</code>{" "}
@@ -811,14 +830,20 @@ export function TaskModal({
             </>
           )}
           {selectedWorkspace?.isGitRepo && gitRefsQuery.isLoading ? (
-            <p className="muted span-2">Loading Git refs…</p>
+            <p className={cn("m-0", mutedTextClass, span2Class)}>Loading Git refs…</p>
           ) : null}
           {selectedWorkspace?.isGitRepo && gitRefsQuery.isError ? (
-            <p className="muted span-2">Git refs could not be loaded right now.</p>
+            <p className={cn("m-0", mutedTextClass, span2Class)}>
+              Git refs could not be loaded right now.
+            </p>
           ) : null}
         </div>
-        <div className="modal-actions">
-          {isSubmitting ? <p className="modal-actions-status">{submitStatusLabel}</p> : null}
+        <div className={modalActionsClass}>
+          {isSubmitting ? (
+            <p className="mr-auto text-[0.75rem] leading-7 text-[var(--muted)]">
+              {submitStatusLabel}
+            </p>
+          ) : null}
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>

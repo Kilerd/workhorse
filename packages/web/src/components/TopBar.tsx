@@ -6,6 +6,7 @@ import type {
 
 import { formatCount, formatRelativeTime } from "@/lib/format";
 import type { ThemeMode } from "@/lib/theme";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -67,16 +68,16 @@ function formatQuotaWindowLabel(windowDurationMins?: number): string {
   return `${windowDurationMins}m`;
 }
 
-function getQuotaWindowTone(window: HealthCodexQuotaWindowData): string {
+function getQuotaWindowToneClass(window: HealthCodexQuotaWindowData): string {
   if (window.remainingPercent <= 15) {
-    return "meta-chip-quota-critical";
+    return "border-[rgba(231,106,106,0.34)] bg-[rgba(231,106,106,0.12)] text-foreground";
   }
 
   if (window.remainingPercent <= 35) {
-    return "meta-chip-quota-low";
+    return "border-[rgba(233,191,96,0.3)] bg-[rgba(233,191,96,0.14)] text-foreground";
   }
 
-  return "meta-chip-quota";
+  return "border-[rgba(73,214,196,0.26)] bg-[rgba(73,214,196,0.12)] text-foreground";
 }
 
 function buildQuotaTitle(
@@ -131,6 +132,10 @@ export function TopBar({
   runtimeStatus,
   codexQuota
 }: Props) {
+  const metaChipClass =
+    "inline-flex min-h-5 items-center gap-2 whitespace-nowrap rounded-none border border-border bg-[var(--panel)] px-2 text-[0.64rem] uppercase tracking-[0.08em] text-[var(--muted)]";
+  const quotaWindowClass =
+    "inline-flex min-h-4 items-center gap-1 whitespace-nowrap rounded-none border border-transparent px-1.5";
   const quotaWindows = [
     codexQuota?.primary
       ? {
@@ -154,39 +159,44 @@ export function TopBar({
   );
 
   return (
-    <header className="topbar">
-      <div className="topbar-brand">
-        <div className="topbar-wordmark">
-          <span className="wordmark">WORKHORSE</span>
-          <span className="topbar-divider" aria-hidden="true" />
-          <span className="topbar-product">Local Kanban</span>
+    <header className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 gap-x-4 border-b border-border bg-[var(--panel)] px-4 py-3 max-[1040px]:grid-cols-1">
+      <div className="flex min-w-0 flex-wrap items-center gap-3">
+        <div className="inline-flex shrink-0 items-center gap-2.5">
+          <span className="font-mono text-[0.72rem] font-bold tracking-[0.2em] text-[var(--accent)]">
+            WORKHORSE
+          </span>
         </div>
-        <div className="topbar-meta" aria-label="Board summary">
+        <div className="flex flex-wrap gap-2" aria-label="Board summary">
           <span
-            className={`meta-chip meta-chip-status ${
-              runtimeStatus === "ok" ? "meta-chip-status-ok" : ""
-            }`}
+            className={cn(metaChipClass, "text-foreground")}
           >
-            <span className="status-dot" aria-hidden="true" />
+            <span
+              aria-hidden="true"
+              className={cn(
+                "size-[0.45rem] rounded-full bg-[var(--warning)]",
+                runtimeStatus === "ok" &&
+                  "bg-[var(--success)] shadow-[0_0_0_4px_rgba(99,216,158,0.12)]"
+              )}
+            />
             {formatRuntimeStatus(runtimeStatus)}
           </span>
           {quotaWindows.length > 0 ? (
             <span
-              className="meta-chip meta-chip-quota-group"
+              className={cn(metaChipClass, "gap-1.5 pr-1 text-foreground")}
               title={buildQuotaGroupTitle(quotaWindows, codexQuota)}
             >
-              <span className="meta-chip-quota-label">Codex</span>
-              <span className="meta-chip-quota-windows" aria-label="Codex quota windows">
+              <span className="whitespace-nowrap text-foreground">Codex</span>
+              <span className="inline-flex items-center gap-1" aria-label="Codex quota windows">
                 {quotaWindows.map(({ key, window }) => (
                   <span
                     key={key}
-                    className={`meta-chip-quota-window ${getQuotaWindowTone(window)}`}
+                    className={cn(quotaWindowClass, getQuotaWindowToneClass(window))}
                     title={buildQuotaTitle(window, codexQuota)}
                   >
-                    <span className="meta-chip-quota-window-label">
+                    <span className="text-[var(--muted)]">
                       {formatQuotaWindowLabel(window.windowDurationMins)}
                     </span>
-                    <span className="meta-chip-quota-window-value">
+                    <span className="text-foreground">
                       {window.remainingPercent}%
                     </span>
                   </span>
@@ -195,27 +205,28 @@ export function TopBar({
             </span>
           ) : null}
           {codexQuota === null ? (
-            <span className="meta-chip">Codex quota unavailable</span>
+            <span className={metaChipClass}>Codex quota unavailable</span>
           ) : null}
-          <span className="meta-chip">{formatCount(boardCount, "task")}</span>
-          <span className="meta-chip">Updated {formatRelativeTime(lastSyncedAt)}</span>
-          <span className="meta-chip">Scope {selectedWorkspaceName}</span>
+          <span className={metaChipClass}>{formatCount(boardCount, "task")}</span>
+          <span className={metaChipClass}>Updated {formatRelativeTime(lastSyncedAt)}</span>
+          <span className={metaChipClass}>Scope {selectedWorkspaceName}</span>
         </div>
       </div>
 
-      <div className="topbar-controls">
-        <label className="search-field">
+      <div className="flex min-w-0 flex-wrap items-center justify-end gap-3 max-[1040px]:justify-start">
+        <label className="relative flex items-center max-[1040px]:w-full">
           <span className="sr-only">Search tasks</span>
           <Input
             type="search"
             value={searchQuery}
             onChange={(event) => onSearchChange(event.target.value)}
             placeholder="Search..."
+            className="h-7 min-h-7 w-40 min-w-40 py-0 pr-14 text-[0.75rem] max-[1040px]:w-full max-[1040px]:min-w-0"
           />
           {searchQuery ? (
             <button
               type="button"
-              className="search-clear"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 border border-transparent bg-transparent text-[0.62rem] uppercase tracking-[0.08em] text-[var(--muted)]"
               onClick={() => onSearchChange("")}
             >
               Clear
@@ -223,12 +234,13 @@ export function TopBar({
           ) : null}
         </label>
 
-        <label className="select toolbar-select">
+        <label className="flex items-center max-[1040px]:w-full">
           <span className="sr-only">Workspace</span>
           <NativeSelect
             aria-label="Workspace"
             value={selectedWorkspaceId}
             onChange={(event) => onWorkspaceChange(event.target.value || "all")}
+            className="h-7 min-h-7 min-w-40 py-0 pr-7 text-[0.75rem] max-[1040px]:w-full max-[1040px]:min-w-0"
           >
             <option value="all">All workspaces</option>
             {workspaces.map((workspace) => (

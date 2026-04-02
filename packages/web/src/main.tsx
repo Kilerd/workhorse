@@ -6,7 +6,7 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { queryClient } from "./lib/query";
 import { initializeTheme } from "./lib/theme";
-import "./styles.css";
+import "./globals.css";
 
 initializeTheme();
 

@@ -227,10 +227,12 @@ function ReactAppShell() {
   }
 
   return (
-    <div className="app-shell">
+    <div className="min-h-screen">
       <main
         className={
-          location.pathname.startsWith("/tasks/") ? "app app-details" : "app app-board"
+          location.pathname.startsWith("/tasks/")
+            ? "relative z-[1] grid h-screen min-h-screen grid-rows-[auto_minmax(0,1fr)] overflow-hidden p-0"
+            : "relative z-[1] grid h-screen min-h-screen grid-rows-[auto_minmax(0,1fr)] overflow-hidden p-0"
         }
       >
         <TopBar
@@ -398,7 +400,7 @@ function TaskDetailsRoute({
 
   if (board.tasksQuery.isLoading) {
     return (
-      <section className="details-page-shell">
+      <section className="flex h-full min-h-0 w-full">
         <TaskRouteState
           eyebrow="Task details"
           title="Loading task"
@@ -412,7 +414,7 @@ function TaskDetailsRoute({
 
   if (!task) {
     return (
-      <section className="details-page-shell">
+      <section className="flex h-full min-h-0 w-full">
         <TaskRouteState
           eyebrow="Task details"
           title="Task not found"
@@ -425,9 +427,9 @@ function TaskDetailsRoute({
   }
 
   return (
-    <section className="details-page-shell">
+    <section className="flex h-full min-h-0 w-full">
       <TaskDetailsPanel
-        className="details-panel-page"
+        className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
         task={task}
         runs={runs}
         workspaces={workspaces}
@@ -470,15 +472,17 @@ function TaskRouteState({
   onAction
 }: TaskRouteStateProps) {
   return (
-    <section className="details-panel details-panel-page empty-panel">
-      <div className="empty-state">
-        <p className="eyebrow">{eyebrow}</p>
+    <section className="flex min-h-[60vh] flex-1 flex-col items-center justify-center bg-[var(--bg)] p-4">
+      <div className="grid max-w-[32rem] gap-3 text-center">
+        <p className="m-0 font-mono text-[0.64rem] uppercase tracking-[0.14em] text-[var(--accent)]">
+          {eyebrow}
+        </p>
         <h2>{title}</h2>
-        <p>{description}</p>
+        <p className="m-0 text-[var(--muted)]">{description}</p>
         <Button
           type="button"
           variant="secondary"
-          className="empty-state-action"
+          className="justify-self-center"
           onClick={onAction}
         >
           {actionLabel}

@@ -11,7 +11,7 @@ function SunIcon() {
     <svg
       viewBox="0 0 24 24"
       aria-hidden="true"
-      className="theme-toggle-icon"
+      className="size-3.5"
       fill="none"
       stroke="currentColor"
       strokeLinecap="round"
@@ -36,7 +36,7 @@ function MoonIcon() {
     <svg
       viewBox="0 0 24 24"
       aria-hidden="true"
-      className="theme-toggle-icon"
+      className="size-3.5"
       fill="none"
       stroke="currentColor"
       strokeLinecap="round"
@@ -56,7 +56,7 @@ export function ThemeToggle({ theme, onToggle }: Props) {
       type="button"
       variant="secondary"
       size="icon"
-      className="theme-toggle"
+      className="grid place-items-center"
       onClick={onToggle}
       aria-label={`Switch to ${nextTheme} mode`}
       title={`Switch to ${nextTheme} mode`}

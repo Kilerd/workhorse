@@ -16,6 +16,7 @@ import {
 } from "./live-log-entries";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 
 interface Props {
   task: Task;
@@ -28,6 +29,90 @@ interface Props {
   canSendInput?: boolean;
   inputMode?: "running" | "review" | null;
   onSendInput?(text: string): Promise<unknown>;
+}
+
+const logKindBaseClass =
+  "inline-flex min-h-5 items-center gap-2 whitespace-nowrap rounded-none border border-border bg-[var(--panel)] px-2 text-[0.64rem] uppercase tracking-[0.08em]";
+const logStatusChipBaseClass =
+  "inline-flex items-center rounded-none border px-1.5 py-[2px] font-mono text-[0.58rem] uppercase tracking-[0.08em]";
+const logConsoleLabelBaseClass =
+  "inline-flex min-h-[18px] items-center rounded-none border px-1.5 font-mono text-[0.56rem] uppercase tracking-[0.08em]";
+
+function getLogKindToneClass(kind: RunLogEntry["kind"]): string {
+  switch (kind) {
+    case "plan":
+      return "text-[var(--success)]";
+    case "tool_call":
+    case "tool_output":
+      return "text-[var(--warning)]";
+    case "user":
+      return "text-[var(--info)]";
+    case "agent":
+      return "text-[var(--accent-strong)]";
+    default:
+      return "text-[var(--muted)]";
+  }
+}
+
+function getLogStatusToneClass(tone: string): string {
+  switch (tone) {
+    case "completed":
+      return "text-[var(--success)]";
+    case "failed":
+    case "interrupted":
+      return "text-[var(--danger)]";
+    case "started":
+      return "text-[var(--info)]";
+    default:
+      return "text-[var(--warning)]";
+  }
+}
+
+function getConsoleToneClasses(
+  tone: "agent" | "plan" | "status" | "stderr" | "system" | "tool" | "user" | "stdout"
+) {
+  switch (tone) {
+    case "agent":
+      return {
+        entry: "border-l-[rgba(73,214,196,0.42)]",
+        label: "text-[var(--accent)]"
+      };
+    case "plan":
+      return {
+        entry: "border-l-[rgba(99,216,158,0.44)]",
+        label: "text-[var(--success)]"
+      };
+    case "status":
+      return {
+        entry: "border-l-[rgba(104,199,246,0.36)]",
+        label: "text-[var(--info)]"
+      };
+    case "stderr":
+      return {
+        entry: "border-l-[rgba(240,113,113,0.46)]",
+        label: "text-[var(--danger)]"
+      };
+    case "system":
+      return {
+        entry: "border-l-[rgba(140,161,160,0.34)]",
+        label: "text-[var(--muted)]"
+      };
+    case "tool":
+      return {
+        entry: "border-l-[rgba(242,195,92,0.42)]",
+        label: "text-[var(--warning)]"
+      };
+    case "user":
+      return {
+        entry: "border-l-[rgba(104,199,246,0.42)]",
+        label: "text-[var(--info)]"
+      };
+    default:
+      return {
+        entry: "border-l-[rgba(104,199,246,0.34)]",
+        label: "text-[var(--info)]"
+      };
+  }
 }
 
 function formatTimestamp(value: string): string {
@@ -74,16 +159,18 @@ function renderEntryBody(entry: RunLogEntry) {
   return (
     <>
       {entryMetadata.length > 0 ? (
-        <dl className="log-entry-details">
+        <dl className="m-0 flex flex-wrap gap-2 gap-x-3 px-3 pt-3">
           {entryMetadata.map(([key, value]) => (
-            <div key={`${entry.id}-${key}`}>
-              <dt>{key}</dt>
+            <div key={`${entry.id}-${key}`} className="inline-flex min-w-0 gap-1.5">
+              <dt className="text-[var(--muted)]">{key}</dt>
               <dd>{value}</dd>
             </div>
           ))}
         </dl>
       ) : null}
-      <pre className="log-entry-body">{entry.text}</pre>
+      <pre className="m-0 overflow-x-auto px-3 py-3 text-[0.72rem] leading-[1.65] whitespace-pre-wrap break-words">
+        {entry.text}
+      </pre>
     </>
   );
 }
@@ -93,21 +180,29 @@ function renderEntryHeader(entry: RunLogEntry, collapsible = false) {
   const HeaderTag = collapsible ? "summary" : "header";
 
   return (
-    <HeaderTag className={collapsible ? "log-entry-header log-entry-summary" : "log-entry-header"}>
-      <div className="log-entry-title">
-        <span className={`log-kind log-kind-${entry.kind}`}>{ENTRY_LABELS[entry.kind]}</span>
+    <HeaderTag
+      className={cn(
+        "flex flex-col gap-1.5 border-b border-border bg-[var(--surface-faint)] px-3 py-2",
+        collapsible && "cursor-pointer list-none",
+        "min-[721px]:flex-row min-[721px]:items-start min-[721px]:justify-between"
+      )}
+    >
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-3 min-[721px]:flex-1">
+        <span className={cn(logKindBaseClass, getLogKindToneClass(entry.kind))}>
+          {ENTRY_LABELS[entry.kind]}
+        </span>
         {entry.title ? (
           <strong>{entry.kind === "tool_call" ? normalizeToolTitle(entry) : entry.title}</strong>
         ) : null}
       </div>
-      <div className="log-entry-meta">
+      <div className="flex min-w-0 flex-wrap items-center gap-3 text-[0.64rem] text-[var(--muted)]">
         {toolStatus ? (
-          <span className={`log-entry-status-chip log-entry-status-${toolStatus.tone}`}>
+          <span className={cn(logStatusChipBaseClass, getLogStatusToneClass(toolStatus.tone))}>
             {toolStatus.label}
           </span>
         ) : null}
         {entry.stream !== "stdout" ? (
-          <span className="log-stream-chip">{entry.stream}</span>
+          <span className={cn(logKindBaseClass, "text-[var(--muted)]")}>{entry.stream}</span>
         ) : null}
         <time dateTime={entry.timestamp}>{formatTimestamp(entry.timestamp)}</time>
       </div>
@@ -188,22 +283,35 @@ function renderConsoleEntry(entry: RunLogEntry) {
       : null;
 
   return (
-    <article key={entry.id} className={`log-console-entry log-console-entry-${tone}`}>
-      <div className="log-console-entry-meta">
-        <div className="log-console-entry-heading">
-          <span className={`log-console-label log-console-label-${tone}`}>
+    <article
+      key={entry.id}
+      className={cn(
+        "grid min-w-0 gap-2 border-l-2 px-0 pb-2 pl-3 pt-2",
+        getConsoleToneClasses(tone).entry
+      )}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2 text-[0.64rem] text-[var(--muted)]">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className={cn(logConsoleLabelBaseClass, getConsoleToneClasses(tone).label)}>
             {getConsoleEntryLabel(entry)}
           </span>
           {title ? <strong>{title}</strong> : null}
           {toolStatus ? (
-            <span className={`log-entry-status-chip log-entry-status-${toolStatus.tone}`}>
+            <span className={cn(logStatusChipBaseClass, getLogStatusToneClass(toolStatus.tone))}>
               {toolStatus.label}
             </span>
           ) : null}
         </div>
         <time dateTime={entry.timestamp}>{formatTimestamp(entry.timestamp)}</time>
       </div>
-      <pre className="log-console-entry-body">{entry.text}</pre>
+      <pre
+        className={cn(
+          "m-0 overflow-x-auto text-[0.74rem] leading-[1.7] whitespace-pre-wrap break-words",
+          tone === "stderr" && "text-[var(--danger)]"
+        )}
+      >
+        {entry.text}
+      </pre>
     </article>
   );
 }
@@ -212,14 +320,29 @@ function renderToolOutputEntry(entry: RunLogEntry) {
   const tone = getConsoleEntryTone(entry);
 
   return (
-    <article key={entry.id} className={`log-tool-output-entry log-tool-output-entry-${tone}`}>
-      <div className="log-tool-output-meta">
-        <span className={`log-console-label log-console-label-${tone}`}>
+    <article
+      key={entry.id}
+      className={cn(
+        "grid gap-2 border-l-2 pl-3",
+        tone === "stderr"
+          ? "border-l-[rgba(240,113,113,0.42)]"
+          : "border-l-[rgba(242,195,92,0.3)]"
+      )}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2 text-[0.64rem] text-[var(--muted)]">
+        <span className={cn(logConsoleLabelBaseClass, getConsoleToneClasses(tone).label)}>
           {getConsoleEntryLabel(entry)}
         </span>
         <time dateTime={entry.timestamp}>{formatTimestamp(entry.timestamp)}</time>
       </div>
-      <pre className="log-console-entry-body">{entry.text}</pre>
+      <pre
+        className={cn(
+          "m-0 overflow-x-auto text-[0.74rem] leading-[1.7] whitespace-pre-wrap break-words",
+          tone === "stderr" && "text-[var(--danger)]"
+        )}
+      >
+        {entry.text}
+      </pre>
     </article>
   );
 }
@@ -248,32 +371,41 @@ function renderToolStreamItem(entry: RunLogEntry, outputEntries: RunLogEntry[]) 
 
   if (isCommandExecution) {
     return (
-      <details key={entry.id} className="log-tool-stream-item log-tool-stream-item-collapsible">
-        <summary className="log-tool-stream-summary">
-          <div className="log-console-entry-meta">
-            <div className="log-console-entry-heading">
-              <span className="log-console-label log-console-label-tool">tool</span>
+      <details
+        key={entry.id}
+        className="grid gap-2.5 border-l-2 border-l-[rgba(242,195,92,0.42)] px-0 pb-2.5 pl-3 pt-2.5"
+      >
+        <summary className="grid cursor-pointer list-none gap-2">
+          <div className="flex flex-wrap items-start justify-between gap-2 text-[0.64rem] text-[var(--muted)]">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className={cn(logConsoleLabelBaseClass, "text-[var(--warning)]")}>tool</span>
               <strong>{normalizeToolTitle(entry)}</strong>
               {toolStatus ? (
-                <span className={`log-entry-status-chip log-entry-status-${toolStatus.tone}`}>
+                <span className={cn(logStatusChipBaseClass, getLogStatusToneClass(toolStatus.tone))}>
                   {toolStatus.label}
                 </span>
               ) : null}
             </div>
             <time dateTime={entry.timestamp}>{formatTimestamp(entry.timestamp)}</time>
           </div>
-          {preview ? <code className="log-tool-preview">{preview}</code> : null}
+          {preview ? (
+            <code className="overflow-hidden text-ellipsis whitespace-nowrap text-[var(--muted)]">
+              {preview}
+            </code>
+          ) : null}
         </summary>
 
-        <div className="log-tool-body">{renderEntryBody(entry)}</div>
+        <div>{renderEntryBody(entry)}</div>
 
         {outputEntries.length > 0 ? (
-          <details className="log-tool-output-toggle">
-            <summary className="log-tool-output-summary">
-              <span className="log-console-label log-console-label-tool">tool output</span>
+          <details className="grid gap-2 border-l border-border pl-3">
+            <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 text-[0.68rem] text-[var(--muted)]">
+              <span className={cn(logConsoleLabelBaseClass, "text-[var(--warning)]")}>
+                tool output
+              </span>
               <span>{outputEntries.length} block{outputEntries.length > 1 ? "s" : ""}</span>
             </summary>
-            <div className="log-tool-output-list">
+            <div className="grid gap-2">
               {outputEntries.map((outputEntry) => renderToolOutputEntry(outputEntry))}
             </div>
           </details>
@@ -283,13 +415,16 @@ function renderToolStreamItem(entry: RunLogEntry, outputEntries: RunLogEntry[]) 
   }
 
   return (
-    <article key={entry.id} className="log-tool-stream-item">
-      <div className="log-console-entry-meta">
-        <div className="log-console-entry-heading">
-          <span className="log-console-label log-console-label-tool">tool</span>
+    <article
+      key={entry.id}
+      className="grid gap-2.5 border-l-2 border-l-[rgba(242,195,92,0.42)] px-0 pb-2.5 pl-3 pt-2.5"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2 text-[0.64rem] text-[var(--muted)]">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className={cn(logConsoleLabelBaseClass, "text-[var(--warning)]")}>tool</span>
           <strong>{normalizeToolTitle(entry)}</strong>
           {toolStatus ? (
-            <span className={`log-entry-status-chip log-entry-status-${toolStatus.tone}`}>
+            <span className={cn(logStatusChipBaseClass, getLogStatusToneClass(toolStatus.tone))}>
               {toolStatus.label}
             </span>
           ) : null}
@@ -297,15 +432,17 @@ function renderToolStreamItem(entry: RunLogEntry, outputEntries: RunLogEntry[]) 
         <time dateTime={entry.timestamp}>{formatTimestamp(entry.timestamp)}</time>
       </div>
 
-      <div className="log-tool-body">{renderEntryBody(entry)}</div>
+      <div>{renderEntryBody(entry)}</div>
 
       {outputEntries.length > 0 ? (
-        <details className="log-tool-output-toggle">
-          <summary className="log-tool-output-summary">
-            <span className="log-console-label log-console-label-tool">tool output</span>
+        <details className="grid gap-2 border-l border-border pl-3">
+          <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 text-[0.68rem] text-[var(--muted)]">
+            <span className={cn(logConsoleLabelBaseClass, "text-[var(--warning)]")}>
+              tool output
+            </span>
             <span>{outputEntries.length} block{outputEntries.length > 1 ? "s" : ""}</span>
           </summary>
-          <div className="log-tool-output-list">
+          <div className="grid gap-2">
             {outputEntries.map((outputEntry) => renderToolOutputEntry(outputEntry))}
           </div>
         </details>
@@ -329,21 +466,21 @@ function renderCommandExecutionGroup(item: LiveLogCommandExecutionGroupStreamIte
   return (
     <details
       key={`${firstEntry.id}-${lastEntry.id}`}
-      className="log-command-execution-group"
+      className="grid gap-2.5 border-l-2 border-l-[rgba(242,195,92,0.5)] px-0 pb-2.5 pl-3 pt-2.5"
     >
-      <summary className="log-command-execution-group-summary">
-        <div className="log-console-entry-meta">
-          <div className="log-console-entry-heading">
-            <span className="log-console-label log-console-label-tool">tool</span>
+      <summary className="grid cursor-pointer list-none gap-2">
+        <div className="flex flex-wrap items-start justify-between gap-2 text-[0.64rem] text-[var(--muted)]">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className={cn(logConsoleLabelBaseClass, "text-[var(--warning)]")}>tool</span>
             <strong>{commandLabel}</strong>
           </div>
-          <span className="log-command-execution-group-range">
+          <span className="text-[0.64rem] text-[var(--muted)]">
             {formatTimestampRange(firstEntry.timestamp, lastEntry.timestamp)}
           </span>
         </div>
       </summary>
 
-      <div className="log-command-execution-group-body">
+      <div className="grid gap-0 border-l border-border pl-3">
         {item.items.map(({ entry, outputEntries }) =>
           renderToolStreamItem(entry, outputEntries)
         )}
@@ -476,29 +613,33 @@ export function LiveLog({
         : null;
 
   return (
-    <div className={showStatus ? "details-body details-body-logs" : "live-log-panel"}>
+    <div
+      className={
+        showStatus ? "grid min-h-0 gap-4 p-4 max-[720px]:p-3" : "flex h-full min-h-0 flex-1 flex-col"
+      }
+    >
       {showStatus ? (
-        <section className="details-section">
-          <h3>Run status</h3>
-          <div className="active-run">
+        <section className="grid gap-3 rounded-none border border-border bg-[var(--panel)] p-4">
+          <h3 className="m-0 text-[0.82rem]">Run status</h3>
+          <div className="flex flex-col items-start justify-between gap-3 rounded-none border border-border bg-[var(--panel)] p-3 min-[721px]:flex-row min-[721px]:items-center">
             <div>
               <strong>{activeRun ? activeRun.status : "idle"}</strong>
-              <p>{activeRun ? activeRun.id : "No active run"}</p>
+              <p className="m-0 text-[var(--muted)]">{activeRun ? activeRun.id : "No active run"}</p>
             </div>
-            <div className="muted">{task.runnerType}</div>
+            <div className="text-[var(--muted)]">{task.runnerType}</div>
           </div>
           {viewedRun ? (
-            <p className="muted">
+            <p className="m-0 text-[var(--muted)]">
               Viewing {viewedRun.status} run {viewedRun.id}
             </p>
           ) : null}
           {viewedRun?.status === "canceled" && !activeRun ? (
-            <p className="muted">
+            <p className="m-0 text-[var(--muted)]">
               This run was canceled. That usually means it was stopped manually before completion.
             </p>
           ) : null}
           {viewedRun?.status === "interrupted" && !activeRun ? (
-            <p className="muted">
+            <p className="m-0 text-[var(--muted)]">
               {task.runnerType === "codex"
                 ? "This run was interrupted while Workhorse was offline. Starting the task again will resume the previous Codex session when possible."
                 : "This run was interrupted while Workhorse was offline. Start the task again to continue the work."}
@@ -507,13 +648,19 @@ export function LiveLog({
         </section>
       ) : null}
 
-      <section className="details-section details-section-log">
-        <div className={showStatus ? "log-summary-bar" : "task-detail-log-header"}>
-          <div className={showStatus ? "log-summary-copy" : "task-detail-log-header-copy"}>
-            <h3>Live log</h3>
+      <section className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] rounded-none border border-border bg-[var(--panel)]">
+        <div
+          className={
+            showStatus
+              ? "flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3"
+              : "flex flex-wrap items-center justify-between gap-2 border-b border-border bg-[var(--panel)] px-4 py-3 max-[720px]:flex-col max-[720px]:items-stretch max-[720px]:px-3"
+          }
+        >
+          <div className={showStatus ? "grid gap-1" : "flex min-w-0 flex-wrap items-center gap-2"}>
+            <h3 className="m-0">Live log</h3>
             {streamEntries.length > 0 ? (
               <span
-                className="task-detail-log-count"
+                className="m-0 font-mono text-[0.58rem] uppercase tracking-[0.14em] text-[var(--muted)]"
                 aria-label={`${streamEntries.length} stream entries`}
                 title={`${streamEntries.length} stream entries`}
               >
@@ -524,7 +671,7 @@ export function LiveLog({
           {streamEntries.length > 0 ? (
             <button
               type="button"
-              className="task-detail-copy-button"
+              className="inline-flex min-h-6 items-center gap-1.5 rounded-none border border-transparent bg-transparent px-2 text-[0.75rem] text-[var(--muted)] transition-[border-color,background-color,transform] hover:-translate-y-px hover:border-border hover:bg-[var(--surface-soft)]"
               onClick={() => {
                 void handleCopyLog();
               }}
@@ -541,34 +688,42 @@ export function LiveLog({
           ) : null}
         </div>
         {!showStatus && viewedRun ? (
-          <div className="task-detail-log-context">
+          <div className="border-b border-border bg-[var(--panel)] px-4 py-3 text-[0.74rem] text-[var(--muted)] max-[720px]:px-3">
             Viewing {viewedRun.status} run{" "}
-            <code className="task-detail-log-context-code">{viewedRun.id}</code>
+            <code className="font-mono text-[0.72rem] text-[var(--accent)]">{viewedRun.id}</code>
           </div>
         ) : null}
         {aggregatedEntries.length === 0 ? (
           isLoading ? (
-            <div className="log-empty">Loading logs...</div>
+            <div className="grid h-[clamp(260px,58vh,680px)] place-items-center overflow-auto border-t-0 px-3 py-3 text-[var(--muted)]">
+              Loading logs...
+            </div>
           ) : (
-            <div className="log-empty">
+            <div className="grid h-[clamp(260px,58vh,680px)] place-items-center overflow-auto border-t-0 px-3 py-3 text-[var(--muted)]">
               Logs will appear here when a run starts.
             </div>
           )
         ) : !hasVisibleEntries ? (
-          <div className="log-empty">Waiting for meaningful output.</div>
+          <div className="grid h-[clamp(260px,58vh,680px)] place-items-center overflow-auto border-t-0 px-3 py-3 text-[var(--muted)]">
+            Waiting for meaningful output.
+          </div>
         ) : (
-          <div className="log-stack">
-            <div className="log-group">
-              <div className="log-group-header">
-                <p className="log-group-title">Output stream</p>
+          <div className="grid min-h-0 gap-3">
+            <div className="grid min-h-0 gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-3 max-[720px]:px-3">
+                <p className="m-0 font-mono text-[0.64rem] uppercase tracking-[0.14em] text-[var(--muted)]">
+                  Output stream
+                </p>
                 {streamEntries.length > 0 && !isPinnedToBottom ? (
-                  <span className="log-stream-chip">Scroll paused</span>
+                  <span className={cn(logKindBaseClass, "text-[var(--muted)]")}>
+                    Scroll paused
+                  </span>
                 ) : null}
               </div>
               {streamEntries.length > 0 ? (
                 <div
                   ref={streamRef}
-                  className="log-console"
+                  className="mx-4 mb-4 grid h-[clamp(260px,58vh,680px)] min-h-0 auto-rows-max content-start gap-2 overflow-auto border border-border bg-[linear-gradient(180deg,var(--panel-strong),var(--bg))] p-3 max-[720px]:mx-3 max-[720px]:mb-3"
                   onScroll={handleStreamScroll}
                 >
                   {stickyPlanEntry && stickyPlan ? (
@@ -585,11 +740,13 @@ export function LiveLog({
                   })}
                 </div>
               ) : (
-                <div className="log-console">
+                <div className="mx-4 mb-4 grid h-[clamp(260px,58vh,680px)] min-h-0 auto-rows-max content-start gap-2 overflow-auto border border-border bg-[linear-gradient(180deg,var(--panel-strong),var(--bg))] p-3 max-[720px]:mx-3 max-[720px]:mb-3">
                   {stickyPlanEntry && stickyPlan ? (
                     <StickyPlanCard entry={stickyPlanEntry} plan={stickyPlan} />
                   ) : (
-                    <div className="log-empty">This run did not emit output.</div>
+                    <div className="grid place-items-center text-[var(--muted)]">
+                      This run did not emit output.
+                    </div>
                   )}
                 </div>
               )}
@@ -598,14 +755,14 @@ export function LiveLog({
         )}
         {canSendInput && onSendInput ? (
           <form
-            className="log-input-panel"
+            className="grid gap-2 border-t border-border bg-[linear-gradient(180deg,var(--panel),var(--surface-faint))] px-4 py-3 max-[720px]:px-3"
             onSubmit={(event) => {
               event.preventDefault();
               void handleSendInput();
             }}
           >
-            <div className="log-input-header">
-              <div className="log-input-copy">
+            <div className="flex flex-wrap items-center justify-between gap-2.5">
+              <div className="flex min-w-0 flex-wrap items-baseline gap-2.5">
                 <strong>{inputMode === "review" ? "Continue thread" : "Intervene live"}</strong>
                 {inputAssistText ? <span>{inputAssistText}</span> : null}
               </div>
@@ -616,7 +773,7 @@ export function LiveLog({
                 {submitState === "sending" ? "Sending..." : "Send"}
               </Button>
             </div>
-            <label className="log-input-label">
+            <label className="block">
               <span className="sr-only">Send input to Codex</span>
               <Textarea
                 value={draft}
@@ -640,11 +797,12 @@ export function LiveLog({
                     : "Tell the agent what to do next..."
                 }
                 disabled={submitState === "sending"}
+                className="min-h-14 resize-y"
               />
             </label>
-            <div className="log-input-footer">
+            <div className="flex flex-wrap items-center justify-between gap-2.5 text-[0.68rem] leading-[1.4] text-[var(--muted)]">
               <span>Press Ctrl/Cmd+Enter to send.</span>
-              {submitError ? <span className="log-input-error">{submitError}</span> : null}
+              {submitError ? <span className="text-[var(--danger)]">{submitError}</span> : null}
             </div>
           </form>
         ) : null}
@@ -669,37 +827,37 @@ function StickyPlanCard({
       : plan.summary ?? "Execution plan";
 
   return (
-    <section className="sticky-plan-card">
-      <div className="sticky-plan-card-header">
-        <div className="sticky-plan-card-summary">
-          <span className="sticky-plan-card-kicker">Plan</span>
+    <section className="sticky top-0 z-[3] grid gap-3 rounded-none border border-border bg-[linear-gradient(180deg,var(--panel),var(--panel-strong))] p-4 shadow-[0_10px_24px_rgba(0,0,0,0.18)]">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-2.5">
+          <span className="inline-flex min-h-[22px] items-center rounded-none border border-[rgba(73,214,196,0.28)] bg-[rgba(73,214,196,0.1)] px-2 font-mono text-[0.62rem] uppercase tracking-[0.12em] text-[var(--accent-strong)]">
+            Plan
+          </span>
           <strong>{summary}</strong>
         </div>
-        <time dateTime={entry.timestamp}>{formatTimestamp(entry.timestamp)}</time>
+        <time className="text-[0.68rem] text-[var(--muted)]" dateTime={entry.timestamp}>
+          {formatTimestamp(entry.timestamp)}
+        </time>
       </div>
 
       {plan.summary && plan.items.length > 0 ? (
-        <p className="sticky-plan-card-description">{plan.summary}</p>
+        <p className="m-0 text-[var(--muted)]">{plan.summary}</p>
       ) : null}
 
       {plan.items.length > 0 ? (
-        <ol className="sticky-plan-list">
+        <ol className="m-0 grid list-none gap-2.5 p-0">
           {plan.items.map((item, index) => (
-            <li key={`${entry.id}-${index}`} className="sticky-plan-item">
+            <li key={`${entry.id}-${index}`} className="flex items-start gap-2.5">
               <span
-                className={
-                  item.done
-                    ? "sticky-plan-marker sticky-plan-marker-done"
-                    : "sticky-plan-marker"
-                }
+                className={cn(
+                  "relative top-[0.15rem] size-[14px] shrink-0 rounded-full border border-current text-[var(--muted)]",
+                  item.done &&
+                    "text-[var(--success)] after:absolute after:inset-[3px] after:rounded-full after:bg-current after:content-['']"
+                )}
                 aria-hidden="true"
               />
               <span
-                className={
-                  item.done
-                    ? "sticky-plan-item-text sticky-plan-item-text-done"
-                    : "sticky-plan-item-text"
-                }
+                className={cn(item.done && "text-[var(--muted)] line-through")}
               >
                 {item.text}
               </span>
@@ -708,14 +866,18 @@ function StickyPlanCard({
         </ol>
       ) : null}
 
-      {plan.body ? <pre className="sticky-plan-body">{plan.body}</pre> : null}
+      {plan.body ? (
+        <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-words pt-0.5 text-[var(--muted)]">
+          {plan.body}
+        </pre>
+      ) : null}
     </section>
   );
 }
 
 function CopyIcon() {
   return (
-    <svg viewBox="0 0 16 16" aria-hidden="true" className="task-detail-icon">
+    <svg viewBox="0 0 16 16" aria-hidden="true" className="size-3 shrink-0">
       <path
         d="M6 3.5h6.5v8H6zM3.5 6V12.5H10"
         fill="none"

@@ -3,6 +3,7 @@ import type { Run, RunLogEntry, Workspace } from "@workhorse/contracts";
 
 import { formatCount, formatRelativeTime, titleCase } from "@/lib/format";
 import type { DisplayTask } from "@/lib/task-view";
+import { cn } from "@/lib/utils";
 import { LiveLog } from "./LiveLog";
 import { TaskActionBar } from "./TaskActionBar";
 
@@ -26,6 +27,41 @@ interface Props {
   onArchive(): void;
   onCleanupWorktree(): void;
   onDelete(): void;
+}
+
+const detailPanelClass = "grid min-h-0 gap-0 border-0 bg-[var(--bg)]";
+const emptyStateClass = "grid max-w-[32rem] gap-3 text-center";
+const detailEyebrowClass =
+  "m-0 font-mono text-[0.64rem] uppercase tracking-[0.14em] text-[var(--accent)]";
+const detailSectionClass = "rounded-none border border-border bg-[var(--panel)]";
+const detailSectionHeaderClass = "border-b border-border p-3";
+const detailSectionBodyClass = "grid gap-3 p-3";
+const detailFieldClass = "grid min-w-0 gap-1";
+const detailFieldLabelClass =
+  "m-0 font-mono text-[0.58rem] uppercase tracking-[0.14em] text-[var(--accent)]";
+const detailFieldValueClass = "min-w-0 break-words text-[0.82rem] leading-[1.5]";
+const detailFieldMonoClass = "font-mono text-[0.72rem]";
+const detailChipClass =
+  "inline-flex min-h-5 items-center rounded-none border px-1.5 font-mono text-[0.58rem] uppercase tracking-[0.1em]";
+const detailButtonClass =
+  "inline-flex min-h-7 items-center gap-1.5 rounded-none border border-transparent bg-transparent px-2.5 text-[0.75rem] text-foreground transition-[border-color,background-color,transform] hover:-translate-y-px hover:bg-[var(--surface-soft)]";
+type TaskDetailTone = "muted" | "info" | "warning" | "accent" | "success" | "danger";
+
+function getTaskDetailChipToneClass(tone: TaskDetailTone) {
+  switch (tone) {
+    case "info":
+      return "border-[rgba(104,199,246,0.24)] bg-[rgba(104,199,246,0.12)] text-[var(--info)]";
+    case "warning":
+      return "border-[rgba(242,195,92,0.24)] bg-[rgba(242,195,92,0.12)] text-[var(--warning)]";
+    case "accent":
+      return "border-[rgba(73,214,196,0.24)] bg-[rgba(73,214,196,0.12)] text-[var(--accent-strong)]";
+    case "success":
+      return "border-[rgba(99,216,158,0.24)] bg-[rgba(99,216,158,0.12)] text-[var(--success)]";
+    case "danger":
+      return "border-[rgba(240,113,113,0.28)] bg-[rgba(240,113,113,0.12)] text-[var(--danger)]";
+    default:
+      return "border-border bg-[var(--surface-soft)] text-[var(--muted)]";
+  }
 }
 
 function formatRunStatusLabel(run: Run | null, task: DisplayTask): string {
@@ -87,7 +123,7 @@ function formatRunStatusCopy(run: Run | null, task: DisplayTask): string {
   return "This task has not been started yet.";
 }
 
-function getColumnTone(column: DisplayTask["column"]): string {
+function getColumnTone(column: DisplayTask["column"]): TaskDetailTone {
   switch (column) {
     case "todo":
       return "info";
@@ -102,7 +138,7 @@ function getColumnTone(column: DisplayTask["column"]): string {
   }
 }
 
-function getRunTone(run: Run | null, task: DisplayTask): string {
+function getRunTone(run: Run | null, task: DisplayTask): TaskDetailTone {
   if (run?.status === "running" || (!run && task.column === "running")) {
     return "warning";
   }
@@ -142,11 +178,11 @@ function DetailSection({
   children: ReactNode;
 }) {
   return (
-    <section className="task-detail-section">
-      <div className="task-detail-section-header">
-        <h3>{title}</h3>
+    <section className={detailSectionClass}>
+      <div className={detailSectionHeaderClass}>
+        <h3 className="m-0 text-[0.78rem] font-semibold">{title}</h3>
       </div>
-      <div className="task-detail-section-body">{children}</div>
+      <div className={detailSectionBodyClass}>{children}</div>
     </section>
   );
 }
@@ -164,16 +200,10 @@ function DetailField({
 }) {
   return (
     <div
-      className={[
-        "task-detail-field",
-        mono ? "task-detail-field-mono" : null,
-        className
-      ]
-        .filter(Boolean)
-        .join(" ")}
+      className={cn(detailFieldClass, mono && detailFieldMonoClass, className)}
     >
-      <div className="task-detail-field-label">{label}</div>
-      <div className="task-detail-field-value">{value}</div>
+      <div className={detailFieldLabelClass}>{label}</div>
+      <div className={detailFieldValueClass}>{value}</div>
     </div>
   );
 }
@@ -228,7 +258,7 @@ function formatPullRequestFilesSummary(
 
 function ArrowLeftIcon() {
   return (
-    <svg viewBox="0 0 16 16" aria-hidden="true" className="task-detail-icon">
+    <svg viewBox="0 0 16 16" aria-hidden="true" className="size-3 shrink-0">
       <path
         d="M9.5 3.5 5 8l4.5 4.5M5.5 8h6"
         fill="none"
@@ -243,7 +273,7 @@ function ArrowLeftIcon() {
 
 function FolderRemoveIcon() {
   return (
-    <svg viewBox="0 0 16 16" aria-hidden="true" className="task-detail-icon">
+    <svg viewBox="0 0 16 16" aria-hidden="true" className="size-3 shrink-0">
       <path
         d="M1.5 4.5h4l1.4 1.5h7.6v5.5a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z"
         fill="none"
@@ -264,7 +294,7 @@ function FolderRemoveIcon() {
 
 function TrashIcon() {
   return (
-    <svg viewBox="0 0 16 16" aria-hidden="true" className="task-detail-icon">
+    <svg viewBox="0 0 16 16" aria-hidden="true" className="size-3 shrink-0">
       <path
         d="M3.5 4.5h9m-7.5 0v7m3-7v7m3-7-.4 7.2a1 1 0 0 1-1 .8H6.4a1 1 0 0 1-1-.8L5 4.5m1.5 0 .5-1h2l.5 1"
         fill="none"
@@ -310,11 +340,13 @@ export function TaskDetailsPanel({
 
   if (!task) {
     return (
-      <aside className={["details-panel", className, "empty-panel"].filter(Boolean).join(" ")}>
-        <div className="empty-state">
-          <p className="eyebrow">Task details</p>
+      <aside className={cn(detailPanelClass, "min-h-[60vh] place-items-center", className)}>
+        <div className={emptyStateClass}>
+          <p className={detailEyebrowClass}>Task details</p>
           <h2>Select a task</h2>
-          <p>Task context, run history and live logs will appear here.</p>
+          <p className="m-0 text-[var(--muted)]">
+            Task context, run history and live logs will appear here.
+          </p>
         </div>
       </aside>
     );
@@ -348,51 +380,69 @@ export function TaskDetailsPanel({
   const changedFiles = getPullRequestChangedFilesCount(pullRequest);
 
   return (
-    <aside className={["details-panel", className].filter(Boolean).join(" ")}>
-      <div className="task-detail-subheader">
-        <div className="task-detail-subheader-main">
+    <aside className={cn(detailPanelClass, className)}>
+      <div className="flex min-h-10 flex-wrap items-center justify-between gap-4 border-b border-border bg-[var(--panel)] px-4 max-[720px]:flex-col max-[720px]:items-stretch max-[720px]:p-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           {onBack ? (
             <>
               <button
                 type="button"
-                className="task-detail-back-button"
+                className={cn(detailButtonClass, "hover:border-border")}
                 onClick={onBack}
               >
                 <ArrowLeftIcon />
                 <span>Back to board</span>
               </button>
-              <span className="task-detail-divider" aria-hidden="true">
+              <span className="text-[rgba(140,161,160,0.4)] max-[720px]:hidden" aria-hidden="true">
                 |
               </span>
             </>
           ) : null}
 
-          <span className="task-detail-workspace-label">Workspace {workspaceName}</span>
-          <span className={`task-detail-chip task-detail-chip-column-${getColumnTone(task.column)}`}>
+          <span className="m-0 font-mono text-[0.58rem] uppercase tracking-[0.14em] text-[var(--muted)]">
+            Workspace {workspaceName}
+          </span>
+          <span
+            className={cn(detailChipClass, getTaskDetailChipToneClass(getColumnTone(task.column)))}
+          >
             {titleCase(task.column)}
           </span>
-          <span className={`task-detail-chip task-detail-chip-runner-${task.runnerType}`}>
+          <span
+            className={cn(
+              detailChipClass,
+              getTaskDetailChipToneClass(task.runnerType === "codex" ? "accent" : "warning")
+            )}
+          >
             {task.runnerType}
           </span>
-          <span className={`task-detail-chip task-detail-chip-run-${runTone}`}>
+          <span className={cn(detailChipClass, getTaskDetailChipToneClass(runTone))}>
             {formatRunStatusLabel(summaryRun, task)}
           </span>
         </div>
 
-        <button type="button" className="task-detail-delete-button" onClick={onDelete}>
+        <button
+          type="button"
+          className={cn(
+            detailButtonClass,
+            "text-[var(--danger)] hover:border-[rgba(240,113,113,0.28)] hover:bg-[rgba(240,113,113,0.1)]"
+          )}
+          onClick={onDelete}
+        >
           <TrashIcon />
           <span>Delete</span>
         </button>
       </div>
 
-      <div className="task-detail-header">
-        <div className="task-detail-heading">
-          <p className="task-detail-eyebrow">Task details</p>
-          <h1>{task.title}</h1>
-          <p className="task-detail-subtitle">{workspaceName}</p>
+      <div className="flex flex-col gap-4 border-b border-border bg-[var(--panel)] p-4 min-[721px]:flex-row min-[721px]:items-start min-[721px]:justify-between max-[720px]:p-3">
+        <div className="grid min-w-0 gap-1">
+          <p className={detailFieldLabelClass}>Task details</p>
+          <h1 className="m-0 text-[clamp(1.2rem,1.8vw,1.55rem)] font-semibold leading-[1.08] tracking-[-0.025em]">
+            {task.title}
+          </h1>
+          <p className="m-0 text-[var(--muted)]">{workspaceName}</p>
         </div>
 
-        <div className="task-detail-header-actions">
+        <div className="flex flex-wrap items-center justify-end gap-2 max-[720px]:items-start">
           <TaskActionBar
             column={task.column}
             onPlan={onPlan}
@@ -405,7 +455,10 @@ export function TaskDetailsPanel({
           {canCleanupWorktree ? (
             <button
               type="button"
-              className="task-detail-inline-button"
+              className={cn(
+                detailButtonClass,
+                "border-border bg-transparent hover:border-[var(--border-strong)]"
+              )}
               onClick={onCleanupWorktree}
             >
               <FolderRemoveIcon />
@@ -419,27 +472,34 @@ export function TaskDetailsPanel({
         </div>
       </div>
 
-      <div className="task-detail-layout">
-        <div className="task-detail-sidebar">
+      <div className="flex min-h-0 flex-1 overflow-hidden max-[1040px]:flex-col">
+        <div className="grid w-[360px] flex-none content-start gap-4 overflow-y-auto border-r border-border bg-[var(--bg)] p-4 max-[1040px]:w-full max-[1040px]:border-b max-[1040px]:border-r-0 max-[720px]:p-3">
           <DetailSection title="Description">
-            <p className="task-detail-description">{task.description || "No description provided."}</p>
+            <p className="m-0 text-[var(--muted)]">{task.description || "No description provided."}</p>
           </DetailSection>
 
           <DetailSection title="Run status">
-            <div className="task-detail-run-overview">
-              <div className="task-detail-run-copy-block">
-                <div className="task-detail-run-label">{formatRunStatusLabel(summaryRun, task)}</div>
-                <p className="task-detail-run-copy">{formatRunStatusCopy(summaryRun, task)}</p>
+            <div className="flex flex-col gap-3 min-[721px]:flex-row min-[721px]:items-start min-[721px]:justify-between">
+              <div className="grid gap-1">
+                <div className="text-[0.86rem] font-semibold">
+                  {formatRunStatusLabel(summaryRun, task)}
+                </div>
+                <p className="m-0 text-[var(--muted)]">{formatRunStatusCopy(summaryRun, task)}</p>
               </div>
-              <span className={`task-detail-chip task-detail-chip-runner-${task.runnerType}`}>
+              <span
+                className={cn(
+                  detailChipClass,
+                  getTaskDetailChipToneClass(task.runnerType === "codex" ? "accent" : "warning")
+                )}
+              >
                 {task.runnerType}
               </span>
             </div>
 
             {viewedRun ? (
-              <div className="task-detail-inline-block">
-                <div className="task-detail-field-label">Viewing run</div>
-                <div className="task-detail-inline-value task-detail-inline-value-mono">
+              <div className="grid gap-1.5 border-t border-border pt-3">
+                <div className={detailFieldLabelClass}>Viewing run</div>
+                <div className={cn(detailFieldValueClass, detailFieldMonoClass)}>
                   {viewedRun.id}
                 </div>
               </div>
@@ -447,7 +507,7 @@ export function TaskDetailsPanel({
           </DetailSection>
 
           <DetailSection title="Snapshot">
-            <div className="task-detail-field-grid">
+            <div className="grid grid-cols-2 gap-3 max-[1040px]:grid-cols-1">
               <DetailField label="Status" value={titleCase(task.column)} />
               <DetailField label="Updated" value={formatRelativeTime(task.updatedAt)} />
               <DetailField label="Created" value={formatRelativeTime(task.createdAt)} />
@@ -457,14 +517,14 @@ export function TaskDetailsPanel({
 
           {showWorktree ? (
             <DetailSection title="Worktree">
-              <div className="task-detail-field-grid">
+              <div className="grid grid-cols-2 gap-3 max-[1040px]:grid-cols-1">
                 <DetailField label="Status" value={titleCase(task.worktree.status)} />
                 <DetailField label="Base ref" value={task.worktree.baseRef || "none"} mono />
                 <DetailField
                   label="Branch"
                   value={task.worktree.branchName}
                   mono
-                  className="task-detail-field-span-2"
+                  className="col-span-2 max-[1040px]:col-span-1"
                 />
                 <DetailField
                   label="Last sync"
@@ -476,22 +536,24 @@ export function TaskDetailsPanel({
                 />
               </div>
 
-              <div className="task-detail-inline-block">
-                <div className="task-detail-field-label">Path</div>
-                <div className="task-detail-inline-value task-detail-inline-value-mono">
+              <div className="grid gap-1.5 border-t border-border pt-3">
+                <div className={detailFieldLabelClass}>Path</div>
+                <div className={cn(detailFieldValueClass, detailFieldMonoClass)}>
                   {task.worktree.path ?? "not created"}
                 </div>
               </div>
 
               {task.worktree.cleanupReason ? (
-                <p className="task-detail-note">{task.worktree.cleanupReason}</p>
+                <p className="m-0 border-t border-border pt-3 text-[var(--muted)]">
+                  {task.worktree.cleanupReason}
+                </p>
               ) : null}
             </DetailSection>
           ) : null}
 
           {showPullRequest ? (
             <DetailSection title="Pull request">
-              <div className="task-detail-field-grid">
+              <div className="grid grid-cols-2 gap-3 max-[1040px]:grid-cols-1">
                 <DetailField
                   label="Number"
                   value={pullRequest?.number !== undefined ? `#${pullRequest.number}` : "-"}
@@ -515,10 +577,14 @@ export function TaskDetailsPanel({
               </div>
 
               {task.pullRequestUrl ? (
-                <div className="task-detail-inline-block">
-                  <div className="task-detail-field-label">Link</div>
+                <div className="grid gap-1.5 border-t border-border pt-3">
+                  <div className={detailFieldLabelClass}>Link</div>
                   <a
-                    className="task-detail-link task-detail-inline-value task-detail-inline-value-mono"
+                    className={cn(
+                      detailFieldValueClass,
+                      detailFieldMonoClass,
+                      "text-[var(--accent)] no-underline hover:underline"
+                    )}
                     href={task.pullRequestUrl}
                     target="_blank"
                     rel="noreferrer"
@@ -528,8 +594,8 @@ export function TaskDetailsPanel({
                 </div>
               ) : null}
 
-              <div className="task-detail-file-group">
-                <div className="task-detail-field-label">
+              <div className="grid gap-2 border-t border-border pt-3">
+                <div className={detailFieldLabelClass}>
                   {changedFiles === undefined
                     ? "Files changed"
                     : `Files changed (${formatCount(changedFiles, "file")})`}
@@ -537,15 +603,20 @@ export function TaskDetailsPanel({
 
                 {pullRequestFiles.length > 0 ? (
                   <>
-                    <div className="task-detail-file-list">
+                    <div className="grid border border-border bg-[var(--surface-soft)]">
                       {pullRequestFiles.map((file) => (
-                        <div className="task-detail-file-row" key={file.path}>
-                          <code className="task-detail-file-path">{file.path}</code>
-                          <div className="task-detail-file-stats" aria-label={`${file.path} stats`}>
-                            <span className="task-detail-file-stat task-detail-file-stat-add">
+                        <div
+                          className="flex flex-wrap items-start justify-between gap-3 border-b border-border p-3 last:border-b-0"
+                          key={file.path}
+                        >
+                          <code className="m-0 break-words font-mono text-[0.72rem] leading-[1.5] text-foreground">
+                            {file.path}
+                          </code>
+                          <div className="flex items-center gap-2" aria-label={`${file.path} stats`}>
+                            <span className="font-mono text-[0.7rem] text-[var(--success)]">
                               +{file.additions ?? 0}
                             </span>
-                            <span className="task-detail-file-stat task-detail-file-stat-delete">
+                            <span className="font-mono text-[0.7rem] text-[var(--danger)]">
                               -{file.deletions ?? 0}
                             </span>
                           </div>
@@ -554,14 +625,14 @@ export function TaskDetailsPanel({
                     </div>
 
                     {changedFiles !== undefined && changedFiles > pullRequestFiles.length ? (
-                      <p className="task-detail-file-caption">
+                      <p className="m-0 text-[0.72rem] leading-[1.5] text-[var(--muted)]">
                         Showing {formatCount(pullRequestFiles.length, "file")} of{" "}
                         {formatCount(changedFiles, "file")} reported by GitHub.
                       </p>
                     ) : null}
                   </>
                 ) : (
-                  <p className="task-detail-empty-copy">
+                  <p className="m-0 text-[var(--muted)]">
                     {changedFiles === 0
                       ? "No changed files reported by GitHub."
                       : "Waiting for GitHub to sync file changes."}
@@ -572,26 +643,27 @@ export function TaskDetailsPanel({
           ) : null}
 
           <DetailSection title="Runner config">
-            <div className="task-detail-field-label">
+            <div className={detailFieldLabelClass}>
               {task.runnerConfig.type === "shell" ? "Command" : "Prompt"}
             </div>
-            <pre className="task-detail-config-block">{runnerConfig}</pre>
+            <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-words border border-border bg-[var(--surface-soft)] p-3 font-mono text-[0.72rem] leading-[1.6] text-[var(--muted)]">
+              {runnerConfig}
+            </pre>
           </DetailSection>
 
           <DetailSection title="Run history">
             {runs.length === 0 ? (
-              <p className="task-detail-empty-copy">No runs yet.</p>
+              <p className="m-0 text-[var(--muted)]">No runs yet.</p>
             ) : (
-              <div className="task-detail-run-history">
+              <div className="border border-border">
                 {runs.map((run) => (
                   <button
                     type="button"
                     key={run.id}
-                    className={
-                      run.id === viewedRun?.id
-                        ? "task-detail-run-row task-detail-run-row-active"
-                        : "task-detail-run-row"
-                    }
+                    className={cn(
+                      "flex min-h-[34px] w-full items-center justify-between gap-3 border-b border-border bg-transparent px-3 text-left text-[0.75rem] text-foreground transition-[background-color,color] last:border-b-0 hover:bg-[var(--surface-hover)]",
+                      run.id === viewedRun?.id && "bg-[var(--accent-soft)]"
+                    )}
                     onClick={() => onSelectRun(run.id)}
                   >
                     <span>{formatRunStatusLabel(run, task)}</span>
@@ -603,7 +675,7 @@ export function TaskDetailsPanel({
           </DetailSection>
         </div>
 
-        <div className="task-detail-log-pane">
+        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden bg-[var(--surface-faint)]">
           <LiveLog
             task={task}
             activeRun={activeRun}

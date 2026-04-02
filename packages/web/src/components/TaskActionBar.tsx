@@ -1,5 +1,7 @@
 import type { DisplayTaskColumn } from "@/lib/task-view";
 import { getTaskActions } from "@/lib/task-view";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 interface Props {
   column: DisplayTaskColumn;
@@ -29,15 +31,18 @@ export function TaskActionBar({
   }
 
   return (
-    <span className={compact ? "task-card-actions task-card-actions-compact" : "task-card-actions"}>
+    <span className={cn("flex flex-wrap gap-1.5", compact && "justify-end gap-1")}>
       {actions.map((action) => {
         const className = compact
-          ? "action-chip"
-          : action.kind === "primary"
-            ? "button"
-            : action.kind === "danger"
-              ? "button button-danger"
-              : "button button-secondary";
+          ? "inline-flex min-h-[20px] items-center rounded-none border border-border bg-background px-2 text-[0.62rem] uppercase tracking-[0.08em] text-foreground transition-[border-color,background-color,transform] hover:-translate-y-px hover:border-[var(--border-strong)]"
+          : buttonVariants({
+              variant:
+                action.kind === "danger"
+                  ? "destructive"
+                  : action.kind === "secondary"
+                    ? "secondary"
+                    : "default"
+            });
 
         const label = compact ? action.shortLabel ?? action.label : action.label;
 

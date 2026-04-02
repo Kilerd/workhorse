@@ -1,0 +1,104 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-card: var(--panel);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--bg-elevated);
+  --color-popover-foreground: var(--text);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--text);
+  --color-secondary: var(--bg);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--panel-muted);
+  --color-muted-foreground: var(--muted);
+  --color-accent: var(--accent-soft);
+  --color-accent-foreground: var(--text);
+  --color-destructive: var(--danger);
+  --color-destructive-foreground: var(--text);
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--border-strong);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius-lg);
+}
+
+:root {
+  color-scheme: dark;
+  --bg: #0a0f10;
+  --bg-elevated: #101617;
+  --panel: #101617;
+  --panel-strong: #141c1d;
+  --panel-muted: #12191a;
+  --border: rgba(222, 242, 241, 0.1);
+  --border-strong: rgba(73, 214, 196, 0.28);
+  --text: #eef5f4;
+  --muted: #8ca1a0;
+  --accent: #49d6c4;
+  --accent-strong: #7fe9dc;
+  --accent-soft: rgba(73, 214, 196, 0.14);
+  --warning: #f2c35c;
+  --danger: #f07171;
+  --success: #63d89e;
+  --info: #68c7f6;
+  --shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  --radius: 2px;
+  --radius-lg: 4px;
+  --font-sans: "Geist", "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", "SFMono-Regular", ui-monospace, monospace;
+  --surface-soft: rgba(255, 255, 255, 0.03);
+  --surface-faint: rgba(255, 255, 255, 0.02);
+  --surface-hover: var(--panel-muted);
+  --backdrop: rgba(2, 5, 6, 0.72);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f3f6f6;
+  --bg-elevated: #ffffff;
+  --panel: #ffffff;
+  --panel-strong: #ffffff;
+  --panel-muted: #eef3f2;
+  --border: rgba(23, 32, 34, 0.12);
+  --border-strong: rgba(33, 184, 166, 0.34);
+  --text: #172022;
+  --muted: #697776;
+  --accent: #1fb8a6;
+  --accent-strong: #11756b;
+  --accent-soft: rgba(31, 184, 166, 0.1);
+  --warning: #9a6e14;
+  --danger: #b54a4a;
+  --success: #187d54;
+  --info: #0f86bf;
+  --shadow: 0 12px 28px rgba(17, 24, 25, 0.08);
+  --surface-soft: rgba(20, 28, 29, 0.03);
+  --surface-faint: rgba(20, 28, 29, 0.02);
+  --surface-hover: #edf3f2;
+  --backdrop: rgba(17, 24, 25, 0.28);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+    font-size: 14px;
+  }
+
+  code,
+  pre {
+    font-family: var(--font-mono);
+  }
+}
