@@ -1,4 +1,5 @@
 import type { ThemeMode } from "@/lib/theme";
+import { Button } from "@/components/ui/button";
 
 interface Props {
   theme: ThemeMode;
@@ -51,15 +52,17 @@ export function ThemeToggle({ theme, onToggle }: Props) {
   const nextTheme = theme === "dark" ? "light" : "dark";
 
   return (
-    <button
+    <Button
       type="button"
-      className="button-secondary theme-toggle"
+      variant="secondary"
+      size="icon"
+      className="theme-toggle"
       onClick={onToggle}
       aria-label={`Switch to ${nextTheme} mode`}
       title={`Switch to ${nextTheme} mode`}
     >
       {theme === "dark" ? <SunIcon /> : <MoonIcon />}
       <span className="sr-only">Toggle theme</span>
-    </button>
+    </Button>
   );
 }

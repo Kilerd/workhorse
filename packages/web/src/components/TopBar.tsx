@@ -6,6 +6,9 @@ import type {
 
 import { formatCount, formatRelativeTime } from "@/lib/format";
 import type { ThemeMode } from "@/lib/theme";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 import { ThemeToggle } from "./ThemeToggle";
 
 interface Props {
@@ -203,7 +206,7 @@ export function TopBar({
       <div className="topbar-controls">
         <label className="search-field">
           <span className="sr-only">Search tasks</span>
-          <input
+          <Input
             type="search"
             value={searchQuery}
             onChange={(event) => onSearchChange(event.target.value)}
@@ -222,7 +225,7 @@ export function TopBar({
 
         <label className="select toolbar-select">
           <span className="sr-only">Workspace</span>
-          <select
+          <NativeSelect
             aria-label="Workspace"
             value={selectedWorkspaceId}
             onChange={(event) => onWorkspaceChange(event.target.value || "all")}
@@ -233,33 +236,33 @@ export function TopBar({
                 {workspace.name}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
 
-        <button type="button" className="button button-secondary" onClick={onRefresh}>
+        <Button type="button" variant="secondary" onClick={onRefresh}>
           Refresh
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className="button button-secondary"
+          variant="secondary"
           onClick={onOpenWorkspaceSettings}
           disabled={selectedWorkspaceId === "all"}
         >
           Workspace settings
-        </button>
-        <button type="button" className="button button-secondary" onClick={onCreateWorkspace}>
+        </Button>
+        <Button type="button" variant="secondary" onClick={onCreateWorkspace}>
           Add workspace
-        </button>
-        <button type="button" className="button" onClick={onCreateTask}>
+        </Button>
+        <Button type="button" onClick={onCreateTask}>
           New
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className="button-secondary"
+          variant="secondary"
           onClick={onOpenGlobalSettings}
         >
           Settings
-        </button>
+        </Button>
         <ThemeToggle theme={theme} onToggle={onToggleTheme} />
       </div>
     </header>
