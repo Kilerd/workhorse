@@ -9,37 +9,17 @@ import {
   type CodexAppServer
 } from "./codex-app-server-manager.js";
 import type {
+  JsonRpcId,
+  JsonRpcNotification,
+  JsonRpcRequest,
+  JsonRpcResponse
+} from "./json-rpc.js";
+import type {
   RunnerAdapter,
   RunnerControl,
   RunnerLifecycleHooks,
   RunnerStartContext
 } from "./types.js";
-
-type JsonRpcId = number;
-
-interface JsonRpcRequest<T = unknown> {
-  jsonrpc: "2.0";
-  id: JsonRpcId;
-  method: string;
-  params?: T;
-}
-
-interface JsonRpcResponse<T = unknown> {
-  jsonrpc: "2.0";
-  id: JsonRpcId;
-  result?: T;
-  error?: {
-    code: number;
-    message: string;
-    data?: unknown;
-  };
-}
-
-interface JsonRpcNotification<T = unknown> {
-  jsonrpc: "2.0";
-  method: string;
-  params?: T;
-}
 
 interface InitializeResult {
   userAgent: string;

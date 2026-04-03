@@ -10,31 +10,12 @@ import WebSocket from "ws";
 
 import { AppError } from "../lib/errors.js";
 import { getAvailablePort } from "../lib/net.js";
-
-type JsonRpcId = number | string;
-
-interface JsonRpcRequest {
-  jsonrpc: "2.0";
-  id: JsonRpcId;
-  method: string;
-  params?: unknown;
-}
-
-interface JsonRpcNotification {
-  jsonrpc: "2.0";
-  method: string;
-  params?: unknown;
-}
-
-interface JsonRpcResponse {
-  jsonrpc: "2.0";
-  id: JsonRpcId;
-  result?: unknown;
-  error?: {
-    code?: number;
-    message?: string;
-  };
-}
+import type {
+  JsonRpcId,
+  JsonRpcNotification,
+  JsonRpcRequest,
+  JsonRpcResponse
+} from "./json-rpc.js";
 
 interface PendingRequest {
   resolve(value: unknown): void;
