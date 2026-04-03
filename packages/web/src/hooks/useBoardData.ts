@@ -12,6 +12,7 @@ import type {
   ServerEvent,
   StartTaskBody,
   Task,
+  TaskColumn,
   UpdateSettingsBody,
   UpdateWorkspaceBody,
   Workspace
@@ -321,29 +322,9 @@ export function useBoardData() {
     }
   });
 
-  const moveToTodoMutation = useMutation({
-    mutationFn: async (taskId: string) => {
-      const response = await api.updateTask(taskId, { column: "todo" });
-      return unwrap(response).task;
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
-    }
-  });
-
-  const markDoneMutation = useMutation({
-    mutationFn: async (taskId: string) => {
-      const response = await api.updateTask(taskId, { column: "done" });
-      return unwrap(response).task;
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
-    }
-  });
-
-  const archiveMutation = useMutation({
-    mutationFn: async (taskId: string) => {
-      const response = await api.updateTask(taskId, { column: "archived" });
+  const changeColumnMutation = useMutation({
+    mutationFn: async ({ taskId, column }: { taskId: string; column: TaskColumn }) => {
+      const response = await api.updateTask(taskId, { column });
       return unwrap(response).task;
     },
     onSuccess: async () => {
@@ -455,27 +436,26 @@ export function useBoardData() {
     planTask: planTaskMutation.mutateAsync,
     requestTaskReview: requestTaskReviewMutation.mutateAsync,
     cleanupTaskWorktree: cleanupTaskWorktreeMutation.mutateAsync,
-    moveToTodo: moveToTodoMutation.mutateAsync,
-    markDone: markDoneMutation.mutateAsync,
-    archiveTask: archiveMutation.mutateAsync,
+    moveToTodo: (taskId: string) => changeColumnMutation.mutateAsync({ taskId, column: "todo" }),
+    markDone: (taskId: string) => changeColumnMutation.mutateAsync({ taskId, column: "done" }),
+    archiveTask: (taskId: string) => changeColumnMutation.mutateAsync({ taskId, column: "archived" }),
     deleteWorkspace: deleteWorkspaceMutation.mutateAsync,
     deleteTask: deleteTaskMutation.mutateAsync,
-    isBusy:
-      createWorkspaceMutation.isPending ||
-      updateSettingsMutation.isPending ||
-      updateWorkspaceMutation.isPending ||
-      createTaskMutation.isPending ||
-      startTaskMutation.isPending ||
-      stopTaskMutation.isPending ||
-      sendTaskInputMutation.isPending ||
-      updateTaskMutation.isPending ||
-      planTaskMutation.isPending ||
-      requestTaskReviewMutation.isPending ||
-      cleanupTaskWorktreeMutation.isPending ||
-      moveToTodoMutation.isPending ||
-      markDoneMutation.isPending ||
-      archiveMutation.isPending ||
-      deleteWorkspaceMutation.isPending ||
-      deleteTaskMutation.isPending
+    isBusy: [
+      createWorkspaceMutation,
+      updateSettingsMutation,
+      updateWorkspaceMutation,
+      createTaskMutation,
+      startTaskMutation,
+      stopTaskMutation,
+      sendTaskInputMutation,
+      updateTaskMutation,
+      planTaskMutation,
+      requestTaskReviewMutation,
+      cleanupTaskWorktreeMutation,
+      changeColumnMutation,
+      deleteWorkspaceMutation,
+      deleteTaskMutation
+    ].some((m) => m.isPending)
   };
 }
