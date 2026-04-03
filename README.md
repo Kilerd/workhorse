@@ -27,9 +27,9 @@ npm run dev
 
 Services:
 
-- App and API: [http://127.0.0.1:3484](http://127.0.0.1:3484)
-- Health: [http://127.0.0.1:3484/api/health](http://127.0.0.1:3484/api/health)
-- OpenAPI: [http://127.0.0.1:3484/openapi.json](http://127.0.0.1:3484/openapi.json)
+- App and API: [http://127.0.0.1:3999](http://127.0.0.1:3999)
+- Health: [http://127.0.0.1:3999/api/health](http://127.0.0.1:3999/api/health)
+- OpenAPI: [http://127.0.0.1:3999/openapi.json](http://127.0.0.1:3999/openapi.json)
 
 ## Useful scripts
 

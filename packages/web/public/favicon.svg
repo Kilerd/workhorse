@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Workhorse">
+  <defs>
+    <linearGradient id="bg" x1="10" y1="6" x2="54" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#11191A" />
+      <stop offset="1" stop-color="#091011" />
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(47 18) rotate(132.253) scale(24.5)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7FE9DC" stop-opacity="0.34" />
+      <stop offset="0.65" stop-color="#49D6C4" stop-opacity="0.12" />
+      <stop offset="1" stop-color="#49D6C4" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="shoe" x1="18" y1="14" x2="45" y2="51" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8BF4E8" />
+      <stop offset="1" stop-color="#1FB8A6" />
+    </linearGradient>
+    <linearGradient id="w" x1="24" y1="22" x2="40" y2="40" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F6FFFE" />
+      <stop offset="1" stop-color="#C7FFFA" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#bg)" />
+  <rect x="3.5" y="3.5" width="57" height="57" rx="12.5" fill="none" stroke="#DFF8F5" stroke-opacity="0.08" />
+  <circle cx="47" cy="18" r="18" fill="url(#glow)" />
+  <path d="M22 46V25C22 17.5 26 13 32 13C38 13 42 17.5 42 25V46" stroke="url(#shoe)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="22" cy="31" r="2.3" fill="#0A0F10" />
+  <circle cx="42" cy="31" r="2.3" fill="#0A0F10" />
+  <circle cx="22" cy="31" r="3.2" stroke="#D7FBF7" stroke-opacity="0.45" stroke-width="1" />
+  <circle cx="42" cy="31" r="3.2" stroke="#D7FBF7" stroke-opacity="0.45" stroke-width="1" />
+  <path d="M24 22L28 39L32 29.5L36 39L40 22" stroke="url(#w)" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

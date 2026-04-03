@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Run, RunLogEntry, Task } from "@workhorse/contracts";
 import type { LiveLogCommandExecutionGroupStreamItem } from "./live-log-entries";
 
@@ -7,7 +7,6 @@ import {
   ENTRY_LABELS,
   getToolStatus,
   groupLiveLogStreamItems,
-  isCommandExecutionEntry,
   parseStickyPlanContent,
   partitionLiveLogEntries,
   metadataEntries,
@@ -31,28 +30,17 @@ interface Props {
   onSendInput?(text: string): Promise<unknown>;
 }
 
-const logKindBaseClass =
-  "inline-flex min-h-5 items-center gap-2 whitespace-nowrap rounded-none border border-border bg-[var(--panel)] px-2 text-[0.64rem] uppercase tracking-[0.08em]";
-const logStatusChipBaseClass =
-  "inline-flex items-center rounded-none border px-1.5 py-[2px] font-mono text-[0.58rem] uppercase tracking-[0.08em]";
-const logConsoleLabelBaseClass =
-  "inline-flex min-h-[18px] items-center rounded-none border px-1.5 font-mono text-[0.56rem] uppercase tracking-[0.08em]";
+type CommandIntent = "build" | "command" | "git" | "read" | "search" | "test";
+type MarkdownBlock =
+  | { type: "paragraph"; text: string }
+  | { type: "list"; ordered: boolean; items: string[] }
+  | { type: "code"; code: string }
+  | { type: "heading"; depth: number; text: string };
 
-function getLogKindToneClass(kind: RunLogEntry["kind"]): string {
-  switch (kind) {
-    case "plan":
-      return "text-[var(--success)]";
-    case "tool_call":
-    case "tool_output":
-      return "text-[var(--warning)]";
-    case "user":
-      return "text-[var(--info)]";
-    case "agent":
-      return "text-[var(--accent-strong)]";
-    default:
-      return "text-[var(--muted)]";
-  }
-}
+const logStatusChipBaseClass =
+  "inline-flex min-h-5 items-center px-1 py-[2px] font-mono text-[0.54rem] uppercase tracking-[0.1em]";
+const logEyebrowBaseClass =
+  "inline-flex min-h-5 items-center gap-1.5 whitespace-nowrap px-1 font-mono text-[0.54rem] uppercase tracking-[0.1em]";
 
 function getLogStatusToneClass(tone: string): string {
   switch (tone) {
@@ -65,53 +53,6 @@ function getLogStatusToneClass(tone: string): string {
       return "text-[var(--info)]";
     default:
       return "text-[var(--warning)]";
-  }
-}
-
-function getConsoleToneClasses(
-  tone: "agent" | "plan" | "status" | "stderr" | "system" | "tool" | "user" | "stdout"
-) {
-  switch (tone) {
-    case "agent":
-      return {
-        entry: "border-l-[rgba(73,214,196,0.42)]",
-        label: "text-[var(--accent)]"
-      };
-    case "plan":
-      return {
-        entry: "border-l-[rgba(99,216,158,0.44)]",
-        label: "text-[var(--success)]"
-      };
-    case "status":
-      return {
-        entry: "border-l-[rgba(104,199,246,0.36)]",
-        label: "text-[var(--info)]"
-      };
-    case "stderr":
-      return {
-        entry: "border-l-[rgba(240,113,113,0.46)]",
-        label: "text-[var(--danger)]"
-      };
-    case "system":
-      return {
-        entry: "border-l-[rgba(140,161,160,0.34)]",
-        label: "text-[var(--muted)]"
-      };
-    case "tool":
-      return {
-        entry: "border-l-[rgba(242,195,92,0.42)]",
-        label: "text-[var(--warning)]"
-      };
-    case "user":
-      return {
-        entry: "border-l-[rgba(104,199,246,0.42)]",
-        label: "text-[var(--info)]"
-      };
-    default:
-      return {
-        entry: "border-l-[rgba(104,199,246,0.34)]",
-        label: "text-[var(--info)]"
-      };
   }
 }
 
@@ -128,15 +69,32 @@ function formatTimestamp(value: string): string {
   });
 }
 
+function formatTimestampRange(start: string, end: string): string {
+  const startLabel = formatTimestamp(start);
+  const endLabel = formatTimestamp(end);
+  if (!startLabel || !endLabel || startLabel === endLabel) {
+    return endLabel || startLabel;
+  }
+
+  return `${startLabel} - ${endLabel}`;
+}
+
+function getEntryTitle(entry: RunLogEntry): string | null {
+  if (entry.kind === "tool_call") {
+    return normalizeToolTitle(entry);
+  }
+
+  if (entry.title && !["Agent output", "Tool output"].includes(entry.title)) {
+    return entry.title;
+  }
+
+  return null;
+}
+
 function buildCopyPayload(entries: RunLogEntry[]): string {
   return entries
     .map((entry) => {
-      const title =
-        entry.kind === "tool_call"
-          ? normalizeToolTitle(entry)
-          : entry.title && !["Agent output", "Tool output"].includes(entry.title)
-            ? entry.title
-            : null;
+      const title = getEntryTitle(entry);
       const toolStatus = getToolStatus(entry);
       const metadata = [
         formatTimestamp(entry.timestamp),
@@ -153,200 +111,6 @@ function buildCopyPayload(entries: RunLogEntry[]): string {
     .join("\n\n");
 }
 
-function renderEntryBody(entry: RunLogEntry) {
-  const entryMetadata = metadataEntries(entry);
-
-  return (
-    <>
-      {entryMetadata.length > 0 ? (
-        <dl className="m-0 flex flex-wrap gap-2 gap-x-3 px-3 pt-3">
-          {entryMetadata.map(([key, value]) => (
-            <div key={`${entry.id}-${key}`} className="inline-flex min-w-0 gap-1.5">
-              <dt className="text-[var(--muted)]">{key}</dt>
-              <dd>{value}</dd>
-            </div>
-          ))}
-        </dl>
-      ) : null}
-      <pre className="m-0 overflow-x-auto px-3 py-3 text-[0.72rem] leading-[1.65] whitespace-pre-wrap break-words">
-        {entry.text}
-      </pre>
-    </>
-  );
-}
-
-function renderEntryHeader(entry: RunLogEntry, collapsible = false) {
-  const toolStatus = getToolStatus(entry);
-  const HeaderTag = collapsible ? "summary" : "header";
-
-  return (
-    <HeaderTag
-      className={cn(
-        "flex flex-col gap-1.5 border-b border-border bg-[var(--surface-faint)] px-3 py-2",
-        collapsible && "cursor-pointer list-none",
-        "min-[721px]:flex-row min-[721px]:items-start min-[721px]:justify-between"
-      )}
-    >
-      <div className="flex min-w-0 flex-wrap items-start justify-between gap-3 min-[721px]:flex-1">
-        <span className={cn(logKindBaseClass, getLogKindToneClass(entry.kind))}>
-          {ENTRY_LABELS[entry.kind]}
-        </span>
-        {entry.title ? (
-          <strong>{entry.kind === "tool_call" ? normalizeToolTitle(entry) : entry.title}</strong>
-        ) : null}
-      </div>
-      <div className="flex min-w-0 flex-wrap items-center gap-3 text-[0.64rem] text-[var(--muted)]">
-        {toolStatus ? (
-          <span className={cn(logStatusChipBaseClass, getLogStatusToneClass(toolStatus.tone))}>
-            {toolStatus.label}
-          </span>
-        ) : null}
-        {entry.stream !== "stdout" ? (
-          <span className={cn(logKindBaseClass, "text-[var(--muted)]")}>{entry.stream}</span>
-        ) : null}
-        <time dateTime={entry.timestamp}>{formatTimestamp(entry.timestamp)}</time>
-      </div>
-    </HeaderTag>
-  );
-}
-
-function getConsoleEntryTone(
-  entry: RunLogEntry
-): "agent" | "plan" | "status" | "stderr" | "system" | "tool" | "user" | "stdout" {
-  if (entry.stream === "stderr") {
-    return "stderr";
-  }
-
-  if (entry.kind === "tool_call" || entry.kind === "tool_output") {
-    return "tool";
-  }
-
-  if (entry.kind === "agent") {
-    return "agent";
-  }
-
-  if (entry.kind === "user") {
-    return "user";
-  }
-
-  if (entry.kind === "plan") {
-    return "plan";
-  }
-
-  if (entry.kind === "status") {
-    return "status";
-  }
-
-  if (entry.stream === "system") {
-    return "system";
-  }
-
-  return "stdout";
-}
-
-function getConsoleEntryLabel(entry: RunLogEntry): string {
-  if (entry.kind === "tool_call") {
-    return "tool";
-  }
-
-  if (entry.kind === "user") {
-    return "user";
-  }
-
-  if (entry.kind === "agent") {
-    return "agent";
-  }
-
-  if (entry.kind === "tool_output") {
-    return entry.stream === "stderr" ? "tool stderr" : "tool output";
-  }
-
-  if (entry.kind === "plan") {
-    return "plan";
-  }
-
-  if (entry.kind === "status") {
-    return "status";
-  }
-
-  return entry.stream;
-}
-
-function renderConsoleEntry(entry: RunLogEntry) {
-  const tone = getConsoleEntryTone(entry);
-  const toolStatus = getToolStatus(entry);
-  const title =
-    entry.kind === "tool_call"
-      ? normalizeToolTitle(entry)
-      : entry.title && !["Agent output", "Tool output"].includes(entry.title)
-        ? entry.title
-      : null;
-
-  return (
-    <article
-      key={entry.id}
-      className={cn(
-        "grid min-w-0 gap-2 border-l-2 px-0 pb-2 pl-3 pt-2",
-        getConsoleToneClasses(tone).entry
-      )}
-    >
-      <div className="flex flex-wrap items-start justify-between gap-2 text-[0.64rem] text-[var(--muted)]">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className={cn(logConsoleLabelBaseClass, getConsoleToneClasses(tone).label)}>
-            {getConsoleEntryLabel(entry)}
-          </span>
-          {title ? <strong>{title}</strong> : null}
-          {toolStatus ? (
-            <span className={cn(logStatusChipBaseClass, getLogStatusToneClass(toolStatus.tone))}>
-              {toolStatus.label}
-            </span>
-          ) : null}
-        </div>
-        <time dateTime={entry.timestamp}>{formatTimestamp(entry.timestamp)}</time>
-      </div>
-      <pre
-        className={cn(
-          "m-0 overflow-x-auto text-[0.74rem] leading-[1.7] whitespace-pre-wrap break-words",
-          tone === "stderr" && "text-[var(--danger)]"
-        )}
-      >
-        {entry.text}
-      </pre>
-    </article>
-  );
-}
-
-function renderToolOutputEntry(entry: RunLogEntry) {
-  const tone = getConsoleEntryTone(entry);
-
-  return (
-    <article
-      key={entry.id}
-      className={cn(
-        "grid gap-2 border-l-2 pl-3",
-        tone === "stderr"
-          ? "border-l-[rgba(240,113,113,0.42)]"
-          : "border-l-[rgba(242,195,92,0.3)]"
-      )}
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2 text-[0.64rem] text-[var(--muted)]">
-        <span className={cn(logConsoleLabelBaseClass, getConsoleToneClasses(tone).label)}>
-          {getConsoleEntryLabel(entry)}
-        </span>
-        <time dateTime={entry.timestamp}>{formatTimestamp(entry.timestamp)}</time>
-      </div>
-      <pre
-        className={cn(
-          "m-0 overflow-x-auto text-[0.74rem] leading-[1.7] whitespace-pre-wrap break-words",
-          tone === "stderr" && "text-[var(--danger)]"
-        )}
-      >
-        {entry.text}
-      </pre>
-    </article>
-  );
-}
-
 function summarizeToolPreview(text: string): string {
   return text
     .split("\n")
@@ -354,100 +118,656 @@ function summarizeToolPreview(text: string): string {
     .find(Boolean) ?? "";
 }
 
-function formatTimestampRange(start: string, end: string): string {
-  const startLabel = formatTimestamp(start);
-  const endLabel = formatTimestamp(end);
-  if (!startLabel || !endLabel || startLabel === endLabel) {
-    return endLabel || startLabel;
+function getCommandIntent(text: string): CommandIntent {
+  const firstLine = text
+    .split("\n")
+    .map((line) => line.trim().toLowerCase())
+    .find(Boolean);
+
+  if (!firstLine) {
+    return "command";
   }
 
-  return `${startLabel} - ${endLabel}`;
+  if (/^(rg|grep|fd|find)\b/.test(firstLine) || firstLine.includes(" search ")) {
+    return "search";
+  }
+
+  if (
+    /^(sed|cat|head|tail|less|more|awk|cut)\b/.test(firstLine) ||
+    firstLine.startsWith("bat ") ||
+    firstLine.startsWith("open ")
+  ) {
+    return "read";
+  }
+
+  if (
+    firstLine.includes("npm run test") ||
+    firstLine.includes("pnpm run test") ||
+    firstLine.includes("yarn test") ||
+    firstLine.includes("vitest") ||
+    firstLine.includes("jest") ||
+    firstLine.includes("pytest") ||
+    firstLine.includes("cargo test")
+  ) {
+    return "test";
+  }
+
+  if (
+    firstLine.includes("npm run build") ||
+    firstLine.includes("pnpm run build") ||
+    firstLine.includes("yarn build") ||
+    firstLine.includes("vite build") ||
+    firstLine.includes("tsc ") ||
+    firstLine === "tsc" ||
+    firstLine.includes("cargo build")
+  ) {
+    return "build";
+  }
+
+  if (/^git\s+(status|diff|show|log|branch|grep|rev-parse)\b/.test(firstLine)) {
+    return "git";
+  }
+
+  return "command";
 }
 
-function renderToolStreamItem(entry: RunLogEntry, outputEntries: RunLogEntry[]) {
+function getIntentLabel(intent: CommandIntent, count: number): string {
+  switch (intent) {
+    case "read":
+      return count === 1 ? "Read a file" : `Read ${count} files`;
+    case "search":
+      return count === 1 ? "Searched code" : `Searched code ${count} times`;
+    case "test":
+      return count === 1 ? "Ran tests" : `Ran ${count} test commands`;
+    case "build":
+      return count === 1 ? "Built the project" : `Ran ${count} build commands`;
+    case "git":
+      return count === 1 ? "Checked git state" : `Checked git state ${count} times`;
+    default:
+      return count === 1 ? "Ran a command" : `Ran ${count} commands`;
+  }
+}
+
+function getToolActivityLabel(entry: RunLogEntry, count = 1): string {
+  const itemType = entry.metadata?.itemType?.toLowerCase() ?? "";
+
+  if (itemType.includes("filesearch")) {
+    return count === 1 ? "Searched code" : `Searched code ${count} times`;
+  }
+
+  if (itemType.includes("filechange")) {
+    return count === 1 ? "Edited a file" : `Edited ${count} files`;
+  }
+
+  if (itemType.includes("command")) {
+    return getIntentLabel(getCommandIntent(entry.text), count);
+  }
+
+  const title = normalizeToolTitle(entry);
+  if (count === 1) {
+    return title;
+  }
+
+  return `${count} ${title.toLowerCase()} actions`;
+}
+
+function getCommandGroupLabel(item: LiveLogCommandExecutionGroupStreamItem): string {
+  const intents = item.items.map(({ entry }) => getCommandIntent(entry.text));
+  const [firstIntent] = intents;
+  const sameIntent = Boolean(firstIntent) && intents.every((intent) => intent === firstIntent);
+
+  return getIntentLabel(sameIntent && firstIntent ? firstIntent : "command", item.items.length);
+}
+
+function renderEntryMetadata(entry: RunLogEntry) {
+  const entryMetadata = metadataEntries(entry);
+  if (entryMetadata.length === 0) {
+    return null;
+  }
+
+  return (
+    <dl className="m-0 flex flex-wrap gap-2 px-4 pt-4 text-[0.64rem] text-[var(--muted)]">
+      {entryMetadata.map(([key, value]) => (
+        <div
+          key={`${entry.id}-${key}`}
+          className="inline-flex min-w-0 items-center gap-1 border border-border bg-[var(--surface-soft)] px-2 py-1"
+        >
+          <dt className="font-mono uppercase tracking-[0.12em] text-[0.5rem] text-[var(--muted)]">
+            {key}
+          </dt>
+          <dd className="m-0 min-w-0 truncate text-[var(--text)]">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function renderProseBlock(
+  text: string,
+  options: {
+    className?: string;
+    tone?: "default" | "danger" | "muted";
+  } = {}
+) {
+  const { className, tone = "default" } = options;
+
+  return (
+    <pre
+      className={cn(
+        "m-0 whitespace-pre-wrap break-words font-sans text-[0.9rem] leading-[1.76] tracking-[0.005em]",
+        tone === "danger"
+          ? "text-[var(--danger)]"
+          : tone === "muted"
+            ? "text-[var(--muted)]"
+            : "text-[var(--text)]",
+        className
+      )}
+    >
+      {text}
+    </pre>
+  );
+}
+
+function isSafeMarkdownHref(value: string): boolean {
+  return /^(https?:\/\/|mailto:|\/|\.\/|\.\.\/|#)/i.test(value);
+}
+
+function renderInlineMarkdown(text: string, keyPrefix: string): ReactNode[] {
+  const parts: ReactNode[] = [];
+  const pattern = /\[([^\]]+)\]\(([^)]+)\)|`([^`]+)`|\*\*([^*]+)\*\*|((?:https?:\/\/|mailto:)[^\s<]+)/g;
+  let lastIndex = 0;
+  let index = 0;
+
+  for (const match of text.matchAll(pattern)) {
+    const start = match.index ?? 0;
+    if (start > lastIndex) {
+      parts.push(text.slice(lastIndex, start));
+    }
+
+    const key = `${keyPrefix}-${index}`;
+    const [, label, href, code, strong, bareUrl] = match;
+
+    if (label && href) {
+      const normalizedHref = href.trim();
+      if (isSafeMarkdownHref(normalizedHref)) {
+        parts.push(
+          <a
+            key={key}
+            href={normalizedHref}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[var(--accent)] no-underline hover:underline"
+            title={normalizedHref}
+          >
+            {label}
+          </a>
+        );
+      } else {
+        parts.push(match[0]);
+      }
+    } else if (bareUrl) {
+      parts.push(
+        <a
+          key={key}
+          href={bareUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="text-[var(--accent)] no-underline hover:underline"
+        >
+          {bareUrl}
+        </a>
+      );
+    } else if (code) {
+      parts.push(
+        <code
+          key={key}
+          className="border border-border bg-[var(--surface-soft)] px-1 font-mono text-[0.8em]"
+        >
+          {code}
+        </code>
+      );
+    } else if (strong) {
+      parts.push(
+        <strong key={key} className="font-semibold text-[var(--text)]">
+          {strong}
+        </strong>
+      );
+    } else {
+      parts.push(match[0]);
+    }
+
+    lastIndex = start + match[0].length;
+    index += 1;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts;
+}
+
+function parseMarkdownBlocks(text: string): MarkdownBlock[] {
+  const lines = text.replace(/\r\n?/g, "\n").split("\n");
+  const blocks: MarkdownBlock[] = [];
+
+  for (let index = 0; index < lines.length; ) {
+    const line = lines[index] ?? "";
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      index += 1;
+      continue;
+    }
+
+    if (trimmed.startsWith("```")) {
+      const codeLines: string[] = [];
+      index += 1;
+
+      while (index < lines.length && !(lines[index] ?? "").trim().startsWith("```")) {
+        codeLines.push(lines[index] ?? "");
+        index += 1;
+      }
+
+      if (index < lines.length) {
+        index += 1;
+      }
+
+      blocks.push({
+        type: "code",
+        code: codeLines.join("\n")
+      });
+      continue;
+    }
+
+    const headingMatch = trimmed.match(/^(#{1,3})\s+(.+)$/);
+    if (headingMatch) {
+      blocks.push({
+        type: "heading",
+        depth: headingMatch[1]?.length ?? 1,
+        text: headingMatch[2] ?? ""
+      });
+      index += 1;
+      continue;
+    }
+
+    const listMatch = line.match(/^\s*((?:[-*+])|(?:\d+\.))\s+(.+)$/);
+    if (listMatch) {
+      const ordered = /\d+\./.test(listMatch[1] ?? "");
+      const items: string[] = [];
+
+      while (index < lines.length) {
+        const currentLine = lines[index] ?? "";
+        const currentMatch = currentLine.match(/^\s*((?:[-*+])|(?:\d+\.))\s+(.+)$/);
+        if (!currentMatch || /\d+\./.test(currentMatch[1] ?? "") !== ordered) {
+          break;
+        }
+
+        items.push(currentMatch[2] ?? "");
+        index += 1;
+      }
+
+      blocks.push({
+        type: "list",
+        ordered,
+        items
+      });
+      continue;
+    }
+
+    const paragraphLines: string[] = [];
+    while (index < lines.length) {
+      const currentLine = lines[index] ?? "";
+      const currentTrimmed = currentLine.trim();
+      if (!currentTrimmed) {
+        break;
+      }
+      if (
+        currentTrimmed.startsWith("```") ||
+        /^#{1,3}\s+/.test(currentTrimmed) ||
+        /^\s*((?:[-*+])|(?:\d+\.))\s+/.test(currentLine)
+      ) {
+        break;
+      }
+
+      paragraphLines.push(currentLine);
+      index += 1;
+    }
+
+    blocks.push({
+      type: "paragraph",
+      text: paragraphLines.join("\n")
+    });
+  }
+
+  return blocks;
+}
+
+function renderMarkdownBlock(
+  text: string,
+  options: {
+    className?: string;
+    tone?: "default" | "danger" | "muted";
+  } = {}
+) {
+  const { className, tone = "default" } = options;
+  const blocks = parseMarkdownBlocks(text);
+
+  return (
+    <div
+      className={cn(
+        "grid gap-3 text-[0.9rem] leading-[1.76]",
+        tone === "danger"
+          ? "text-[var(--danger)]"
+          : tone === "muted"
+            ? "text-[var(--muted)]"
+            : "text-[var(--text)]",
+        className
+      )}
+    >
+      {blocks.map((block, index) => {
+        const key = `markdown-${index}`;
+
+        if (block.type === "code") {
+          return (
+            <pre
+              key={key}
+              className="m-0 overflow-x-auto border border-border bg-[var(--surface-soft)] px-3 py-2 font-mono text-[0.72rem] leading-[1.72]"
+            >
+              {block.code}
+            </pre>
+          );
+        }
+
+        if (block.type === "heading") {
+          const HeadingTag = block.depth === 1 ? "h3" : block.depth === 2 ? "h4" : "h5";
+
+          return (
+            <HeadingTag key={key} className="m-0 text-[0.84rem] font-semibold">
+              {renderInlineMarkdown(block.text, key)}
+            </HeadingTag>
+          );
+        }
+
+        if (block.type === "list") {
+          const ListTag = block.ordered ? "ol" : "ul";
+
+          return (
+            <ListTag
+              key={key}
+              className={cn(
+                "m-0 grid gap-1 pl-5",
+                block.ordered ? "list-decimal" : "list-disc"
+              )}
+            >
+              {block.items.map((item, itemIndex) => (
+                <li key={`${key}-item-${itemIndex}`}>
+                  {renderInlineMarkdown(item, `${key}-item-${itemIndex}`)}
+                </li>
+              ))}
+            </ListTag>
+          );
+        }
+
+        return (
+          <p key={key} className="m-0 whitespace-pre-wrap break-words">
+            {renderInlineMarkdown(block.text, key).map((node, nodeIndex) => (
+              <Fragment key={`${key}-node-${nodeIndex}`}>{node}</Fragment>
+            ))}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
+function renderMonospaceBlock(
+  text: string,
+  options: {
+    className?: string;
+    tone?: "default" | "danger" | "muted";
+  } = {}
+) {
+  const { className, tone = "default" } = options;
+
+  return (
+    <pre
+      className={cn(
+        "m-0 overflow-x-auto whitespace-pre-wrap break-words font-mono text-[0.72rem] leading-[1.72]",
+        tone === "danger"
+          ? "text-[var(--danger)]"
+          : tone === "muted"
+            ? "text-[var(--muted)]"
+            : "text-[var(--text)]",
+        className
+      )}
+    >
+      {text}
+    </pre>
+  );
+}
+
+function renderStreamEntry(entry: RunLogEntry) {
   const toolStatus = getToolStatus(entry);
-  const isCommandExecution = isCommandExecutionEntry(entry);
-  const preview = summarizeToolPreview(entry.text);
+  const title = getEntryTitle(entry);
 
-  if (isCommandExecution) {
+  if (entry.kind === "user") {
     return (
-      <details
-        key={entry.id}
-        className="grid gap-2.5 border-l-2 border-l-[rgba(242,195,92,0.42)] px-0 pb-2.5 pl-3 pt-2.5"
-      >
-        <summary className="grid cursor-pointer list-none gap-2">
-          <div className="flex flex-wrap items-start justify-between gap-2 text-[0.64rem] text-[var(--muted)]">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <span className={cn(logConsoleLabelBaseClass, "text-[var(--warning)]")}>tool</span>
-              <strong>{normalizeToolTitle(entry)}</strong>
-              {toolStatus ? (
-                <span className={cn(logStatusChipBaseClass, getLogStatusToneClass(toolStatus.tone))}>
-                  {toolStatus.label}
-                </span>
-              ) : null}
-            </div>
-            <time dateTime={entry.timestamp}>{formatTimestamp(entry.timestamp)}</time>
-          </div>
-          {preview ? (
-            <code className="overflow-hidden text-ellipsis whitespace-nowrap text-[var(--muted)]">
-              {preview}
-            </code>
-          ) : null}
-        </summary>
-
-        <div>{renderEntryBody(entry)}</div>
-
-        {outputEntries.length > 0 ? (
-          <details className="grid gap-2 border-l border-border pl-3">
-            <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 text-[0.68rem] text-[var(--muted)]">
-              <span className={cn(logConsoleLabelBaseClass, "text-[var(--warning)]")}>
-                tool output
-              </span>
-              <span>{outputEntries.length} block{outputEntries.length > 1 ? "s" : ""}</span>
-            </summary>
-            <div className="grid gap-2">
-              {outputEntries.map((outputEntry) => renderToolOutputEntry(outputEntry))}
-            </div>
-          </details>
-        ) : null}
-      </details>
+      <article key={entry.id} className="ml-auto grid max-w-[min(34rem,86%)] gap-1 justify-items-end">
+        <div className="border border-[rgba(104,199,246,0.24)] bg-[var(--panel)] px-4 py-3">
+          {renderProseBlock(entry.text, {
+            className: "text-[0.86rem] leading-[1.68]"
+          })}
+        </div>
+        <div className="pr-1 text-[0.64rem] text-[var(--muted)]">
+          <time dateTime={entry.timestamp}>{formatTimestamp(entry.timestamp)}</time>
+        </div>
+      </article>
     );
   }
+
+  if (entry.kind === "agent") {
+    return (
+      <article key={entry.id} className="grid max-w-[min(48rem,94%)] gap-1">
+        <div className="flex flex-wrap items-center gap-2 pl-1 text-[0.64rem] text-[var(--muted)]">
+          <span
+            className={cn(
+              logEyebrowBaseClass,
+              "text-[var(--accent-strong)]"
+            )}
+          >
+            assistant
+          </span>
+          {title ? <span>{title}</span> : null}
+          <time dateTime={entry.timestamp}>{formatTimestamp(entry.timestamp)}</time>
+        </div>
+        <div className="border border-border bg-[var(--panel)] px-4 py-3">
+          {renderMarkdownBlock(entry.text)}
+        </div>
+      </article>
+    );
+  }
+
+  if (entry.kind === "text") {
+    const isError = entry.stream === "stderr";
+
+    return (
+      <article key={entry.id} className="grid gap-1">
+        <div className="flex flex-wrap items-center gap-2 pl-1 text-[0.64rem] text-[var(--muted)]">
+          <span
+            className={cn(
+              logEyebrowBaseClass,
+              isError
+                ? "text-[var(--danger)]"
+                : "text-[var(--muted)]"
+            )}
+          >
+            {entry.stream}
+          </span>
+          {title ? <span>{title}</span> : null}
+          <time dateTime={entry.timestamp}>{formatTimestamp(entry.timestamp)}</time>
+        </div>
+        <div
+          className={cn(
+            "border px-4 py-3",
+            isError
+              ? "border-[rgba(240,113,113,0.22)] bg-[rgba(240,113,113,0.06)]"
+              : "border-border bg-[var(--surface-soft)]"
+          )}
+        >
+          {renderMonospaceBlock(entry.text, {
+            tone: isError ? "danger" : "default"
+          })}
+        </div>
+      </article>
+    );
+  }
+
+  const preview = summarizeToolPreview(entry.text);
+
+  return (
+    <article key={entry.id} className="flex py-1">
+      <div className="flex flex-wrap items-center gap-2 pl-1 text-left text-[0.68rem]">
+        <span
+          className={cn(
+            logEyebrowBaseClass,
+            entry.kind === "status"
+              ? "text-[var(--info)]"
+              : "text-[var(--muted)]"
+          )}
+        >
+          {ENTRY_LABELS[entry.kind]}
+        </span>
+        {title ? <strong className="text-[var(--text)]">{title}</strong> : null}
+        {preview ? <span className="text-[var(--muted)]">{preview}</span> : null}
+        {toolStatus ? (
+          <span className={cn(logStatusChipBaseClass, getLogStatusToneClass(toolStatus.tone))}>
+            {toolStatus.label}
+          </span>
+        ) : null}
+        <time className="text-[var(--muted)]" dateTime={entry.timestamp}>
+          {formatTimestamp(entry.timestamp)}
+        </time>
+      </div>
+    </article>
+  );
+}
+
+function renderToolOutputEntry(entry: RunLogEntry) {
+  const isError = entry.stream === "stderr";
 
   return (
     <article
       key={entry.id}
-      className="grid gap-2.5 border-l-2 border-l-[rgba(242,195,92,0.42)] px-0 pb-2.5 pl-3 pt-2.5"
+      className={cn(
+        "grid gap-2 border px-4 py-3",
+        isError
+          ? "border-[rgba(240,113,113,0.18)] bg-[rgba(240,113,113,0.06)]"
+          : "border-border bg-[var(--surface-soft)]"
+      )}
     >
-      <div className="flex flex-wrap items-start justify-between gap-2 text-[0.64rem] text-[var(--muted)]">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-[0.64rem] text-[var(--muted)]">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className={cn(logConsoleLabelBaseClass, "text-[var(--warning)]")}>tool</span>
-          <strong>{normalizeToolTitle(entry)}</strong>
-          {toolStatus ? (
-            <span className={cn(logStatusChipBaseClass, getLogStatusToneClass(toolStatus.tone))}>
-              {toolStatus.label}
-            </span>
-          ) : null}
+          <span
+            className={cn(
+              logEyebrowBaseClass,
+              isError
+                ? "text-[var(--danger)]"
+                : "text-[var(--warning)]"
+            )}
+          >
+            {entry.stream === "stderr" ? "tool stderr" : "tool output"}
+          </span>
         </div>
         <time dateTime={entry.timestamp}>{formatTimestamp(entry.timestamp)}</time>
       </div>
-
-      <div>{renderEntryBody(entry)}</div>
-
-      {outputEntries.length > 0 ? (
-        <details className="grid gap-2 border-l border-border pl-3">
-          <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 text-[0.68rem] text-[var(--muted)]">
-            <span className={cn(logConsoleLabelBaseClass, "text-[var(--warning)]")}>
-              tool output
-            </span>
-            <span>{outputEntries.length} block{outputEntries.length > 1 ? "s" : ""}</span>
-          </summary>
-          <div className="grid gap-2">
-            {outputEntries.map((outputEntry) => renderToolOutputEntry(outputEntry))}
-          </div>
-        </details>
-      ) : null}
+      {renderMonospaceBlock(entry.text, {
+        tone: isError ? "danger" : "default"
+      })}
     </article>
+  );
+}
+
+function renderToolStreamItem(entry: RunLogEntry, outputEntries: RunLogEntry[]) {
+  const toolStatus = getToolStatus(entry);
+  const preview = summarizeToolPreview(entry.text);
+
+  return (
+    <details
+      key={entry.id}
+      className="px-0 py-0.5"
+    >
+      <summary className="list-none cursor-pointer px-1 py-1">
+        <div className="grid min-w-0 gap-1.5">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 text-[0.76rem]">
+            <span className="pt-[1px] text-[var(--muted)]" aria-hidden="true">
+              <DisclosureIcon />
+            </span>
+            <span
+              className={cn(
+                logEyebrowBaseClass,
+                "text-[var(--warning)]"
+              )}
+            >
+              activity
+            </span>
+            <strong className="text-[0.86rem] font-medium text-[var(--text)]">
+              {getToolActivityLabel(entry)}
+            </strong>
+            {toolStatus ? (
+              <span className={cn(logStatusChipBaseClass, getLogStatusToneClass(toolStatus.tone))}>
+                {toolStatus.label}
+              </span>
+            ) : null}
+            <time className="text-[0.72rem] text-[var(--muted)]" dateTime={entry.timestamp}>
+              {formatTimestamp(entry.timestamp)}
+            </time>
+          </div>
+          {preview ? (
+            <code className="overflow-hidden text-ellipsis whitespace-nowrap pl-6 font-mono text-[0.68rem] text-[var(--muted)]">
+              {preview}
+            </code>
+          ) : null}
+        </div>
+      </summary>
+
+      <div className="mt-1 grid gap-2 pl-6 max-[640px]:pl-0">
+        <div className="border border-border bg-[var(--surface-soft)]">
+          {renderEntryMetadata(entry)}
+          <div className="px-4 py-2.5">
+            {renderMonospaceBlock(entry.text)}
+          </div>
+        </div>
+
+        {outputEntries.length > 0 ? (
+          <details className="border border-border bg-[var(--surface-faint)] px-4 py-2">
+            <summary className="list-none cursor-pointer">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[0.68rem] text-[var(--muted)]">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[var(--muted)]" aria-hidden="true">
+                    <DisclosureIcon />
+                  </span>
+                  <span
+                    className={cn(
+                      logEyebrowBaseClass,
+                      "text-[var(--warning)]"
+                    )}
+                  >
+                    output
+                  </span>
+                  <span>
+                    {outputEntries.length} block{outputEntries.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+              </div>
+            </summary>
+            <div className="mt-2 grid gap-1.5">
+              {outputEntries.map((outputEntry) => renderToolOutputEntry(outputEntry))}
+            </div>
+          </details>
+        ) : null}
+      </div>
+    </details>
   );
 }
 
@@ -458,32 +778,32 @@ function renderCommandExecutionGroup(item: LiveLogCommandExecutionGroupStreamIte
     return null;
   }
 
-  const commandLabel =
-    item.items.length === 1
-      ? "1 Command Execution"
-      : `${item.items.length} Command Executions`;
-
   return (
     <details
       key={`${firstEntry.id}-${lastEntry.id}`}
-      className="grid gap-2.5 border-l-2 border-l-[rgba(242,195,92,0.5)] px-0 pb-2.5 pl-3 pt-2.5"
+      className="px-0 py-0.5"
     >
-      <summary className="grid cursor-pointer list-none gap-2">
-        <div className="flex flex-wrap items-start justify-between gap-2 text-[0.64rem] text-[var(--muted)]">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className={cn(logConsoleLabelBaseClass, "text-[var(--warning)]")}>tool</span>
-            <strong>{commandLabel}</strong>
-          </div>
-          <span className="text-[0.64rem] text-[var(--muted)]">
+      <summary className="list-none cursor-pointer px-1 py-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span
+            className={cn(
+              logEyebrowBaseClass,
+              "text-[var(--warning)]"
+            )}
+          >
+            activity
+          </span>
+          <strong className="text-[0.86rem] font-medium text-[var(--text)]">
+            {getCommandGroupLabel(item)}
+          </strong>
+          <span className="text-[0.72rem] text-[var(--muted)]">
             {formatTimestampRange(firstEntry.timestamp, lastEntry.timestamp)}
           </span>
         </div>
       </summary>
 
-      <div className="grid gap-0 border-l border-border pl-3">
-        {item.items.map(({ entry, outputEntries }) =>
-          renderToolStreamItem(entry, outputEntries)
-        )}
+      <div className="mt-1 grid gap-1 pl-6 max-[640px]:pl-0">
+        {item.items.map(({ entry, outputEntries }) => renderToolStreamItem(entry, outputEntries))}
       </div>
     </details>
   );
@@ -611,6 +931,8 @@ export function LiveLog({
       : inputMode === "review"
         ? "Resume the latest Codex thread from review and continue in the same conversation."
         : null;
+  const viewportClassName =
+    "mx-4 mb-4 grid h-[clamp(260px,58vh,680px)] min-h-0 auto-rows-max content-start gap-2.5 overflow-auto border border-border bg-[var(--surface-faint)] p-4 max-[720px]:mx-3 max-[720px]:mb-3 max-[720px]:gap-2 max-[720px]:p-3";
 
   return (
     <div
@@ -619,8 +941,8 @@ export function LiveLog({
       }
     >
       {showStatus ? (
-        <section className="grid gap-3 rounded-none border border-border bg-[var(--panel)] p-4">
-          <h3 className="m-0 text-[0.82rem]">Run status</h3>
+        <section className="grid gap-3 rounded-none border border-border bg-[var(--panel)] p-4 text-[0.78rem]">
+          <h3 className="m-0 text-[0.76rem]">Run status</h3>
           <div className="flex flex-col items-start justify-between gap-3 rounded-none border border-border bg-[var(--panel)] p-3 min-[721px]:flex-row min-[721px]:items-center">
             <div>
               <strong>{activeRun ? activeRun.status : "idle"}</strong>
@@ -652,123 +974,123 @@ export function LiveLog({
         <div
           className={
             showStatus
-              ? "flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3"
-              : "flex flex-wrap items-center justify-between gap-2 border-b border-border bg-[var(--panel)] px-4 py-3 max-[720px]:flex-col max-[720px]:items-stretch max-[720px]:px-3"
+              ? "flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3"
+              : "flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 max-[720px]:px-3"
           }
         >
-          <div className={showStatus ? "grid gap-1" : "flex min-w-0 flex-wrap items-center gap-2"}>
-            <h3 className="m-0">Live log</h3>
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
+            <h3 className="m-0 text-[0.9rem]">Live log</h3>
             {streamEntries.length > 0 ? (
               <span
-                className="m-0 font-mono text-[0.58rem] uppercase tracking-[0.14em] text-[var(--muted)]"
+                className="inline-flex min-h-5 items-center rounded-none border border-border bg-[var(--panel)] px-2 font-mono text-[0.54rem] uppercase tracking-[0.14em] text-[var(--muted)]"
                 aria-label={`${streamEntries.length} stream entries`}
                 title={`${streamEntries.length} stream entries`}
               >
                 {streamEntries.length}
               </span>
             ) : null}
-          </div>
-          {streamEntries.length > 0 ? (
-            <button
-              type="button"
-              className="inline-flex min-h-6 items-center gap-1.5 rounded-none border border-transparent bg-transparent px-2 text-[0.75rem] text-[var(--muted)] transition-[border-color,background-color,transform] hover:-translate-y-px hover:border-border hover:bg-[var(--surface-soft)]"
-              onClick={() => {
-                void handleCopyLog();
-              }}
-            >
-              <CopyIcon />
-              <span>
-                {copyState === "copied"
-                  ? "Copied"
-                  : copyState === "failed"
-                    ? "Retry copy"
-                    : "Copy"}
+            {!showStatus && viewedRun ? (
+              <span className="min-w-0 text-[0.68rem] text-[var(--muted)]">
+                Viewing {viewedRun.status} run{" "}
+                <code className="font-mono text-[0.68rem] text-[var(--accent)]">
+                  {viewedRun.id}
+                </code>
               </span>
-            </button>
-          ) : null}
-        </div>
-        {!showStatus && viewedRun ? (
-          <div className="border-b border-border bg-[var(--panel)] px-4 py-3 text-[0.74rem] text-[var(--muted)] max-[720px]:px-3">
-            Viewing {viewedRun.status} run{" "}
-            <code className="font-mono text-[0.72rem] text-[var(--accent)]">{viewedRun.id}</code>
+            ) : null}
           </div>
-        ) : null}
+          <div className="flex flex-wrap items-center gap-2">
+            {streamEntries.length > 0 && !isPinnedToBottom ? (
+              <span className="font-mono text-[0.54rem] uppercase tracking-[0.14em] text-[var(--muted)]">
+                Scroll paused
+              </span>
+            ) : null}
+            {streamEntries.length > 0 ? (
+              <button
+                type="button"
+                className="inline-flex min-h-7 items-center gap-1.5 rounded-none border border-transparent bg-transparent px-2.5 text-[0.7rem] text-[var(--muted)] transition-[border-color,background-color,transform] hover:-translate-y-px hover:border-border hover:bg-[var(--surface-soft)]"
+                onClick={() => {
+                  void handleCopyLog();
+                }}
+              >
+                <CopyIcon />
+                <span>
+                  {copyState === "copied"
+                    ? "Copied"
+                    : copyState === "failed"
+                      ? "Retry copy"
+                      : "Copy"}
+                </span>
+              </button>
+            ) : null}
+          </div>
+        </div>
+
         {aggregatedEntries.length === 0 ? (
           isLoading ? (
-            <div className="grid h-[clamp(260px,58vh,680px)] place-items-center overflow-auto border-t-0 px-3 py-3 text-[var(--muted)]">
+            <div className="grid h-[clamp(260px,58vh,680px)] place-items-center overflow-auto px-3 py-3 text-[var(--muted)]">
               Loading logs...
             </div>
           ) : (
-            <div className="grid h-[clamp(260px,58vh,680px)] place-items-center overflow-auto border-t-0 px-3 py-3 text-[var(--muted)]">
+            <div className="grid h-[clamp(260px,58vh,680px)] place-items-center overflow-auto px-3 py-3 text-[var(--muted)]">
               Logs will appear here when a run starts.
             </div>
           )
         ) : !hasVisibleEntries ? (
-          <div className="grid h-[clamp(260px,58vh,680px)] place-items-center overflow-auto border-t-0 px-3 py-3 text-[var(--muted)]">
+          <div className="grid h-[clamp(260px,58vh,680px)] place-items-center overflow-auto px-3 py-3 text-[var(--muted)]">
             Waiting for meaningful output.
           </div>
         ) : (
-          <div className="grid min-h-0 gap-3">
-            <div className="grid min-h-0 gap-3">
-              <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-3 max-[720px]:px-3">
-                <p className="m-0 font-mono text-[0.64rem] uppercase tracking-[0.14em] text-[var(--muted)]">
-                  Output stream
-                </p>
-                {streamEntries.length > 0 && !isPinnedToBottom ? (
-                  <span className={cn(logKindBaseClass, "text-[var(--muted)]")}>
-                    Scroll paused
-                  </span>
+          <div className="grid min-h-0">
+            {streamEntries.length > 0 ? (
+              <div ref={streamRef} className={viewportClassName} onScroll={handleStreamScroll}>
+                {stickyPlanEntry && stickyPlan ? (
+                  <StickyPlanCard entry={stickyPlanEntry} plan={stickyPlan} />
                 ) : null}
-              </div>
-              {streamEntries.length > 0 ? (
-                <div
-                  ref={streamRef}
-                  className="mx-4 mb-4 grid h-[clamp(260px,58vh,680px)] min-h-0 auto-rows-max content-start gap-2 overflow-auto border border-border bg-[linear-gradient(180deg,var(--panel-strong),var(--bg))] p-3 max-[720px]:mx-3 max-[720px]:mb-3"
-                  onScroll={handleStreamScroll}
-                >
-                  {stickyPlanEntry && stickyPlan ? (
-                    <StickyPlanCard entry={stickyPlanEntry} plan={stickyPlan} />
-                  ) : null}
-                  {displayItems.map((item) => {
-                    if (item.type === "command_execution_group") {
-                      return renderCommandExecutionGroup(item);
-                    }
+                {displayItems.map((item) => {
+                  if (item.type === "command_execution_group") {
+                    return renderCommandExecutionGroup(item);
+                  }
 
-                    return item.type === "tool"
-                      ? renderToolStreamItem(item.entry, item.outputEntries)
-                      : renderConsoleEntry(item.entry);
-                  })}
-                </div>
-              ) : (
-                <div className="mx-4 mb-4 grid h-[clamp(260px,58vh,680px)] min-h-0 auto-rows-max content-start gap-2 overflow-auto border border-border bg-[linear-gradient(180deg,var(--panel-strong),var(--bg))] p-3 max-[720px]:mx-3 max-[720px]:mb-3">
-                  {stickyPlanEntry && stickyPlan ? (
-                    <StickyPlanCard entry={stickyPlanEntry} plan={stickyPlan} />
-                  ) : (
-                    <div className="grid place-items-center text-[var(--muted)]">
-                      This run did not emit output.
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+                  return item.type === "tool"
+                    ? renderToolStreamItem(item.entry, item.outputEntries)
+                    : renderStreamEntry(item.entry);
+                })}
+              </div>
+            ) : (
+              <div className={viewportClassName}>
+                {stickyPlanEntry && stickyPlan ? (
+                  <StickyPlanCard entry={stickyPlanEntry} plan={stickyPlan} />
+                ) : (
+                  <div className="grid h-full place-items-center text-[var(--muted)]">
+                    This run did not emit output.
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
+
         {canSendInput && onSendInput ? (
           <form
-            className="grid gap-2 border-t border-border bg-[linear-gradient(180deg,var(--panel),var(--surface-faint))] px-4 py-3 max-[720px]:px-3"
+            className="grid gap-3 border-t border-border bg-[var(--panel)] px-4 py-4 max-[720px]:px-3"
             onSubmit={(event) => {
               event.preventDefault();
               void handleSendInput();
             }}
           >
-            <div className="flex flex-wrap items-center justify-between gap-2.5">
-              <div className="flex min-w-0 flex-wrap items-baseline gap-2.5">
-                <strong>{inputMode === "review" ? "Continue thread" : "Intervene live"}</strong>
-                {inputAssistText ? <span>{inputAssistText}</span> : null}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="grid gap-1">
+                <strong className="text-[0.84rem]">
+                  {inputMode === "review" ? "Continue thread" : "Intervene live"}
+                </strong>
+                {inputAssistText ? (
+                  <p className="m-0 text-[0.68rem] text-[var(--muted)]">{inputAssistText}</p>
+                ) : null}
               </div>
               <Button
                 type="submit"
                 disabled={submitState === "sending" || draft.trim().length === 0}
+                className="px-4"
               >
                 {submitState === "sending" ? "Sending..." : "Send"}
               </Button>
@@ -797,10 +1119,10 @@ export function LiveLog({
                     : "Tell the agent what to do next..."
                 }
                 disabled={submitState === "sending"}
-                className="min-h-14 resize-y"
+                className="min-h-16 resize-y"
               />
             </label>
-            <div className="flex flex-wrap items-center justify-between gap-2.5 text-[0.68rem] leading-[1.4] text-[var(--muted)]">
+            <div className="flex flex-wrap items-center justify-between gap-2.5 text-[0.64rem] leading-[1.4] text-[var(--muted)]">
               <span>Press Ctrl/Cmd+Enter to send.</span>
               {submitError ? <span className="text-[var(--danger)]">{submitError}</span> : null}
             </div>
@@ -821,21 +1143,19 @@ function StickyPlanCard({
   const completedCount = plan.items.filter((item) => item.done).length;
   const summary =
     plan.items.length > 0
-      ? `${completedCount} out of ${plan.items.length} task${
-          plan.items.length === 1 ? "" : "s"
-        } completed`
+      ? `${completedCount} of ${plan.items.length} task${plan.items.length === 1 ? "" : "s"} done`
       : plan.summary ?? "Execution plan";
 
   return (
     <section className="sticky top-0 z-[3] grid gap-3 rounded-none border border-border bg-[linear-gradient(180deg,var(--panel),var(--panel-strong))] p-4 shadow-[0_10px_24px_rgba(0,0,0,0.18)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-2.5">
-          <span className="inline-flex min-h-[22px] items-center rounded-none border border-[rgba(73,214,196,0.28)] bg-[rgba(73,214,196,0.1)] px-2 font-mono text-[0.62rem] uppercase tracking-[0.12em] text-[var(--accent-strong)]">
+          <span className="inline-flex min-h-[22px] items-center px-1 font-mono text-[0.58rem] uppercase tracking-[0.12em] text-[var(--accent-strong)]">
             Plan
           </span>
           <strong>{summary}</strong>
         </div>
-        <time className="text-[0.68rem] text-[var(--muted)]" dateTime={entry.timestamp}>
+        <time className="text-[0.64rem] text-[var(--muted)]" dateTime={entry.timestamp}>
           {formatTimestamp(entry.timestamp)}
         </time>
       </div>
@@ -856,9 +1176,7 @@ function StickyPlanCard({
                 )}
                 aria-hidden="true"
               />
-              <span
-                className={cn(item.done && "text-[var(--muted)] line-through")}
-              >
+              <span className={cn(item.done && "text-[var(--muted)] line-through")}>
                 {item.text}
               </span>
             </li>
@@ -867,9 +1185,12 @@ function StickyPlanCard({
       ) : null}
 
       {plan.body ? (
-        <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-words pt-0.5 text-[var(--muted)]">
-          {plan.body}
-        </pre>
+        <div className="border border-border bg-[var(--surface-soft)] px-4 py-3">
+          {renderProseBlock(plan.body, {
+            tone: "muted",
+            className: "text-[0.8rem] leading-[1.62]"
+          })}
+        </div>
       ) : null}
     </section>
   );
@@ -880,6 +1201,21 @@ function CopyIcon() {
     <svg viewBox="0 0 16 16" aria-hidden="true" className="size-3 shrink-0">
       <path
         d="M6 3.5h6.5v8H6zM3.5 6V12.5H10"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.2"
+      />
+    </svg>
+  );
+}
+
+function DisclosureIcon() {
+  return (
+    <svg viewBox="0 0 12 12" aria-hidden="true" className="size-2.5 shrink-0">
+      <path
+        d="M4 2.5 7.5 6 4 9.5"
         fill="none"
         stroke="currentColor"
         strokeLinecap="round"

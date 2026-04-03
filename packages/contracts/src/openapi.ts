@@ -204,7 +204,7 @@ export function buildOpenApiDocument(): OpenApiDocument {
     },
     servers: [
       {
-        url: "http://127.0.0.1:3484"
+        url: "http://127.0.0.1:3999"
       }
     ],
     tags: [

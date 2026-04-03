@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Workhorse logo</title>
+  <desc id="desc">A stylized horseshoe wrapped around a W on an industrial badge.</desc>
+  <defs>
+    <linearGradient id="bg" x1="40" y1="24" x2="214" y2="232" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#11191a" />
+      <stop offset="1" stop-color="#091011" />
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(186 68) rotate(132.253) scale(98.5099)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7FE9DC" stop-opacity="0.34" />
+      <stop offset="0.6" stop-color="#49D6C4" stop-opacity="0.12" />
+      <stop offset="1" stop-color="#49D6C4" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="shoe" x1="72" y1="40" x2="184" y2="198" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8BF4E8" />
+      <stop offset="1" stop-color="#1FB8A6" />
+    </linearGradient>
+    <linearGradient id="w" x1="92" y1="90" x2="164" y2="158" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F6FFFE" />
+      <stop offset="1" stop-color="#C7FFFA" />
+    </linearGradient>
+    <linearGradient id="mane" x1="46" y1="88" x2="76" y2="162" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F2C35C" />
+      <stop offset="1" stop-color="#49D6C4" />
+    </linearGradient>
+    <filter id="shadow" x="24" y="24" width="208" height="208" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="16" stdDeviation="12" flood-color="#000000" flood-opacity="0.35" />
+    </filter>
+  </defs>
+  <rect width="256" height="256" rx="52" fill="url(#bg)" />
+  <rect x="13" y="13" width="230" height="230" rx="39" fill="none" stroke="#DFF8F5" stroke-opacity="0.08" />
+  <circle cx="186" cy="68" r="78" fill="url(#glow)" />
+  <path d="M44 188L188 44" stroke="#49D6C4" stroke-opacity="0.08" stroke-width="10" stroke-linecap="round" />
+  <path d="M96 214L214 96" stroke="#49D6C4" stroke-opacity="0.06" stroke-width="6" stroke-linecap="round" />
+  <path d="M42 70H106" stroke="#DFF8F5" stroke-opacity="0.06" stroke-width="6" stroke-linecap="round" />
+  <path d="M150 42H214" stroke="#DFF8F5" stroke-opacity="0.05" stroke-width="6" stroke-linecap="round" />
+  <g filter="url(#shadow)">
+    <path d="M84 182V96C84 60 102 40 128 40C154 40 172 60 172 96V182" stroke="url(#shoe)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round" />
+    <circle cx="84" cy="126" r="8" fill="#0A0F10" />
+    <circle cx="172" cy="126" r="8" fill="#0A0F10" />
+    <circle cx="84" cy="126" r="11" stroke="#D7FBF7" stroke-opacity="0.55" stroke-width="2" />
+    <circle cx="172" cy="126" r="11" stroke="#D7FBF7" stroke-opacity="0.55" stroke-width="2" />
+    <path d="M92 92L108 156L128 116L148 156L164 92" stroke="url(#w)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M52 94L68 80" stroke="url(#mane)" stroke-width="10" stroke-linecap="round" />
+    <path d="M48 126L66 112" stroke="url(#mane)" stroke-width="10" stroke-linecap="round" stroke-opacity="0.92" />
+    <path d="M52 158L68 144" stroke="url(#mane)" stroke-width="10" stroke-linecap="round" stroke-opacity="0.82" />
+  </g>
+  <path d="M186 58L202 42" stroke="#F2C35C" stroke-opacity="0.55" stroke-width="6" stroke-linecap="round" />
+  <path d="M196 74L214 56" stroke="#7FE9DC" stroke-opacity="0.35" stroke-width="4" stroke-linecap="round" />
+</svg>
