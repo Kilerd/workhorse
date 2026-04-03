@@ -43,6 +43,12 @@ import {
 } from "../runners/codex-app-server-manager.js";
 import { CodexAcpRunner } from "../runners/codex-acp-runner.js";
 import { ClaudeCliRunner } from "../runners/claude-cli-runner.js";
+import {
+  buildContinuationRun,
+  canContinueCodexRun,
+  cloneRun,
+  resolveContinuationCandidateRunId
+} from "../runners/codex-continuation.js";
 import type { RunnerAdapter, RunnerControl } from "../runners/types.js";
 import { ShellRunner } from "../runners/shell-runner.js";
 import { EventBus } from "../ws/event-bus.js";
@@ -904,22 +910,22 @@ export class BoardService {
         }
       : task;
     const currentRuns = this.store.listRuns();
-    const previousRunId = this.resolveContinuationCandidateRunId(task, executionTask.runnerType);
+    const previousRunId = resolveContinuationCandidateRunId(task, executionTask.runnerType);
     const previousRunEntry =
       previousRunId !== undefined
         ? currentRuns.find((entry) => entry.id === previousRunId)
         : undefined;
     const previousRun = previousRunEntry
-      ? this.cloneRun(previousRunEntry)
+      ? cloneRun(previousRunEntry)
       : undefined;
-    const reusableRunEntry = this.canContinueCodexRun(
+    const reusableRunEntry = canContinueCodexRun(
       executionTask.runnerType,
       previousRunEntry
     )
       ? previousRunEntry
       : undefined;
     const run: Run = reusableRunEntry
-      ? this.buildContinuationRun(reusableRunEntry, options.runMetadata)
+      ? buildContinuationRun(reusableRunEntry, (id) => this.store.createLogPath(id), options.runMetadata)
       : (() => {
           const runId = createId();
           return {
@@ -1078,64 +1084,7 @@ export class BoardService {
     }
   }
 
-  private cloneRun(run: Run): Run {
-    return {
-      ...run,
-      metadata: run.metadata ? { ...run.metadata } : undefined
-    };
-  }
 
-  private resolveContinuationCandidateRunId(
-    task: Task,
-    runnerType: Run["runnerType"]
-  ): string | undefined {
-    if (runnerType === "codex") {
-      return task.continuationRunId ?? task.lastRunId;
-    }
-
-    return task.lastRunId;
-  }
-
-  private canContinueCodexRun(
-    runnerType: Run["runnerType"],
-    previousRun?: Run
-  ): previousRun is Run {
-    if (runnerType !== "codex" || previousRun?.runnerType !== "codex") {
-      return false;
-    }
-
-    return Boolean(previousRun.metadata?.threadId?.trim());
-  }
-
-  private buildContinuationRun(
-    previousRun: Run,
-    runMetadata?: Record<string, string>
-  ): Run {
-    return {
-      id: previousRun.id,
-      taskId: previousRun.taskId,
-      status: "queued",
-      runnerType: previousRun.runnerType,
-      command: "",
-      startedAt: new Date().toISOString(),
-      logFile: this.store.createLogPath(previousRun.id),
-      metadata: this.buildContinuationRunMetadata(previousRun.metadata, runMetadata)
-    };
-  }
-
-  private buildContinuationRunMetadata(
-    previousMetadata?: Record<string, string>,
-    nextMetadata?: Record<string, string>
-  ): Record<string, string> | undefined {
-    const metadata = {
-      ...(previousMetadata?.threadId ? { threadId: previousMetadata.threadId } : {}),
-      ...(previousMetadata?.turnId ? { turnId: previousMetadata.turnId } : {}),
-      ...(previousMetadata?.prUrl ? { prUrl: previousMetadata.prUrl } : {}),
-      ...(nextMetadata ?? {})
-    };
-
-    return Object.keys(metadata).length > 0 ? metadata : undefined;
-  }
 
   private async archiveTaskCodexThread(task: Task): Promise<void> {
     const runId = task.continuationRunId ?? task.lastRunId;
