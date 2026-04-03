@@ -11,6 +11,8 @@ import {
   validateListRunsParams,
   validateListTasksQuery,
   validatePlanTaskParams,
+  validateRequestTaskReviewParams,
+  validateTaskDiffParams,
   validateRunLogParams,
   validateStartTaskBody,
   validateStartTaskParams,
@@ -250,6 +252,26 @@ export function createApp(
       "Invalid task params"
     );
     const result = await service.planTask(params.taskId);
+    return c.json(ok(result));
+  });
+
+  app.post("/api/tasks/:taskId/review-request", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateRequestTaskReviewParams,
+      "Invalid task params"
+    );
+    const result = await service.requestTaskReview(params.taskId);
+    return c.json(ok(result));
+  });
+
+  app.get("/api/tasks/:taskId/diff", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateTaskDiffParams,
+      "Invalid task params"
+    );
+    const result = await service.getTaskDiff(params.taskId);
     return c.json(ok(result));
   });
 

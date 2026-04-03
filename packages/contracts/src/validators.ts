@@ -17,6 +17,10 @@ import type {
   ListTasksQuery,
   PlanTaskParams,
   PlanTaskResponse,
+  RequestTaskReviewParams,
+  RequestTaskReviewResponse,
+  TaskDiffParams,
+  TaskDiffResponse,
   RunLogParams,
   RunLogResponse,
   RunsResponse,
@@ -73,8 +77,11 @@ export const validateStopTaskParams = typia.createValidate<StopTaskParams>();
 export const validateTaskInputParams = typia.createValidate<TaskInputParams>();
 export const validateTaskInputBody = typia.createValidate<TaskInputBody>();
 export const validatePlanTaskParams = typia.createValidate<PlanTaskParams>();
+export const validateRequestTaskReviewParams =
+  typia.createValidate<RequestTaskReviewParams>();
 export const validateCleanupTaskWorktreeParams =
   typia.createValidate<CleanupTaskWorktreeParams>();
+export const validateTaskDiffParams = typia.createValidate<TaskDiffParams>();
 export const validateListRunsParams = typia.createValidate<ListRunsParams>();
 export const validateRunLogParams = typia.createValidate<RunLogParams>();
 
@@ -103,7 +110,9 @@ export const schemaRegistry = {
   TaskInputParams: () => typia.json.schema<TaskInputParams>(),
   TaskInputBody: () => typia.json.schema<TaskInputBody>(),
   PlanTaskParams: () => typia.json.schema<PlanTaskParams>(),
+  RequestTaskReviewParams: () => typia.json.schema<RequestTaskReviewParams>(),
   CleanupTaskWorktreeParams: () => typia.json.schema<CleanupTaskWorktreeParams>(),
+  TaskDiffParams: () => typia.json.schema<TaskDiffParams>(),
   ListRunsParams: () => typia.json.schema<ListRunsParams>(),
   RunLogParams: () => typia.json.schema<RunLogParams>(),
   SettingsResponse: () => typia.json.schema<SettingsResponse>(),
@@ -119,7 +128,9 @@ export const schemaRegistry = {
   StopTaskResponse: () => typia.json.schema<StopTaskResponse>(),
   TaskInputResponse: () => typia.json.schema<TaskInputResponse>(),
   PlanTaskResponse: () => typia.json.schema<PlanTaskResponse>(),
+  RequestTaskReviewResponse: () => typia.json.schema<RequestTaskReviewResponse>(),
   CleanupTaskWorktreeResponse: () => typia.json.schema<CleanupTaskWorktreeResponse>(),
+  TaskDiffResponse: () => typia.json.schema<TaskDiffResponse>(),
   RunsResponse: () => typia.json.schema<RunsResponse>(),
   RunLogResponse: () => typia.json.schema<RunLogResponse>(),
   HealthResponse: () => typia.json.schema<HealthResponse>()

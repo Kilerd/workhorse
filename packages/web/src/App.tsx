@@ -226,16 +226,18 @@ function ReactAppShell() {
     navigate(`/tasks/${taskId}`);
   }
 
+  const isTaskDetailView = location.pathname.startsWith("/tasks/");
+
   return (
     <div className="min-h-screen">
       <main
         className={
-          location.pathname.startsWith("/tasks/")
-            ? "relative z-[1] grid h-screen min-h-screen grid-rows-[auto_minmax(0,1fr)] overflow-hidden p-0"
+          isTaskDetailView
+            ? "relative z-[1] grid h-screen min-h-screen grid-rows-[minmax(0,1fr)] overflow-hidden p-0"
             : "relative z-[1] grid h-screen min-h-screen grid-rows-[auto_minmax(0,1fr)] overflow-hidden p-0"
         }
       >
-        <TopBar
+        {isTaskDetailView ? null : <TopBar
           workspaces={workspaces}
           selectedWorkspaceId={board.selectedWorkspaceId}
           selectedWorkspaceName={selectedWorkspaceName}
@@ -261,7 +263,7 @@ function ReactAppShell() {
           boardCount={boardTasks.length}
           runtimeStatus={board.healthQuery.data?.status ?? "connecting"}
           codexQuota={board.healthQuery.data?.codexQuota}
-        />
+        />}
 
         <Routes>
           <Route
@@ -277,6 +279,9 @@ function ReactAppShell() {
                   onPlan={(taskId) => board.planTask(taskId)}
                   onTaskStart={(taskId) => board.startTask(taskId)}
                   onTaskStop={(taskId) => board.stopTask(taskId)}
+                  onSkipReview={(taskId) =>
+                    board.updateTask({ taskId, body: { column: "review" } })
+                  }
                   onMoveToTodo={(taskId) => board.moveToTodo(taskId)}
                   onMarkDone={(taskId) => board.markDone(taskId)}
                   onArchive={(taskId) => board.archiveTask(taskId)}
@@ -441,7 +446,11 @@ function TaskDetailsRoute({
         runLog={runLog}
         onPlan={() => board.planTask(task.id)}
         onStart={() => board.startTask(task.id)}
+        onRequestReview={() => board.requestTaskReview(task.id)}
         onStop={() => board.stopTask(task.id)}
+        onSkipReview={() =>
+          board.updateTask({ taskId: task.id, body: { column: "review" } })
+        }
         onSendInput={(text) => board.sendTaskInput({ taskId: task.id, text })}
         onMoveToTodo={() => board.moveToTodo(task.id)}
         onMarkDone={() => board.markDone(task.id)}

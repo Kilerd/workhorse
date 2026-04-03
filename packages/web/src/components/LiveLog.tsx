@@ -931,8 +931,9 @@ export function LiveLog({
       : inputMode === "review"
         ? "Resume the latest Codex thread from review and continue in the same conversation."
         : null;
-  const viewportClassName =
-    "mx-4 mb-4 grid h-[clamp(260px,58vh,680px)] min-h-0 auto-rows-max content-start gap-2.5 overflow-auto border border-border bg-[var(--surface-faint)] p-4 max-[720px]:mx-3 max-[720px]:mb-3 max-[720px]:gap-2 max-[720px]:p-3";
+  const viewportClassName = showStatus
+    ? "mx-4 mb-4 grid h-[clamp(260px,58vh,680px)] min-h-0 auto-rows-max content-start gap-2.5 overflow-auto border border-border bg-[var(--surface-faint)] p-4 max-[720px]:mx-3 max-[720px]:mb-3 max-[720px]:gap-2 max-[720px]:p-3"
+    : "mx-4 mb-4 grid min-h-0 auto-rows-max content-start gap-2.5 overflow-auto border border-border bg-[var(--surface-faint)] p-4 max-[720px]:mx-3 max-[720px]:mb-3 max-[720px]:gap-2 max-[720px]:p-3";
 
   return (
     <div
@@ -970,7 +971,10 @@ export function LiveLog({
         </section>
       ) : null}
 
-      <section className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] rounded-none border border-border bg-[var(--panel)]">
+      <section className={cn(
+        "grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] rounded-none border border-border bg-[var(--panel)]",
+        !showStatus && "flex-1"
+      )}>
         <div
           className={
             showStatus

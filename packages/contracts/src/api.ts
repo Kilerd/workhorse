@@ -154,6 +154,10 @@ export interface PlanTaskParams {
   taskId: string;
 }
 
+export interface RequestTaskReviewParams {
+  taskId: string;
+}
+
 export interface StartTaskData {
   task: Task;
   run: Run;
@@ -172,6 +176,28 @@ export interface TaskInputData {
 export interface PlanTaskData {
   task: Task;
   plan: string;
+}
+
+export interface RequestTaskReviewData {
+  task: Task;
+  run: Run;
+}
+
+export interface TaskDiffParams {
+  taskId: string;
+}
+
+export interface TaskDiffFile {
+  path: string;
+  patch: string;
+  additions: number;
+  deletions: number;
+}
+
+export interface TaskDiffData {
+  files: TaskDiffFile[];
+  baseRef: string;
+  headRef: string;
 }
 
 export interface CleanupTaskWorktreeParams {
@@ -248,7 +274,9 @@ export type StartTaskResponse = ApiSuccess<StartTaskData>;
 export type StopTaskResponse = ApiSuccess<StopTaskData>;
 export type TaskInputResponse = ApiSuccess<TaskInputData>;
 export type PlanTaskResponse = ApiSuccess<PlanTaskData>;
+export type RequestTaskReviewResponse = ApiSuccess<RequestTaskReviewData>;
 export type CleanupTaskWorktreeResponse = ApiSuccess<CleanupTaskWorktreeData>;
+export type TaskDiffResponse = ApiSuccess<TaskDiffData>;
 export type RunsResponse = ApiSuccess<ListRunsData>;
 export type RunLogResponse = ApiSuccess<RunLogData>;
 export type HealthResponse = ApiSuccess<HealthData>;
@@ -299,7 +327,9 @@ export type SchemaName =
   | "TaskInputParams"
   | "TaskInputBody"
   | "PlanTaskParams"
+  | "RequestTaskReviewParams"
   | "CleanupTaskWorktreeParams"
+  | "TaskDiffParams"
   | "ListRunsParams"
   | "RunLogParams"
   | "WorkspacesResponse"
@@ -313,7 +343,9 @@ export type SchemaName =
   | "StopTaskResponse"
   | "TaskInputResponse"
   | "PlanTaskResponse"
+  | "RequestTaskReviewResponse"
   | "CleanupTaskWorktreeResponse"
+  | "TaskDiffResponse"
   | "RunsResponse"
   | "RunLogResponse"
   | "HealthResponse";
@@ -685,6 +717,56 @@ export const endpointRegistry: EndpointSpec[] = [
       {
         status: 400,
         description: "Unable to plan task",
+        schema: "ApiError"
+      },
+      {
+        status: 404,
+        description: "Task not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "requestTaskReview",
+    method: "post",
+    path: "/api/tasks/{taskId}/review-request",
+    summary: "Request a Claude review for a task in review",
+    tag: "Runs",
+    paramsSchema: "RequestTaskReviewParams",
+    responses: [
+      {
+        status: 200,
+        description: "Started review run",
+        schema: "RequestTaskReviewResponse"
+      },
+      {
+        status: 400,
+        description: "Unable to request review",
+        schema: "ApiError"
+      },
+      {
+        status: 404,
+        description: "Task not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "getTaskDiff",
+    method: "get",
+    path: "/api/tasks/{taskId}/diff",
+    summary: "Get the file diff for a task worktree",
+    tag: "Tasks",
+    paramsSchema: "TaskDiffParams",
+    responses: [
+      {
+        status: 200,
+        description: "Task diff content",
+        schema: "TaskDiffResponse"
+      },
+      {
+        status: 400,
+        description: "Diff not available",
         schema: "ApiError"
       },
       {

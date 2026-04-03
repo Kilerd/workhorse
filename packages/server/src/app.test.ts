@@ -118,6 +118,24 @@ async function createCodexTask(
   });
 }
 
+async function createClaudeTask(
+  service: BoardService,
+  workspaceId: string,
+  column: "backlog" | "todo" | "review" = "backlog"
+) {
+  return service.createTask({
+    title: "Run claude task",
+    workspaceId,
+    column,
+    runnerType: "claude",
+    runnerConfig: {
+      type: "claude",
+      prompt: "Review the current changes and summarize concrete issues.",
+      agent: "code-reviewer"
+    }
+  });
+}
+
 async function waitForRunToFinish(
   service: BoardService,
   taskId: string,
@@ -481,6 +499,289 @@ describe("workhorse runtime", () => {
     expect(completedRun.metadata?.prUrl).toBe(prUrl);
     expect(updatedTask?.column).toBe("review");
     expect(updatedTask?.pullRequestUrl).toBe(prUrl);
+  });
+
+  it("runs a claude task through the registered runner and persists the log", async () => {
+    const { service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+    const task = await createClaudeTask(service, workspace.id);
+
+    (service as any).runners.claude = {
+      type: "claude",
+      async start(_context: unknown, hooks: {
+        onOutput(entry: {
+          kind: "agent";
+          text: string;
+          stream: "stdout";
+          title: string;
+          source: string;
+        }): Promise<void>;
+        onExit(result: {
+          status: "succeeded";
+          metadata: Record<string, string>;
+        }): Promise<void>;
+      }) {
+        void sleep(25).then(async () => {
+          await hooks.onOutput({
+            kind: "agent",
+            text: "Review complete.\n",
+            stream: "stdout",
+            title: "Claude response",
+            source: "Claude CLI"
+          });
+          await hooks.onExit({
+            status: "succeeded",
+            metadata: {
+              claudeSessionId: "session-1"
+            }
+          });
+        });
+
+        return {
+          command: "claude -p --verbose --output-format stream-json --agent code-reviewer",
+          metadata: {
+            claudeAgent: "code-reviewer"
+          },
+          async stop() {}
+        };
+      }
+    };
+
+    const startResult = await service.startTask(task.id);
+    expect(startResult.run.status).toBe("running");
+
+    const completedRun = await waitForRunToFinish(service, task.id);
+    const updatedTask = service.listTasks({}).find((entry) => entry.id === task.id);
+    const log = await service.getRunLog(completedRun.id);
+
+    expect(completedRun.status).toBe("succeeded");
+    expect(completedRun.metadata?.claudeSessionId).toBe("session-1");
+    expect(updatedTask?.column).toBe("review");
+    expect(log.some((entry) => entry.text.includes("Review complete."))).toBe(true);
+  });
+
+  it("starts a manual Claude review run over HTTP for tasks in review", async () => {
+    const { app, service, workspaceDir } = await createRuntime();
+    await mkdir(join(workspaceDir, ".git"), { recursive: true });
+    (service as any).gitWorktrees = {
+      async resolveBaseRef() {
+        return "origin/main";
+      },
+      async ensureTaskWorktree(
+        _workspace: unknown,
+        reviewTask: { worktree: { path?: string; status: string } }
+      ) {
+        return {
+          ...reviewTask.worktree,
+          path: reviewTask.worktree.path ?? workspaceDir,
+          status: "ready"
+        };
+      },
+      async getGitHubRepositoryFullName() {
+        return null;
+      }
+    };
+    (service as any).githubPullRequests = {
+      async isAvailable() {
+        return false;
+      }
+    };
+    const workspace = await createWorkspace(service, workspaceDir);
+    const task = await createCodexTask(service, workspace.id, "review");
+
+    (service as any).runners.claude = {
+      type: "claude",
+      async start(_context: unknown, hooks: {
+        onExit(result: {
+          status: "succeeded";
+          metadata: Record<string, string>;
+        }): Promise<void>;
+      }) {
+        void sleep(25).then(() =>
+          hooks.onExit({
+            status: "succeeded",
+            metadata: {
+              reviewVerdict: "comment",
+              reviewSummary: "Looks good overall, but add one more test around retries."
+            }
+          })
+        );
+
+        return {
+          command: "claude -p --verbose --output-format stream-json --agent code-reviewer",
+          async stop() {}
+        };
+      }
+    };
+
+    const response = await app.request(`/api/tasks/${task.id}/review-request`, {
+      method: "POST"
+    });
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.data.run.runnerType).toBe("claude");
+    expect(payload.data.run.metadata).toMatchObject({
+      trigger: "manual_claude_review",
+      reviewAgent: "claude_code"
+    });
+
+    const completedRun = await waitForRunToFinish(service, task.id);
+    expect(completedRun.metadata).toMatchObject({
+      reviewVerdict: "comment",
+      reviewSummary: "Looks good overall, but add one more test around retries."
+    });
+  });
+
+  it("preserves the previous codex continuation run after a Claude review run", async () => {
+    const { service, workspaceDir } = await createRuntime();
+    await mkdir(join(workspaceDir, ".git"), { recursive: true });
+    (service as any).gitWorktrees = {
+      async resolveBaseRef() {
+        return "origin/main";
+      },
+      async ensureTaskWorktree(
+        _workspace: unknown,
+        reviewTask: { worktree: { path?: string; status: string } }
+      ) {
+        return {
+          ...reviewTask.worktree,
+          path: reviewTask.worktree.path ?? workspaceDir,
+          status: "ready"
+        };
+      },
+      async getGitHubRepositoryFullName() {
+        return null;
+      }
+    };
+    (service as any).githubPullRequests = {
+      async isAvailable() {
+        return false;
+      }
+    };
+    const workspace = await createWorkspace(service, workspaceDir);
+    const task = await createCodexTask(service, workspace.id, "review");
+    const previousRunId = "run-author-1";
+    const now = new Date().toISOString();
+    const store = (service as any).store as StateStore;
+
+    store.setTasks(
+      service.snapshot().tasks.map((entry) =>
+        entry.id === task.id
+          ? {
+              ...entry,
+              lastRunId: previousRunId,
+              continuationRunId: previousRunId
+            }
+          : entry
+      )
+    );
+    store.setRuns([
+      {
+        id: previousRunId,
+        taskId: task.id,
+        status: "succeeded",
+        runnerType: "codex",
+        command: "codex test runner",
+        startedAt: now,
+        endedAt: now,
+        logFile: store.createLogPath(previousRunId),
+        metadata: {
+          threadId: "thread-author-1",
+          turnId: "turn-author-1"
+        }
+      }
+    ]);
+    await store.save();
+
+    (service as any).runners.claude = {
+      type: "claude",
+      async start(_context: unknown, hooks: {
+        onExit(result: {
+          status: "succeeded";
+          metadata: Record<string, string>;
+        }): Promise<void>;
+      }) {
+        void sleep(25).then(() =>
+          hooks.onExit({
+            status: "succeeded",
+            metadata: {
+              reviewVerdict: "comment",
+              reviewSummary: "Consider adding a regression test for the empty retry queue path."
+            }
+          })
+        );
+
+        return {
+          command: "claude review runner",
+          async stop() {}
+        };
+      }
+    };
+
+    const reviewResult = await service.requestTaskReview(task.id);
+    let completedReviewRun: Run | undefined;
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      completedReviewRun = service
+        .listRuns(task.id)
+        .find((entry) => entry.id === reviewResult.run.id && Boolean(entry.endedAt));
+      if (completedReviewRun) {
+        break;
+      }
+      await sleep(25);
+    }
+    if (!completedReviewRun) {
+      throw new Error("Expected Claude review run to finish");
+    }
+    const taskAfterReview = service.listTasks({}).find((entry) => entry.id === task.id);
+
+    expect(reviewResult.run.runnerType).toBe("claude");
+    expect(completedReviewRun.metadata?.reviewVerdict).toBe("comment");
+    expect(taskAfterReview?.lastRunId).toBe(reviewResult.run.id);
+    expect(taskAfterReview?.continuationRunId).toBe(previousRunId);
+
+    let capturedContext: Record<string, unknown> | undefined;
+    (service as any).runners.codex = {
+      type: "codex",
+      async start(context: Record<string, unknown>, hooks: {
+        onExit(result: {
+          status: "succeeded";
+          metadata: Record<string, string>;
+        }): Promise<void>;
+      }) {
+        capturedContext = context;
+        void sleep(25).then(() =>
+          hooks.onExit({
+            status: "succeeded",
+            metadata: {
+              threadId: "thread-author-1",
+              turnId: "turn-author-2"
+            }
+          })
+        );
+
+        return {
+          command: "codex test runner",
+          metadata: {
+            threadId: "thread-author-1",
+            turnId: "turn-author-2"
+          },
+          async stop() {}
+        };
+      }
+    };
+
+    const resumed = await service.sendTaskInput(task.id, {
+      text: "Please address the reviewer feedback."
+    });
+
+    expect(resumed.run.id).toBe(previousRunId);
+    expect((capturedContext?.previousRun as Run | undefined)?.metadata?.threadId).toBe(
+      "thread-author-1"
+    );
+    expect(service.listTasks({}).find((entry) => entry.id === task.id)?.lastRunId).toBe(
+      previousRunId
+    );
   });
 
   it("serializes run output persistence and publication in emission order", async () => {

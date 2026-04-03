@@ -40,7 +40,7 @@ export interface RunnerControl {
 }
 
 export interface RunnerAdapter {
-  readonly type: "codex" | "shell";
+  readonly type: "claude" | "codex" | "shell";
   start(
     context: RunnerStartContext,
     hooks: RunnerLifecycleHooks

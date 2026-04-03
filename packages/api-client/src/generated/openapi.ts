@@ -230,6 +230,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tasks/{taskId}/review-request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request a Claude review for a task in review */
+        post: operations["requestTaskReview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/{taskId}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the file diff for a task worktree */
+        get: operations["getTaskDiff"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tasks/{taskId}/runs": {
         parameters: {
             query?: never;
@@ -332,14 +366,15 @@ export interface components {
             runnerConfig: components["schemas"]["RunnerConfig"];
             worktree: components["schemas"]["TaskWorktree"];
             lastRunId?: string;
+            continuationRunId?: string;
             pullRequestUrl?: string;
             pullRequest?: components["schemas"]["TaskPullRequest"];
             createdAt: string;
             updatedAt: string;
         };
-        TaskColumn: "backlog" | "todo" | "running" | "review" | "done" | "archived";
-        RunnerType: "codex" | "shell";
-        RunnerConfig: components["schemas"]["ShellRunnerConfig"] | components["schemas"]["CodexRunnerConfig"];
+        TaskColumn: "backlog" | "todo" | "running" | "ai-review" | "review" | "done" | "archived";
+        RunnerType: "claude" | "codex" | "shell";
+        RunnerConfig: components["schemas"]["ShellRunnerConfig"] | components["schemas"]["ClaudeRunnerConfig"] | components["schemas"]["CodexRunnerConfig"];
         ShellRunnerConfig: {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -347,6 +382,17 @@ export interface components {
              */
             type: "shell";
             command: string;
+        };
+        ClaudeRunnerConfig: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "claude";
+            prompt: string;
+            agent?: string;
+            model?: string;
+            permissionMode?: "default" | "acceptEdits" | "bypassPermissions" | "dontAsk" | "plan";
         };
         CodexRunnerConfig: {
             /**
@@ -441,7 +487,7 @@ export interface components {
             description?: string;
             workspaceId: string;
             worktreeBaseRef?: string;
-            column?: "backlog" | "todo" | "running" | "review" | "done" | "archived";
+            column?: "backlog" | "todo" | "running" | "ai-review" | "review" | "done" | "archived";
             order?: number;
             runnerType: components["schemas"]["RunnerType"];
             runnerConfig: components["schemas"]["RunnerConfig"];
@@ -454,10 +500,10 @@ export interface components {
             description?: string;
             workspaceId?: string;
             worktreeBaseRef?: string;
-            column?: "backlog" | "todo" | "running" | "review" | "done" | "archived";
+            column?: "backlog" | "todo" | "running" | "ai-review" | "review" | "done" | "archived";
             order?: number;
-            runnerType?: "codex" | "shell";
-            runnerConfig?: components["schemas"]["ShellRunnerConfig"] | components["schemas"]["CodexRunnerConfig"];
+            runnerType?: "claude" | "codex" | "shell";
+            runnerConfig?: components["schemas"]["ShellRunnerConfig"] | components["schemas"]["ClaudeRunnerConfig"] | components["schemas"]["CodexRunnerConfig"];
         };
         DeleteTaskParams: {
             taskId: string;
@@ -480,7 +526,13 @@ export interface components {
         PlanTaskParams: {
             taskId: string;
         };
+        RequestTaskReviewParams: {
+            taskId: string;
+        };
         CleanupTaskWorktreeParams: {
+            taskId: string;
+        };
+        TaskDiffParams: {
             taskId: string;
         };
         ListRunsParams: {
@@ -594,6 +646,15 @@ export interface components {
             task: components["schemas"]["Task"];
             plan: string;
         };
+        RequestTaskReviewResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["RequestTaskReviewData"];
+        };
+        RequestTaskReviewData: {
+            task: components["schemas"]["Task"];
+            run: components["schemas"]["Run"];
+        };
         CleanupTaskWorktreeResponse: {
             /** @enum {unknown} */
             ok: true;
@@ -601,6 +662,22 @@ export interface components {
         };
         CleanupTaskWorktreeData: {
             task: components["schemas"]["Task"];
+        };
+        TaskDiffResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["TaskDiffData"];
+        };
+        TaskDiffData: {
+            files: components["schemas"]["TaskDiffFile"][];
+            baseRef: string;
+            headRef: string;
+        };
+        TaskDiffFile: {
+            path: string;
+            patch: string;
+            additions: number;
+            deletions: number;
         };
         RunsResponse: {
             /** @enum {unknown} */
@@ -630,7 +707,7 @@ export interface components {
             metadata?: components["schemas"]["Recordstringstring"];
         };
         RunLogStream: "stdout" | "stderr" | "system";
-        RunLogKind: "system" | "text" | "user" | "agent" | "tool_call" | "tool_output" | "plan" | "status";
+        RunLogKind: "text" | "status" | "plan" | "system" | "user" | "agent" | "tool_call" | "tool_output";
         HealthResponse: {
             /** @enum {unknown} */
             ok: true;
@@ -1252,6 +1329,86 @@ export interface operations {
                 };
             };
             /** @description Unable to plan task */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Task not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    requestTaskReview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Started review run */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequestTaskReviewResponse"];
+                };
+            };
+            /** @description Unable to request review */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Task not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getTaskDiff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Task diff content */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskDiffResponse"];
+                };
+            };
+            /** @description Diff not available */
             400: {
                 headers: {
                     [name: string]: unknown;

@@ -2,11 +2,12 @@ export type TaskColumn =
   | "backlog"
   | "todo"
   | "running"
+  | "ai-review"
   | "review"
   | "done"
   | "archived";
 
-export type RunnerType = "codex" | "shell";
+export type RunnerType = "claude" | "codex" | "shell";
 
 export type RunStatus =
   | "queued"
@@ -130,6 +131,21 @@ export interface ShellRunnerConfig {
   command: string;
 }
 
+export type ClaudePermissionMode =
+  | "acceptEdits"
+  | "bypassPermissions"
+  | "default"
+  | "dontAsk"
+  | "plan";
+
+export interface ClaudeRunnerConfig {
+  type: "claude";
+  prompt: string;
+  agent?: string;
+  model?: string;
+  permissionMode?: ClaudePermissionMode;
+}
+
 export interface CodexRunnerConfig {
   type: "codex";
   prompt: string;
@@ -137,7 +153,7 @@ export interface CodexRunnerConfig {
   approvalMode?: "default" | "auto";
 }
 
-export type RunnerConfig = ShellRunnerConfig | CodexRunnerConfig;
+export type RunnerConfig = ShellRunnerConfig | ClaudeRunnerConfig | CodexRunnerConfig;
 
 export interface Task {
   id: string;
@@ -150,6 +166,7 @@ export interface Task {
   runnerConfig: RunnerConfig;
   worktree: TaskWorktree;
   lastRunId?: string;
+  continuationRunId?: string;
   pullRequestUrl?: string;
   pullRequest?: TaskPullRequest;
   createdAt: string;

@@ -1,14 +1,31 @@
+import { EventEmitter, Readable, Writable } from "node:stream";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const execFileMock = vi.fn();
+const spawnMock = vi.fn();
 
 vi.mock("node:child_process", () => ({
-  execFile: execFileMock
+  execFile: execFileMock,
+  spawn: spawnMock
 }));
+
+function createFakeSpawnProcess(exitCode = 0) {
+  const proc = new EventEmitter() as EventEmitter & {
+    stdin: Writable;
+    stdout: Readable;
+    stderr: Readable;
+  };
+  proc.stdin = new Writable({ write(_chunk, _enc, cb) { cb(); } });
+  proc.stdout = new Readable({ read() { this.push(null); } });
+  proc.stderr = new Readable({ read() { this.push(null); } });
+  setTimeout(() => proc.emit("close", exitCode), 5);
+  return proc;
+}
 
 describe("GhCliPullRequestProvider", () => {
   beforeEach(() => {
     execFileMock.mockReset();
+    spawnMock.mockReset();
   });
 
   it("loads changed files when fetching an open pull request", async () => {
@@ -409,12 +426,7 @@ describe("GhCliPullRequestProvider", () => {
   });
 
   it("posts PR comments via gh pr comment", async () => {
-    execFileMock.mockImplementation((file, args, options, callback) => {
-      callback(null, {
-        stdout: "",
-        stderr: ""
-      });
-    });
+    spawnMock.mockReturnValue(createFakeSpawnProcess(0));
 
     const { GhCliPullRequestProvider } = await import("./github.js");
     const provider = new GhCliPullRequestProvider();
@@ -423,7 +435,7 @@ describe("GhCliPullRequestProvider", () => {
       provider.addPullRequestComment("Kilerd/workhorse", 13, "Checking unresolved threads.")
     ).resolves.toBeUndefined();
 
-    expect(execFileMock).toHaveBeenCalledWith(
+    expect(spawnMock).toHaveBeenCalledWith(
       "gh",
       [
         "pr",
@@ -431,13 +443,45 @@ describe("GhCliPullRequestProvider", () => {
         "--repo",
         "kilerd/workhorse",
         "13",
-        "--body",
-        "Checking unresolved threads."
+        "--body-file",
+        "-"
       ],
       expect.objectContaining({
-        encoding: "utf8"
-      }),
-      expect.any(Function)
+        stdio: ["pipe", "pipe", "pipe"]
+      })
+    );
+  });
+
+  it("submits PR reviews via gh pr review", async () => {
+    spawnMock.mockReturnValue(createFakeSpawnProcess(0));
+
+    const { GhCliPullRequestProvider } = await import("./github.js");
+    const provider = new GhCliPullRequestProvider();
+
+    await expect(
+      provider.submitPullRequestReview(
+        "Kilerd/workhorse",
+        13,
+        "request_changes",
+        "Need one more regression test around the retry path."
+      )
+    ).resolves.toBeUndefined();
+
+    expect(spawnMock).toHaveBeenCalledWith(
+      "gh",
+      [
+        "pr",
+        "review",
+        "--repo",
+        "kilerd/workhorse",
+        "13",
+        "--request-changes",
+        "--body-file",
+        "-"
+      ],
+      expect.objectContaining({
+        stdio: ["pipe", "pipe", "pipe"]
+      })
     );
   });
 });

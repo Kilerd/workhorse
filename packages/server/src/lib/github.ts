@@ -1,4 +1,4 @@
-import { execFile, type ExecFileException } from "node:child_process";
+import { execFile, spawn, type ExecFileException } from "node:child_process";
 import { promisify } from "node:util";
 
 import { AppError } from "./errors.js";
@@ -132,6 +132,11 @@ export interface GitHubPullRequestCheck {
   link?: string;
 }
 
+export type GitHubPullRequestReviewAction =
+  | "approve"
+  | "comment"
+  | "request_changes";
+
 export interface GitHubPullRequestProvider {
   isAvailable(): Promise<boolean>;
   findOpenPullRequest(
@@ -149,6 +154,12 @@ export interface GitHubPullRequestProvider {
   addPullRequestComment(
     repositoryFullName: string,
     pullRequest: number | string,
+    body: string
+  ): Promise<void>;
+  submitPullRequestReview(
+    repositoryFullName: string,
+    pullRequest: number | string,
+    action: GitHubPullRequestReviewAction,
     body: string
   ): Promise<void>;
 }
@@ -423,6 +434,44 @@ async function runGh(args: string[]): Promise<{ stdout: string; stderr: string }
       exitCode: typeof execError.code === "number" ? execError.code : undefined
     });
   }
+}
+
+async function runGhWithStdin(
+  args: string[],
+  stdin: string
+): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("gh", args, {
+      stdio: ["pipe", "pipe", "pipe"],
+      env: process.env
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+    });
+    child.on("error", (error) => {
+      reject(
+        new GhCommandError(error.message, { stdout, stderr })
+      );
+    });
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve({ stdout, stderr });
+      } else {
+        reject(
+          new GhCommandError(
+            `gh exited with code ${code ?? "unknown"}: ${stderr.trim() || stdout.trim()}`,
+            { stdout, stderr, exitCode: code ?? undefined }
+          )
+        );
+      }
+    });
+    child.stdin.end(stdin);
+  });
 }
 
 function parsePullRequestList(payload: unknown): GitHubPullRequestSummary[] {
@@ -888,20 +937,80 @@ export class GhCliPullRequestProvider implements GitHubPullRequestProvider {
     }
 
     try {
-      await runGh([
-        "pr",
-        "comment",
-        "--repo",
-        repository,
-        String(pullRequest),
-        "--body",
+      await runGhWithStdin(
+        [
+          "pr",
+          "comment",
+          "--repo",
+          repository,
+          String(pullRequest),
+          "--body-file",
+          "-"
+        ],
         body
-      ]);
+      );
     } catch (error) {
+      const detail =
+        error instanceof GhCommandError
+          ? (error.stderr.trim() || error.message)
+          : error instanceof Error
+            ? error.message
+            : String(error);
       throw new AppError(
         502,
-        "GITHUB_MONITOR_REQUEST_FAILED",
-        `gh pr comment failed for ${repository}#${pullRequest}: ${error instanceof Error ? error.message : String(error)}`
+        "GITHUB_COMMENT_FAILED",
+        `gh pr comment failed for ${repository}#${pullRequest}: ${detail}`
+      );
+    }
+  }
+
+  public async submitPullRequestReview(
+    repositoryFullName: string,
+    pullRequest: number | string,
+    action: GitHubPullRequestReviewAction,
+    body: string
+  ): Promise<void> {
+    const repository = normalizeGitHubRepositoryFullName(repositoryFullName);
+    if (!repository) {
+      throw new AppError(
+        400,
+        "GITHUB_REPOSITORY_INVALID",
+        `Invalid GitHub repository: ${repositoryFullName}`
+      );
+    }
+
+    const reviewFlag =
+      action === "approve"
+        ? "--approve"
+        : action === "request_changes"
+          ? "--request-changes"
+          : "--comment";
+
+    try {
+      await runGhWithStdin(
+        [
+          "pr",
+          "review",
+          "--repo",
+          repository,
+          String(pullRequest),
+          reviewFlag,
+          "--body-file",
+          "-"
+        ],
+        body
+      );
+    } catch (error) {
+      const detail =
+        error instanceof GhCommandError
+          ? (error.stderr.trim() || error.message)
+          : error instanceof Error
+            ? error.message
+            : String(error);
+      throw new AppError(
+        502,
+        "GITHUB_REVIEW_SUBMISSION_FAILED",
+        `gh pr review failed for ${repository}#${pullRequest}: ${detail}`
       );
     }
   }

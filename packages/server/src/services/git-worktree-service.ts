@@ -411,6 +411,18 @@ export class GitWorktreeService {
     }
   }
 
+  public async getWorktreeDiff(
+    worktreePath: string,
+    baseRef: string
+  ): Promise<string> {
+    const result = await execFileAsync("git", ["diff", `${baseRef}...HEAD`, "--", "."], {
+      cwd: worktreePath,
+      encoding: "utf8",
+      maxBuffer: 16 * 1024 * 1024
+    });
+    return result.stdout;
+  }
+
   private async runGit(
     cwd: string,
     args: string[]

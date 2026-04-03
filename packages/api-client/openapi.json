@@ -786,6 +786,108 @@
         ]
       }
     },
+    "/api/tasks/{taskId}/review-request": {
+      "post": {
+        "operationId": "requestTaskReview",
+        "summary": "Request a Claude review for a task in review",
+        "tags": [
+          "Runs"
+        ],
+        "responses": {
+          "200": {
+            "description": "Started review run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestTaskReviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unable to request review",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/tasks/{taskId}/diff": {
+      "get": {
+        "operationId": "getTaskDiff",
+        "summary": "Get the file diff for a task worktree",
+        "tags": [
+          "Tasks"
+        ],
+        "responses": {
+          "200": {
+            "description": "Task diff content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskDiffResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Diff not available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
     "/api/tasks/{taskId}/runs": {
       "get": {
         "operationId": "listRuns",
@@ -1175,6 +1277,9 @@
           "lastRunId": {
             "type": "string"
           },
+          "continuationRunId": {
+            "type": "string"
+          },
           "pullRequestUrl": {
             "type": "string"
           },
@@ -1221,6 +1326,11 @@
           },
           {
             "enum": [
+              "ai-review"
+            ]
+          },
+          {
+            "enum": [
               "review"
             ]
           },
@@ -1240,6 +1350,11 @@
         "oneOf": [
           {
             "enum": [
+              "claude"
+            ]
+          },
+          {
+            "enum": [
               "codex"
             ]
           },
@@ -1256,6 +1371,9 @@
             "$ref": "#/components/schemas/ShellRunnerConfig"
           },
           {
+            "$ref": "#/components/schemas/ClaudeRunnerConfig"
+          },
+          {
             "$ref": "#/components/schemas/CodexRunnerConfig"
           }
         ],
@@ -1263,6 +1381,7 @@
           "propertyName": "type",
           "mapping": {
             "shell": "#/components/schemas/ShellRunnerConfig",
+            "claude": "#/components/schemas/ClaudeRunnerConfig",
             "codex": "#/components/schemas/CodexRunnerConfig"
           }
         }
@@ -1282,6 +1401,58 @@
         "required": [
           "type",
           "command"
+        ]
+      },
+      "ClaudeRunnerConfig": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "enum": [
+              "claude"
+            ]
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "permissionMode": {
+            "oneOf": [
+              {
+                "enum": [
+                  "default"
+                ]
+              },
+              {
+                "enum": [
+                  "acceptEdits"
+                ]
+              },
+              {
+                "enum": [
+                  "bypassPermissions"
+                ]
+              },
+              {
+                "enum": [
+                  "dontAsk"
+                ]
+              },
+              {
+                "enum": [
+                  "plan"
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "prompt"
         ]
       },
       "CodexRunnerConfig": {
@@ -1648,6 +1819,11 @@
               },
               {
                 "enum": [
+                  "ai-review"
+                ]
+              },
+              {
+                "enum": [
                   "review"
                 ]
               },
@@ -1725,6 +1901,11 @@
               },
               {
                 "enum": [
+                  "ai-review"
+                ]
+              },
+              {
+                "enum": [
                   "review"
                 ]
               },
@@ -1747,6 +1928,11 @@
             "oneOf": [
               {
                 "enum": [
+                  "claude"
+                ]
+              },
+              {
+                "enum": [
                   "codex"
                 ]
               },
@@ -1763,6 +1949,9 @@
                 "$ref": "#/components/schemas/ShellRunnerConfig"
               },
               {
+                "$ref": "#/components/schemas/ClaudeRunnerConfig"
+              },
+              {
                 "$ref": "#/components/schemas/CodexRunnerConfig"
               }
             ],
@@ -1770,6 +1959,7 @@
               "propertyName": "type",
               "mapping": {
                 "shell": "#/components/schemas/ShellRunnerConfig",
+                "claude": "#/components/schemas/ClaudeRunnerConfig",
                 "codex": "#/components/schemas/CodexRunnerConfig"
               }
             }
@@ -1852,7 +2042,29 @@
           "taskId"
         ]
       },
+      "RequestTaskReviewParams": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      },
       "CleanupTaskWorktreeParams": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      },
+      "TaskDiffParams": {
         "type": "object",
         "properties": {
           "taskId": {
@@ -2270,6 +2482,38 @@
           "plan"
         ]
       },
+      "RequestTaskReviewResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/RequestTaskReviewData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "RequestTaskReviewData": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "$ref": "#/components/schemas/Task"
+          },
+          "run": {
+            "$ref": "#/components/schemas/Run"
+          }
+        },
+        "required": [
+          "task",
+          "run"
+        ]
+      },
       "CleanupTaskWorktreeResponse": {
         "type": "object",
         "properties": {
@@ -2296,6 +2540,68 @@
         },
         "required": [
           "task"
+        ]
+      },
+      "TaskDiffResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/TaskDiffData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "TaskDiffData": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskDiffFile"
+            }
+          },
+          "baseRef": {
+            "type": "string"
+          },
+          "headRef": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "files",
+          "baseRef",
+          "headRef"
+        ]
+      },
+      "TaskDiffFile": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "patch": {
+            "type": "string"
+          },
+          "additions": {
+            "type": "number"
+          },
+          "deletions": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "path",
+          "patch",
+          "additions",
+          "deletions"
         ]
       },
       "RunsResponse": {
@@ -2423,12 +2729,22 @@
         "oneOf": [
           {
             "enum": [
-              "system"
+              "text"
             ]
           },
           {
             "enum": [
-              "text"
+              "status"
+            ]
+          },
+          {
+            "enum": [
+              "plan"
+            ]
+          },
+          {
+            "enum": [
+              "system"
             ]
           },
           {
@@ -2449,16 +2765,6 @@
           {
             "enum": [
               "tool_output"
-            ]
-          },
-          {
-            "enum": [
-              "plan"
-            ]
-          },
-          {
-            "enum": [
-              "status"
             ]
           }
         ]

@@ -34,10 +34,12 @@ import {
   type GitHubPullRequestCheck,
   type GitHubPullRequestFile,
   type GitHubPullRequestProvider,
+  type GitHubPullRequestReviewAction,
   type GitHubPullRequestSummary
 } from "../lib/github.js";
 import { resolveWorkspaceCodexSettings } from "../lib/codex-settings.js";
 import { createId } from "../lib/id.js";
+import { parseUnifiedDiff, type DiffFile } from "../lib/diff-parser.js";
 import { createRunLogEntry } from "../lib/run-log.js";
 import { createTaskWorktree } from "../lib/task-worktree.js";
 import { resolveGlobalSettings } from "../lib/global-settings.js";
@@ -47,6 +49,7 @@ import {
   type CodexAppServer
 } from "../runners/codex-app-server-manager.js";
 import { CodexAcpRunner } from "../runners/codex-acp-runner.js";
+import { ClaudeCliRunner } from "../runners/claude-cli-runner.js";
 import type { RunnerAdapter, RunnerControl } from "../runners/types.js";
 import { ShellRunner } from "../runners/shell-runner.js";
 import { EventBus } from "../ws/event-bus.js";
@@ -73,6 +76,7 @@ interface StartTaskOptions {
   runMetadata?: Record<string, string>;
   initialInputText?: string;
   targetOrder?: number;
+  targetColumn?: Task["column"];
 }
 
 type MonitorCiStatus = GitHubCheckBucket | "not_required";
@@ -107,9 +111,10 @@ const COLUMN_ORDER: Record<Task["column"], number> = {
   backlog: 0,
   todo: 1,
   running: 2,
-  review: 3,
-  done: 4,
-  archived: 5
+  "ai-review": 3,
+  review: 4,
+  done: 5,
+  archived: 6
 };
 
 function toOptionalNumber(value?: string): number | undefined {
@@ -119,6 +124,25 @@ function toOptionalNumber(value?: string): number | undefined {
 
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+const STRUCTURED_REVIEW_JSON_BLOCK_PATTERN = /```json\s*([\s\S]*?)```/giu;
+
+function isStructuredReviewPayload(value: string): boolean {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== "object") {
+      return false;
+    }
+
+    const record = parsed as Record<string, unknown>;
+    return (
+      typeof record.summary === "string" &&
+      typeof record.verdict === "string"
+    );
+  } catch {
+    return false;
+  }
 }
 
 export class BoardService {
@@ -151,6 +175,7 @@ export class BoardService {
     this.events = events;
     this.codexAppServer = dependencies.codexAppServer ?? new CodexAppServerManager();
     this.runners = {
+      claude: new ClaudeCliRunner(),
       shell: new ShellRunner(),
       codex: new CodexAcpRunner(this.codexAppServer)
     };
@@ -597,7 +622,10 @@ export class BoardService {
     const reviewTasksByWorkspace = new Map<string, Task[]>();
 
     for (const task of this.store.listTasks()) {
-      if (task.column !== "review" || this.activeRuns.has(task.id)) {
+      if (
+        (task.column !== "review" && task.column !== "ai-review") ||
+        this.activeRuns.has(task.id)
+      ) {
         continue;
       }
 
@@ -678,7 +706,7 @@ export class BoardService {
           const shouldCommentOnUnresolvedConversations =
             this.shouldCommentOnUnresolvedConversations(task, runsById, openPr);
           await this.startTaskInternal(task.id, {
-            allowedColumns: ["review"],
+            allowedColumns: ["ai-review", "review"],
             runnerConfigOverride: this.buildMonitorRunnerConfig(
               task,
               openPr,
@@ -933,6 +961,87 @@ export class BoardService {
     return { task, plan };
   }
 
+  public async requestTaskReview(taskId: string): Promise<{ task: Task; run: Run }> {
+    if (this.activeRuns.has(taskId)) {
+      throw new AppError(409, "TASK_ALREADY_RUNNING", "Task already has an active run");
+    }
+
+    const task = ensure(
+      this.store.listTasks().find((entry) => entry.id === taskId),
+      404,
+      "TASK_NOT_FOUND",
+      "Task not found"
+    );
+    if (task.column !== "review" && task.column !== "ai-review") {
+      throw new AppError(
+        409,
+        "TASK_NOT_REVIEWABLE",
+        "Only tasks in review or ai-review can request a reviewer run"
+      );
+    }
+
+    const workspace = ensure(
+      this.store.listWorkspaces().find((entry) => entry.id === task.workspaceId),
+      404,
+      "WORKSPACE_NOT_FOUND",
+      "Workspace not found"
+    );
+    if (!workspace.isGitRepo) {
+      throw new AppError(
+        400,
+        "TASK_REVIEW_NOT_SUPPORTED",
+        "Claude review is only available for Git-backed tasks"
+      );
+    }
+
+    const refreshedTask = await this.refreshTaskPullRequestSnapshotForReview(task, workspace);
+    return this.startTaskInternal(refreshedTask.id, {
+      allowedColumns: ["review", "ai-review"],
+      targetColumn: task.column,
+      runnerConfigOverride: this.buildManualReviewRunnerConfig(refreshedTask),
+      runMetadata: this.buildManualReviewRunMetadata(refreshedTask)
+    });
+  }
+
+  public async getTaskDiff(
+    taskId: string
+  ): Promise<{ files: DiffFile[]; baseRef: string; headRef: string }> {
+    const task = ensure(
+      this.store.listTasks().find((entry) => entry.id === taskId),
+      404,
+      "TASK_NOT_FOUND",
+      "Task not found"
+    );
+    const workspace = ensure(
+      this.store.listWorkspaces().find((entry) => entry.id === task.workspaceId),
+      404,
+      "WORKSPACE_NOT_FOUND",
+      "Workspace not found"
+    );
+
+    if (!workspace.isGitRepo || !task.worktree.path || task.worktree.status === "removed") {
+      throw new AppError(400, "DIFF_NOT_AVAILABLE", "Worktree is not available for diffing");
+    }
+
+    try {
+      const raw = await this.gitWorktrees.getWorktreeDiff(
+        task.worktree.path,
+        task.worktree.baseRef
+      );
+      return {
+        files: parseUnifiedDiff(raw),
+        baseRef: task.worktree.baseRef,
+        headRef: task.worktree.branchName
+      };
+    } catch (error) {
+      throw new AppError(
+        500,
+        "DIFF_FAILED",
+        `Failed to compute diff: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
   public listRuns(taskId: string): Run[] {
     const exists = this.store.listTasks().some((task) => task.id === taskId);
     if (!exists) {
@@ -1039,9 +1148,10 @@ export class BoardService {
         }
       : task;
     const currentRuns = this.store.listRuns();
+    const previousRunId = this.resolveContinuationCandidateRunId(task, executionTask.runnerType);
     const previousRunEntry =
-      task.lastRunId !== undefined
-        ? currentRuns.find((entry) => entry.id === task.lastRunId)
+      previousRunId !== undefined
+        ? currentRuns.find((entry) => entry.id === previousRunId)
         : undefined;
     const previousRun = previousRunEntry
       ? this.cloneRun(previousRunEntry)
@@ -1072,11 +1182,14 @@ export class BoardService {
       ? currentRuns.map((entry) => (entry.id === reusableRunEntry.id ? run : entry))
       : [...currentRuns, run];
     const taskIndex = tasks.findIndex((entry) => entry.id === task.id);
+    const targetColumn = options.targetColumn ?? "running";
     tasks[taskIndex] = {
       ...task,
-      column: "running",
-      order: options.targetOrder ?? this.topOrder("running", task.id),
+      column: targetColumn,
+      order: options.targetOrder ?? this.topOrder(targetColumn, task.id),
       lastRunId: run.id,
+      continuationRunId:
+        executionTask.runnerType === "codex" ? run.id : task.continuationRunId,
       updatedAt: new Date().toISOString()
     };
 
@@ -1216,6 +1329,17 @@ export class BoardService {
     };
   }
 
+  private resolveContinuationCandidateRunId(
+    task: Task,
+    runnerType: Run["runnerType"]
+  ): string | undefined {
+    if (runnerType === "codex") {
+      return task.continuationRunId ?? task.lastRunId;
+    }
+
+    return task.lastRunId;
+  }
+
   private canContinueCodexRun(
     runnerType: Run["runnerType"],
     previousRun?: Run
@@ -1258,11 +1382,12 @@ export class BoardService {
   }
 
   private async archiveTaskCodexThread(task: Task): Promise<void> {
-    if (this.activeRuns.has(task.id) || !task.lastRunId) {
+    const runId = task.continuationRunId ?? task.lastRunId;
+    if (this.activeRuns.has(task.id) || !runId) {
       return;
     }
 
-    const run = this.store.listRuns().find((entry) => entry.id === task.lastRunId);
+    const run = this.store.listRuns().find((entry) => entry.id === runId);
     const threadId =
       run?.runnerType === "codex"
         ? run.metadata?.threadId?.trim()
@@ -1414,6 +1539,68 @@ export class BoardService {
       ]
         .filter((line): line is string => Boolean(line))
         .join("\n\n")
+    };
+  }
+
+  private buildManualReviewRunnerConfig(task: Task): RunnerConfig {
+    const language = this.getSettings().language.trim() || "English";
+    const pullRequest = task.pullRequest;
+    const changedFiles = (pullRequest?.files ?? [])
+      .slice(0, 20)
+      .map((file) => {
+        const stats =
+          file.additions !== undefined || file.deletions !== undefined
+            ? ` (+${file.additions ?? 0}/-${file.deletions ?? 0})`
+            : "";
+        return `- ${file.path}${stats}`;
+      });
+
+    return {
+      type: "claude",
+      agent: "code-reviewer",
+      permissionMode: "plan",
+      prompt: [
+        "You are the reviewer agent for this engineering task.",
+        `Review task "${task.title}" for concrete correctness issues, regressions, risky edge cases, and missing test coverage.`,
+        task.description.trim() ? `Task description:\n${task.description.trim()}` : undefined,
+        "This is a read-only review. Do not edit files, write code, create commits, or change git state.",
+        `Review the current branch against \`${task.worktree.baseRef}\` from worktree branch \`${task.worktree.branchName}\`.`,
+        task.pullRequestUrl ? `GitHub PR: ${task.pullRequestUrl}` : undefined,
+        pullRequest?.title ? `PR title: ${pullRequest.title}` : undefined,
+        pullRequest?.reviewDecision
+          ? `Current GitHub review decision: ${pullRequest.reviewDecision}`
+          : undefined,
+        pullRequest?.statusCheckRollupState
+          ? `Current PR status rollup: ${pullRequest.statusCheckRollupState}`
+          : undefined,
+        pullRequest?.mergeStateStatus
+          ? `Merge state: ${pullRequest.mergeStateStatus}`
+          : undefined,
+        pullRequest?.unresolvedConversationCount !== undefined
+          ? `Unresolved review conversations: ${pullRequest.unresolvedConversationCount}`
+          : undefined,
+        changedFiles.length > 0
+          ? ["Changed files snapshot:", ...changedFiles].join("\n")
+          : undefined,
+        "Only call out issues when you can tie them to a concrete risk in the current diff or surrounding code.",
+        "Prefer a short list of the most important findings over exhaustive nitpicks.",
+        `Write the human-readable review in ${language} unless code, identifiers, or error messages are clearer in English.`,
+        'End your response with a fenced ```json block containing exactly {"verdict":"approve"|"comment"|"request_changes","summary":"..."} .',
+        'Use "request_changes" when you have any concrete warnings or suggested fixes — even if they are not strictly blocking, the author should address them before merging. Use "comment" only when you have minor stylistic notes or open questions with no clear fix. Use "approve" only when you found no issues worth flagging.',
+        "Keep the JSON summary concise and actionable."
+      ]
+        .filter((line): line is string => Boolean(line))
+        .join("\n\n")
+    };
+  }
+
+  private buildManualReviewRunMetadata(task: Task): Record<string, string> {
+    return {
+      trigger: "manual_claude_review",
+      reviewAgent: "claude_code",
+      reviewBaseRef: task.worktree.baseRef,
+      reviewBranch: task.worktree.branchName,
+      reviewPullRequestUrl: task.pullRequestUrl ?? ""
     };
   }
 
@@ -1583,6 +1770,46 @@ export class BoardService {
       taskId: task.id,
       task
     });
+  }
+
+  private async refreshTaskPullRequestSnapshotForReview(
+    task: Task,
+    workspace: Workspace
+  ): Promise<Task> {
+    if (!(await this.githubPullRequests.isAvailable())) {
+      return task;
+    }
+
+    const repositoryFullName =
+      await this.gitWorktrees.getGitHubRepositoryFullName(workspace);
+    if (!repositoryFullName) {
+      return task;
+    }
+
+    try {
+      const openPr = await this.githubPullRequests.findOpenPullRequest(
+        repositoryFullName,
+        task.worktree.branchName
+      );
+      if (!openPr) {
+        return (
+          this.store.listTasks().find((entry) => entry.id === task.id) ?? task
+        );
+      }
+
+      const checks = await this.githubPullRequests.listRequiredChecks(
+        repositoryFullName,
+        openPr.number
+      );
+      await this.syncTaskPullRequestSnapshot(task.id, {
+        pullRequestUrl: openPr.url,
+        pullRequest: this.buildTaskPullRequestSummary(openPr, checks)
+      });
+    } catch {
+      return this.store.listTasks().find((entry) => entry.id === task.id) ?? task;
+    }
+
+    return this.store.listTasks().find((entry) => entry.id === task.id) ?? task;
   }
 
   private taskPullRequestSummaryEquals(
@@ -1989,8 +2216,20 @@ export class BoardService {
       : runEntry.metadata;
     this.activeRuns.delete(taskId);
 
-    taskEntry.column = "review";
-    taskEntry.order = this.topOrder("review", taskId);
+    const shouldAutoReview = this.shouldAutoTriggerAiReview(taskEntry, runEntry, result.status);
+    const isAiReviewRun = this.isAiReviewTrigger(runEntry.metadata?.trigger);
+    const shouldRework =
+      isAiReviewRun &&
+      result.status === "succeeded" &&
+      runEntry.metadata?.reviewVerdict === "request_changes";
+    const nextColumn: Task["column"] = shouldAutoReview
+      ? "ai-review"
+      : shouldRework
+        ? "running"
+        : "review";
+
+    taskEntry.column = nextColumn;
+    taskEntry.order = this.topOrder(nextColumn, taskId);
     taskEntry.pullRequestUrl = this.resolveTaskPullRequestUrl(taskEntry, runEntry);
     taskEntry.pullRequest = this.resolveTaskPullRequestSummary(taskEntry, runEntry);
     taskEntry.updatedAt = new Date().toISOString();
@@ -1998,6 +2237,9 @@ export class BoardService {
     this.store.setRuns(currentRuns);
     this.store.setTasks(currentTasks);
     await this.store.save();
+    if (isAiReviewRun) {
+      await this.maybePublishManualReviewToPullRequest(taskEntry, runEntry);
+    }
     this.events.publish({
       type: "task.updated",
       action: "updated",
@@ -2012,10 +2254,353 @@ export class BoardService {
       task: taskEntry
     });
 
+    if (shouldAutoReview) {
+      void this.triggerAiReview(taskEntry).catch(() => {});
+    }
+
+    if (shouldRework) {
+      void this.triggerReworkFromReview(taskEntry, runEntry).catch(() => {});
+    }
+
     return {
       run: runEntry,
       task: taskEntry
     };
+  }
+
+  private isAiReviewTrigger(trigger?: string): boolean {
+    return trigger === "manual_claude_review" || trigger === "auto_ai_review";
+  }
+
+  private shouldAutoTriggerAiReview(
+    task: Task,
+    run: Run,
+    status: Run["status"]
+  ): boolean {
+    if (status !== "succeeded") {
+      return false;
+    }
+
+    if (this.isAiReviewTrigger(run.metadata?.trigger)) {
+      return false;
+    }
+
+    if (run.metadata?.trigger === "gh_pr_monitor") {
+      return false;
+    }
+
+    const workspace = this.store
+      .listWorkspaces()
+      .find((entry) => entry.id === task.workspaceId);
+    return Boolean(workspace?.isGitRepo);
+  }
+
+  private async triggerAiReview(task: Task): Promise<void> {
+    try {
+      const workspace = this.store
+        .listWorkspaces()
+        .find((entry) => entry.id === task.workspaceId);
+      if (!workspace) {
+        return;
+      }
+
+      const refreshedTask = await this.refreshTaskPullRequestSnapshotForReview(
+        task,
+        workspace
+      );
+      await this.startTaskInternal(refreshedTask.id, {
+        allowedColumns: ["ai-review"],
+        targetColumn: "ai-review",
+        runnerConfigOverride: this.buildManualReviewRunnerConfig(refreshedTask),
+        runMetadata: {
+          ...this.buildManualReviewRunMetadata(refreshedTask),
+          trigger: "auto_ai_review"
+        }
+      });
+    } catch {
+      await this.moveTaskToColumnOnFailure(task.id, "review");
+    }
+  }
+
+  private async triggerReworkFromReview(task: Task, reviewRun: Run): Promise<void> {
+    try {
+      const summary = reviewRun.metadata?.reviewSummary?.trim();
+      const reworkPrompt = summary
+        ? `The AI reviewer requested changes. Address the following feedback:\n\n${summary}`
+        : "The AI reviewer requested changes. Review the latest review log and address the issues found.";
+      await this.startTaskInternal(task.id, {
+        allowedColumns: ["running"],
+        initialInputText: reworkPrompt,
+        runMetadata: {
+          trigger: "ai_review_rework",
+          reviewRunId: reviewRun.id
+        }
+      });
+    } catch {
+      await this.moveTaskToColumnOnFailure(task.id, "review");
+    }
+  }
+
+
+  private async moveTaskToColumnOnFailure(
+    taskId: string,
+    column: Task["column"]
+  ): Promise<void> {
+    const tasks = this.store.listTasks();
+    const taskEntry = tasks.find((entry) => entry.id === taskId);
+    if (!taskEntry || taskEntry.column === column) {
+      return;
+    }
+
+    taskEntry.column = column;
+    taskEntry.order = this.topOrder(column, taskId);
+    taskEntry.updatedAt = new Date().toISOString();
+    this.store.setTasks(tasks);
+    await this.store.save();
+    this.events.publish({
+      type: "task.updated",
+      action: "updated",
+      taskId: taskEntry.id,
+      task: taskEntry
+    });
+  }
+
+  private async maybePublishManualReviewToPullRequest(
+    task: Task,
+    run: Run
+  ): Promise<void> {
+    if (!this.isAiReviewTrigger(run.metadata?.trigger)) {
+      return;
+    }
+
+    if (run.status !== "succeeded" || run.metadata?.reviewPublishedAt?.trim()) {
+      return;
+    }
+
+    const workspace = this.store
+      .listWorkspaces()
+      .find((entry) => entry.id === task.workspaceId);
+    if (!workspace?.isGitRepo) {
+      return;
+    }
+
+    if (!(await this.githubPullRequests.isAvailable())) {
+      await this.appendReviewPublicationLog(
+        task.id,
+        run.id,
+        "GitHub review publish skipped",
+        "GitHub CLI auth is unavailable, so the Claude review was not posted back to the PR.\n"
+      );
+      return;
+    }
+
+    const repositoryFullName =
+      (await this.gitWorktrees.getGitHubRepositoryFullName(workspace)) ??
+      this.extractRepositoryFullNameFromPullRequestUrl(task.pullRequestUrl);
+    const pullRequestTarget =
+      task.pullRequest?.number ?? task.pullRequestUrl?.trim() ?? "";
+    if (!repositoryFullName || !pullRequestTarget) {
+      return;
+    }
+
+    const reviewBody = await this.buildPullRequestReviewBody(task, run);
+    if (!reviewBody) {
+      await this.appendReviewPublicationLog(
+        task.id,
+        run.id,
+        "GitHub review publish skipped",
+        "Claude finished the review run, but there was no publishable review body to send to GitHub.\n"
+      );
+      return;
+    }
+
+    let publishedAction = this.resolveGitHubReviewAction(run.metadata?.reviewVerdict);
+
+    try {
+      try {
+        await this.githubPullRequests.submitPullRequestReview(
+          repositoryFullName,
+          pullRequestTarget,
+          publishedAction,
+          reviewBody
+        );
+      } catch (submitError) {
+        if (publishedAction !== "comment" && this.isSelfReviewError(submitError)) {
+          const previousAction = publishedAction;
+          publishedAction = "comment";
+          await this.appendReviewPublicationLog(
+            task.id,
+            run.id,
+            "GitHub review downgraded to comment",
+            `Cannot ${previousAction === "approve" ? "approve" : "request changes on"} own PR; retrying as comment review.\n`
+          );
+          await this.githubPullRequests.submitPullRequestReview(
+            repositoryFullName,
+            pullRequestTarget,
+            publishedAction,
+            reviewBody
+          );
+        } else {
+          throw submitError;
+        }
+      }
+      await this.updateRunMetadata(run.id, {
+        reviewPublishedAt: new Date().toISOString(),
+        reviewPublicationMethod: "gh_pr_review",
+        reviewPublishedAction: publishedAction,
+        reviewPublishedTarget:
+          typeof pullRequestTarget === "number"
+            ? String(pullRequestTarget)
+            : pullRequestTarget
+      });
+      await this.appendReviewPublicationLog(
+        task.id,
+        run.id,
+        "GitHub review published",
+        `Submitted a ${this.formatGitHubReviewAction(publishedAction)} review to ${task.pullRequestUrl ?? `PR ${String(pullRequestTarget)}`}.\n`
+      );
+      await this.refreshTaskPullRequestSnapshotForReview(task, workspace);
+    } catch (error) {
+      await this.appendReviewPublicationLog(
+        task.id,
+        run.id,
+        "GitHub review publish failed",
+        `${error instanceof Error ? error.message : String(error)}\n`
+      );
+    }
+  }
+
+  private isSelfReviewError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return /can.?not (approve|request changes on) your own/iu.test(message);
+  }
+
+  private async appendReviewPublicationLog(
+    taskId: string,
+    runId: string,
+    title: string,
+    text: string
+  ): Promise<void> {
+    await this.appendAndPublishRunOutput(
+      taskId,
+      runId,
+      createRunLogEntry(runId, {
+        kind: "system",
+        stream: "system",
+        title,
+        text,
+        source: "GitHub"
+      })
+    );
+  }
+
+  private async buildPullRequestReviewBody(
+    task: Task,
+    run: Run
+  ): Promise<string | undefined> {
+    const summary = run.metadata?.reviewSummary?.trim();
+    const narrative = await this.extractReviewerNarrative(run.id);
+    const sections = [
+      "## Workhorse Claude Review",
+      `**Task:** ${task.title}`,
+      `**Verdict:** ${this.formatReviewVerdictLabel(this.resolveGitHubReviewAction(run.metadata?.reviewVerdict))}`,
+      narrative || undefined,
+      summary && summary !== narrative ? `**Summary:** ${summary}` : undefined,
+      `<!-- workhorse-review-run:${run.id} -->`
+    ]
+      .filter((section): section is string => Boolean(section))
+      .join("\n\n")
+      .trim();
+
+    if (!sections) {
+      return undefined;
+    }
+
+    if (sections.length <= 12_000) {
+      return sections;
+    }
+
+    return `${sections.slice(0, 11_900).trim()}\n\n[review truncated]\n\n<!-- workhorse-review-run:${run.id} -->`;
+  }
+
+  private async extractReviewerNarrative(runId: string): Promise<string | undefined> {
+    const entries = await this.store.readLogEntries(runId);
+    const raw = entries
+      .filter((entry) => entry.kind === "agent")
+      .map((entry) => entry.text.trim())
+      .filter(Boolean)
+      .join("\n\n")
+      .trim();
+
+    if (!raw) {
+      return undefined;
+    }
+
+    const cleaned = raw
+      .replace(STRUCTURED_REVIEW_JSON_BLOCK_PATTERN, (match, payload: string) =>
+        isStructuredReviewPayload(payload.trim()) ? "" : match
+      )
+      .replace(/\n{3,}/gu, "\n\n")
+      .trim();
+
+    return cleaned || undefined;
+  }
+
+  private resolveGitHubReviewAction(verdict?: string): GitHubPullRequestReviewAction {
+    switch (verdict?.trim().toLowerCase()) {
+      case "approve":
+        return "approve";
+      case "request_changes":
+        return "request_changes";
+      default:
+        return "comment";
+    }
+  }
+
+  private formatGitHubReviewAction(action: GitHubPullRequestReviewAction): string {
+    switch (action) {
+      case "approve":
+        return "GitHub approval";
+      case "request_changes":
+        return "GitHub request-changes";
+      default:
+        return "GitHub comment";
+    }
+  }
+
+  private formatReviewVerdictLabel(action: GitHubPullRequestReviewAction): string {
+    switch (action) {
+      case "approve":
+        return "Approve";
+      case "request_changes":
+        return "Request Changes";
+      default:
+        return "Comment";
+    }
+  }
+
+  private extractRepositoryFullNameFromPullRequestUrl(
+    pullRequestUrl?: string
+  ): string | undefined {
+    if (!pullRequestUrl) {
+      return undefined;
+    }
+
+    try {
+      const url = new URL(pullRequestUrl);
+      if (url.hostname.toLowerCase() !== "github.com") {
+        return undefined;
+      }
+
+      const [owner, name] = url.pathname.split("/").filter(Boolean);
+      if (!owner || !name) {
+        return undefined;
+      }
+
+      return `${owner}/${name}`.toLowerCase();
+    } catch {
+      return undefined;
+    }
   }
 
   private resolveTaskPullRequestUrl(task: Task, run: Run): string | undefined {
@@ -2159,6 +2744,13 @@ export class BoardService {
       return;
     }
 
+    if (runnerType === "claude" && runnerConfig.type === "claude") {
+      if (!runnerConfig.prompt.trim()) {
+        throw new AppError(400, "INVALID_RUNNER_CONFIG", "Claude prompt is required");
+      }
+      return;
+    }
+
     if (runnerType === "codex" && runnerConfig.type === "codex") {
       if (!runnerConfig.prompt.trim()) {
         throw new AppError(400, "INVALID_RUNNER_CONFIG", "Codex prompt is required");
@@ -2171,7 +2763,7 @@ export class BoardService {
 
   private ensureStartableTask(
     task: Task,
-    allowedColumns: Task["column"][] = ["backlog", "todo", "review"]
+    allowedColumns: Task["column"][] = ["backlog", "todo", "ai-review", "review"]
   ): void {
     if (allowedColumns.includes(task.column)) {
       return;
@@ -2190,6 +2782,8 @@ export class BoardService {
     const executionHint =
       task.runnerType === "codex"
         ? "Use the Codex runner to implement the task in small, verifiable steps."
+        : task.runnerType === "claude"
+          ? "Use the Claude CLI runner to execute the task in small, verifiable steps."
         : "Use the shell runner to execute the task in small, verifiable steps.";
 
     return [

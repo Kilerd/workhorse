@@ -184,6 +184,12 @@ function createFakeGitHubProvider() {
     pullRequest: number | string;
     body: string;
   }> = [];
+  const reviews: Array<{
+    repositoryFullName: string;
+    pullRequest: number | string;
+    action: "approve" | "comment" | "request_changes";
+    body: string;
+  }> = [];
 
   const provider: GitHubPullRequestProvider = {
     async isAvailable() {
@@ -202,6 +208,14 @@ function createFakeGitHubProvider() {
       comments.push({
         repositoryFullName,
         pullRequest,
+        body
+      });
+    },
+    async submitPullRequestReview(repositoryFullName, pullRequest, action, body) {
+      reviews.push({
+        repositoryFullName,
+        pullRequest,
+        action,
         body
       });
     }
@@ -226,7 +240,8 @@ function createFakeGitHubProvider() {
     setChecks(repositoryFullName: string, pullRequestNumber: number, value: GitHubPullRequestCheck[]) {
       checks.set(`${repositoryFullName}:${String(pullRequestNumber)}`, value);
     },
-    comments
+    comments,
+    reviews
   };
 }
 
@@ -708,6 +723,131 @@ describe("git worktree lifecycle", () => {
         }
       ]
     });
+  });
+
+  it("publishes Claude reviewer output back to the pull request as a GitHub review", async () => {
+    const github = createFakeGitHubProvider();
+    const { service, seedDir, workspaceDir } = await createGitRuntimeWithProvider(github.provider);
+    const workspace = await createGitWorkspace(service, workspaceDir);
+    const task = await createGitTask(service, workspace.id, {
+      title: "Review retry queue behavior"
+    });
+
+    await service.startTask(task.id);
+    const initialRun = await waitForRunToFinish(service, task.id);
+    expect(initialRun.status).toBe("succeeded");
+
+    const taskWorktree = service.listTasks({}).find((entry) => entry.id === task.id)?.worktree.path;
+    if (!taskWorktree) {
+      throw new Error("Expected task to have a worktree");
+    }
+
+    const taskHeadSha = await commitAndPushTaskBranch(
+      taskWorktree,
+      "retry-queue.txt",
+      "queue edge case",
+      "feat: add retry queue edge case"
+    );
+    const baseSha = await runGit(["-C", seedDir, "rev-parse", "HEAD"]);
+    const repositoryFullName = "workhorse-git-test/remote";
+
+    github.setOpenPullRequest(repositoryFullName, task.worktree.branchName, {
+      number: 91,
+      url: "https://github.com/workhorse-git-test/remote/pull/91",
+      title: "Review retry queue behavior",
+      state: "OPEN",
+      isDraft: false,
+      headRef: task.worktree.branchName,
+      baseRef: "main",
+      headSha: taskHeadSha,
+      baseSha,
+      changedFiles: 1,
+      mergeable: "MERGEABLE",
+      mergeStateStatus: "CLEAN",
+      reviewDecision: "COMMENTED",
+      statusCheckRollupState: "SUCCESS",
+      files: [
+        {
+          path: "retry-queue.txt",
+          additions: 1,
+          deletions: 0
+        }
+      ]
+    });
+
+    (service as any).runners.claude = {
+      type: "claude",
+      async start(_context: unknown, hooks: {
+        onOutput(entry: {
+          kind: "agent";
+          text: string;
+          stream: "stdout";
+          title: string;
+          source: string;
+        }): Promise<void>;
+        onExit(result: {
+          status: "succeeded";
+          metadata: Record<string, string>;
+        }): Promise<void>;
+      }) {
+        void sleep(25).then(async () => {
+          await hooks.onOutput({
+            kind: "agent",
+            stream: "stdout",
+            title: "Claude response",
+            source: "Claude CLI",
+            text: [
+              "Cache invalidation still leaves stale entries behind when the retry queue is empty.",
+              "",
+              "```json",
+              '{"verdict":"request_changes","summary":"Add a regression test for the empty retry queue path and clear stale cache entries before returning."}',
+              "```"
+            ].join("\n")
+          });
+          await hooks.onExit({
+            status: "succeeded",
+            metadata: {
+              trigger: "manual_claude_review",
+              reviewVerdict: "request_changes",
+              reviewSummary:
+                "Add a regression test for the empty retry queue path and clear stale cache entries before returning."
+            }
+          });
+        });
+
+        return {
+          command: "claude review runner",
+          async stop() {}
+        };
+      }
+    };
+
+    const reviewStart = await service.requestTaskReview(task.id);
+    const reviewRun = await waitForRunToFinish(service, task.id);
+    const reviewLog = await service.getRunLog(reviewStart.run.id);
+
+    expect(reviewRun.status).toBe("succeeded");
+    expect(github.reviews).toHaveLength(1);
+    expect(github.reviews[0]).toMatchObject({
+      repositoryFullName,
+      pullRequest: 91,
+      action: "request_changes"
+    });
+    expect(github.reviews[0]?.body).toContain("## Workhorse Claude Review");
+    expect(github.reviews[0]?.body).toContain(
+      "Cache invalidation still leaves stale entries behind when the retry queue is empty."
+    );
+    expect(github.reviews[0]?.body).toContain(
+      "**Summary:** Add a regression test for the empty retry queue path and clear stale cache entries before returning."
+    );
+    expect(github.reviews[0]?.body).not.toContain("```json");
+    expect(reviewRun.metadata).toMatchObject({
+      reviewPublishedAction: "request_changes",
+      reviewPublicationMethod: "gh_pr_review"
+    });
+    expect(
+      reviewLog.some((entry) => entry.title === "GitHub review published")
+    ).toBe(true);
   });
 
   it("moves merged review tasks to done and restarts review tasks when gh reports the PR is behind", async () => {

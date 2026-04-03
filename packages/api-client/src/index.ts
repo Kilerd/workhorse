@@ -11,6 +11,8 @@ import type {
   SettingsResponse,
   WorkspaceGitRefsResponse,
   PlanTaskResponse,
+  RequestTaskReviewResponse,
+  TaskDiffResponse,
   RunLogResponse,
   RunsResponse,
   StartTaskResponse,
@@ -97,9 +99,17 @@ export function createApiClient(baseUrl: string) {
     .path("/api/tasks/{taskId}/plan")
     .method("post")
     .create();
+  const requestTaskReview = fetcher
+    .path("/api/tasks/{taskId}/review-request")
+    .method("post")
+    .create();
   const cleanupTaskWorktree = fetcher
     .path("/api/tasks/{taskId}/worktree/cleanup")
     .method("post")
+    .create();
+  const getTaskDiff = fetcher
+    .path("/api/tasks/{taskId}/diff")
+    .method("get")
     .create();
   const listRuns = fetcher
     .path("/api/tasks/{taskId}/runs")
@@ -181,10 +191,16 @@ export function createApiClient(baseUrl: string) {
       (await sendTaskInput({ taskId, ...body })).data,
     planTask: async (taskId: string): Promise<PlanTaskResponse> =>
       (await planTask({ taskId })).data,
+    requestTaskReview: async (
+      taskId: string
+    ): Promise<RequestTaskReviewResponse> =>
+      (await requestTaskReview({ taskId })).data,
     cleanupTaskWorktree: async (
       taskId: string
     ): Promise<CleanupTaskWorktreeResponse> =>
       (await cleanupTaskWorktree({ taskId })).data,
+    getTaskDiff: async (taskId: string): Promise<TaskDiffResponse> =>
+      (await getTaskDiff({ taskId })).data,
     listRuns: async (taskId: string): Promise<RunsResponse> =>
       (await listRuns({ taskId })).data,
     getRunLog: async (runId: string): Promise<RunLogResponse> =>

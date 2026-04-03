@@ -10,6 +10,7 @@ export type TaskActionId =
   | "plan"
   | "start"
   | "stop"
+  | "skip-review"
   | "move-to-todo"
   | "mark-done"
   | "archive";
@@ -29,6 +30,7 @@ export const BOARD_COLUMNS: Array<{
   { id: "backlog", title: "Backlog", tone: "tone-backlog" },
   { id: "todo", title: "Todo", tone: "tone-todo" },
   { id: "running", title: "Running", tone: "tone-running" },
+  { id: "ai-review", title: "AI Review", tone: "tone-ai-review" },
   { id: "review", title: "Review", tone: "tone-review" },
   { id: "done", title: "Done", tone: "tone-done" }
 ];
@@ -48,6 +50,11 @@ export function getTaskActions(column: DisplayTaskColumn): TaskActionDescriptor[
       return [{ id: "start", label: "Start", kind: "primary" }];
     case "running":
       return [{ id: "stop", label: "Stop", kind: "secondary" }];
+    case "ai-review":
+      return [
+        { id: "stop", label: "Stop", kind: "secondary" },
+        { id: "skip-review", label: "Skip to Review", shortLabel: "Skip", kind: "secondary" }
+      ];
     case "review":
       return [
         { id: "start", label: "Run Again", shortLabel: "Run", kind: "secondary" },

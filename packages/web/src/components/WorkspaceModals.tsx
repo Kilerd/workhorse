@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type {
+  ClaudePermissionMode,
   GlobalSettings,
   Workspace,
   WorkspaceCodexSettings
@@ -20,6 +21,8 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 
 const DEFAULT_CODEX_PROMPT = "请完成用户请求的任务。";
+const DEFAULT_CLAUDE_PROMPT =
+  "Review the current task carefully and summarize concrete risks, regressions, and missing tests.";
 const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
   language: DEFAULT_GLOBAL_LANGUAGE,
   openRouter: {
@@ -93,6 +96,38 @@ const SANDBOX_MODE_OPTIONS: Array<{
     value: "danger-full-access",
     label: "danger-full-access",
     description: "Bypass sandbox protections completely."
+  }
+];
+
+const CLAUDE_PERMISSION_MODE_OPTIONS: Array<{
+  value: ClaudePermissionMode;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "default",
+    label: "default",
+    description: "Use Claude Code's standard permission flow."
+  },
+  {
+    value: "acceptEdits",
+    label: "acceptEdits",
+    description: "Auto-accept edit requests while keeping other checks in place."
+  },
+  {
+    value: "dontAsk",
+    label: "dontAsk",
+    description: "Run without permission prompts when Claude Code supports it."
+  },
+  {
+    value: "plan",
+    label: "plan",
+    description: "Keep Claude in planning mode for review-only workflows."
+  },
+  {
+    value: "bypassPermissions",
+    label: "bypassPermissions",
+    description: "Bypass permission checks. Only use in trusted environments."
   }
 ];
 
@@ -571,9 +606,13 @@ export function TaskModal({
   const [workspaceId, setWorkspaceId] = useState(() =>
     resolveTaskWorkspaceId(workspaces, selectedWorkspaceId)
   );
-  const [runnerType, setRunnerType] = useState<"shell" | "codex">("codex");
+  const [runnerType, setRunnerType] = useState<"claude" | "shell" | "codex">("codex");
   const [shellCommand, setShellCommand] = useState("npm test");
   const [prompt, setPrompt] = useState(DEFAULT_CODEX_PROMPT);
+  const [claudeAgent, setClaudeAgent] = useState("code-reviewer");
+  const [claudeModel, setClaudeModel] = useState("");
+  const [claudePermissionMode, setClaudePermissionMode] =
+    useState<ClaudePermissionMode>("default");
   const [column, setColumn] = useState<TaskFormValues["column"]>("backlog");
   const [worktreeBaseRef, setWorktreeBaseRef] = useState("");
   const [submitLocked, setSubmitLocked] = useState(false);
@@ -607,6 +646,9 @@ export function TaskModal({
       setRunnerType("codex");
       setShellCommand("npm test");
       setPrompt(DEFAULT_CODEX_PROMPT);
+      setClaudeAgent("code-reviewer");
+      setClaudeModel("");
+      setClaudePermissionMode("default");
       setColumn("backlog");
       setWorktreeBaseRef("");
       setSubmitLocked(false);
@@ -692,7 +734,15 @@ export function TaskModal({
               runnerConfig:
                 runnerType === "shell"
                   ? { type: "shell", command: shellCommand }
-                  : { type: "codex", prompt },
+                  : runnerType === "claude"
+                    ? {
+                        type: "claude",
+                        prompt,
+                        agent: claudeAgent.trim() || undefined,
+                        model: claudeModel.trim() || undefined,
+                        permissionMode: claudePermissionMode
+                      }
+                    : { type: "codex", prompt },
               column,
               worktreeBaseRef:
                 selectedWorkspace?.isGitRepo && worktreeBaseRef
@@ -752,11 +802,22 @@ export function TaskModal({
             <span className={modalLabelTextClass}>Runner</span>
             <NativeSelect
               value={runnerType}
-              onChange={(event) =>
-                setRunnerType(event.target.value as "shell" | "codex")
-              }
+              onChange={(event) => {
+                const nextRunnerType = event.target.value as "claude" | "shell" | "codex";
+                setRunnerType(nextRunnerType);
+                setPrompt((current) => {
+                  if (nextRunnerType === "claude" && current === DEFAULT_CODEX_PROMPT) {
+                    return DEFAULT_CLAUDE_PROMPT;
+                  }
+                  if (nextRunnerType === "codex" && current === DEFAULT_CLAUDE_PROMPT) {
+                    return DEFAULT_CODEX_PROMPT;
+                  }
+                  return current;
+                });
+              }}
             >
               <option value="codex">codex</option>
+              <option value="claude">claude</option>
               <option value="shell">shell</option>
             </NativeSelect>
           </label>
@@ -814,10 +875,63 @@ export function TaskModal({
                   rows={5}
                   value={prompt}
                   onChange={(event) => setPrompt(event.target.value)}
-                  placeholder={DEFAULT_CODEX_PROMPT}
+                  placeholder={
+                    runnerType === "claude" ? DEFAULT_CLAUDE_PROMPT : DEFAULT_CODEX_PROMPT
+                  }
                 />
               </label>
-              {selectedWorkspace ? (
+              {runnerType === "claude" ? (
+                <>
+                  <label className={modalLabelClass}>
+                    <span className={modalLabelTextClass}>Claude agent</span>
+                    <Input
+                      value={claudeAgent}
+                      onChange={(event) => setClaudeAgent(event.target.value)}
+                      placeholder="code-reviewer"
+                    />
+                  </label>
+                  <label className={modalLabelClass}>
+                    <span className={modalLabelTextClass}>Permission mode</span>
+                    <NativeSelect
+                      value={claudePermissionMode}
+                      onChange={(event) =>
+                        setClaudePermissionMode(event.target.value as ClaudePermissionMode)
+                      }
+                    >
+                      {CLAUDE_PERMISSION_MODE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                    <p className={fieldHintClass}>
+                      {
+                        CLAUDE_PERMISSION_MODE_OPTIONS.find(
+                          (option) => option.value === claudePermissionMode
+                        )?.description
+                      }
+                    </p>
+                  </label>
+                  <label className={cn(modalLabelClass, span2Class)}>
+                    <span className={modalLabelTextClass}>Model override</span>
+                    <Input
+                      value={claudeModel}
+                      onChange={(event) => setClaudeModel(event.target.value)}
+                      placeholder="claude-sonnet-4-6"
+                    />
+                    <p className={fieldHintClass}>
+                      Leave blank to use the local Claude Code default model.
+                    </p>
+                  </label>
+                  <div className={cn(modalNoteClass, span2Class)}>
+                    <span className={modalLabelTextClass}>Claude CLI runtime</span>
+                    <p>
+                      Workhorse will run <code>claude -p</code> in this workspace and stream
+                      structured JSON events into the task log.
+                    </p>
+                  </div>
+                </>
+              ) : selectedWorkspace ? (
                 <div className={cn(modalNoteClass, span2Class)}>
                   <span className={modalLabelTextClass}>Workspace Codex settings</span>
                   <p>
