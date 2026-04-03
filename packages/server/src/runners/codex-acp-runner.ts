@@ -472,31 +472,7 @@ export class CodexAcpRunner implements RunnerAdapter {
 
       const notification = message as JsonRpcNotification;
       switch (notification.method) {
-        case "item/agentMessage/delta": {
-          const params = notification.params as AgentMessageDeltaNotification;
-          appendCapturedText(params.delta);
-          const streamKey = buildItemStreamKey({
-            turnId: params.turnId,
-            itemId: params.itemId
-          });
-          if (streamKey) {
-            streamedAgentItems.add(streamKey);
-          }
-          await hooks.onOutput({
-            kind: "agent",
-            text: params.delta,
-            stream: "stdout",
-            title: "Agent output",
-            source: notification.method,
-            metadata: {
-              groupId: `agent:${params.turnId}:${params.itemId}`,
-              itemId: params.itemId,
-              turnId: params.turnId,
-              threadId: params.threadId
-            }
-          });
-          break;
-        }
+        case "item/agentMessage/delta":
         case "item/assistantMessage/delta": {
           const params = notification.params as AgentMessageDeltaNotification;
           appendCapturedText(params.delta);
