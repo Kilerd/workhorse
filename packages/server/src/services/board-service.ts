@@ -11,7 +11,6 @@ import type {
   HealthCodexQuotaData,
   ListTasksQuery,
   Run,
-  RunLogEntry,
   RunnerConfig,
   StartTaskBody,
   TaskInputBody,
@@ -33,7 +32,6 @@ import {
 import { resolveWorkspaceCodexSettings } from "../lib/codex-settings.js";
 import { createId } from "../lib/id.js";
 import { parseUnifiedDiff, type DiffFile } from "../lib/diff-parser.js";
-import { createRunLogEntry } from "../lib/run-log.js";
 import { createTaskWorktree } from "../lib/task-worktree.js";
 import { resolveGlobalSettings } from "../lib/global-settings.js";
 import { StateStore } from "../persistence/state-store.js";
@@ -43,13 +41,7 @@ import {
 } from "../runners/codex-app-server-manager.js";
 import { CodexAcpRunner } from "../runners/codex-acp-runner.js";
 import { ClaudeCliRunner } from "../runners/claude-cli-runner.js";
-import {
-  buildContinuationRun,
-  canContinueCodexRun,
-  cloneRun,
-  resolveContinuationCandidateRunId
-} from "../runners/codex-continuation.js";
-import type { RunnerAdapter, RunnerControl } from "../runners/types.js";
+import type { RunnerAdapter } from "../runners/types.js";
 import { ShellRunner } from "../runners/shell-runner.js";
 import { EventBus } from "../ws/event-bus.js";
 import { GitWorktreeService } from "./git-worktree-service.js";
@@ -59,8 +51,6 @@ import {
 } from "./openrouter-task-naming-service.js";
 import {
   buildTaskPullRequestSummary,
-  resolveTaskPullRequestSummary,
-  resolveTaskPullRequestUrl,
   taskPullRequestEquals
 } from "./pull-request-snapshot.js";
 import {
@@ -72,22 +62,7 @@ import {
   NativeWorkspaceRootPicker,
   type WorkspaceRootPicker
 } from "./workspace-root-picker.js";
-
-interface ActiveRun {
-  control: RunnerControl;
-  stopRequested: boolean;
-  runId: string;
-  queue(work: () => Promise<void>): Promise<void>;
-}
-
-interface StartTaskOptions {
-  allowedColumns?: Task["column"][];
-  runnerConfigOverride?: RunnerConfig;
-  runMetadata?: Record<string, string>;
-  initialInputText?: string;
-  targetOrder?: number;
-  targetColumn?: Task["column"];
-}
+import { RunLifecycleService } from "./run-lifecycle-service.js";
 
 interface BoardServiceDependencies {
   gitWorktrees?: GitWorktreeService;
@@ -126,7 +101,7 @@ export class BoardService {
 
   private readonly workspaceRootPicker: WorkspaceRootPicker;
 
-  private readonly activeRuns = new Map<string, ActiveRun>();
+  private readonly runLifecycle: RunLifecycleService;
 
   private readonly prMonitor: PrMonitorService;
 
@@ -152,28 +127,40 @@ export class BoardService {
       dependencies.taskIdentityGenerator ?? new OpenRouterTaskIdentityGenerator();
     this.workspaceRootPicker =
       dependencies.workspaceRootPicker ?? new NativeWorkspaceRootPicker();
-    this.prMonitor = new PrMonitorService({
-      store: this.store,
-      events: this.events,
-      gitWorktrees: this.gitWorktrees,
-      githubPullRequests: this.githubPullRequests,
-      startTask: (taskId, opts) => this.startTaskInternal(taskId, opts),
-      updateTask: (taskId, input) => this.updateTask(taskId, input),
-      syncPullRequestSnapshot: (taskId, next) =>
-        this.syncTaskPullRequestSnapshot(taskId, next),
-      isTaskActive: (taskId) => this.activeRuns.has(taskId),
-      topOrder: (column, excludingId) => this.topOrder(column, excludingId)
-    });
     this.aiReview = new AiReviewService({
       store: this.store,
       events: this.events,
       gitWorktrees: this.gitWorktrees,
       githubPullRequests: this.githubPullRequests,
-      startTask: (taskId, opts) => this.startTaskInternal(taskId, opts),
-      appendAndPublishRunOutput: (taskId, runId, entry) => this.appendAndPublishRunOutput(taskId, runId, entry),
-      updateRunMetadata: (runId, metadata) => this.updateRunMetadata(runId, metadata),
+      startTask: (taskId, opts) => this.runLifecycle.startTask(taskId, opts),
+      appendAndPublishRunOutput: (taskId, runId, entry) => this.runLifecycle.appendAndPublishRunOutput(taskId, runId, entry),
+      updateRunMetadata: (runId, metadata) => this.runLifecycle.updateRunMetadata(runId, metadata),
       refreshPullRequestSnapshot: (task, workspace) => this.refreshTaskPullRequestSnapshotForReview(task, workspace),
       getSettings: () => this.getSettings(),
+      topOrder: (column, excludingId) => this.topOrder(column, excludingId)
+    });
+    this.runLifecycle = new RunLifecycleService({
+      store: this.store,
+      events: this.events,
+      runners: () => this.runners,
+      gitWorktrees: () => this.gitWorktrees,
+      codexAppServer: this.codexAppServer,
+      aiReview: this.aiReview,
+      requireTask: (taskId, source) => this.requireTask(taskId, source),
+      requireWorkspace: (workspaceId) => this.requireWorkspace(workspaceId),
+      requireRun: (runId, source) => this.requireRun(runId, source),
+      topOrder: (column, excludingId) => this.topOrder(column, excludingId)
+    });
+    this.prMonitor = new PrMonitorService({
+      store: this.store,
+      events: this.events,
+      gitWorktrees: this.gitWorktrees,
+      githubPullRequests: this.githubPullRequests,
+      startTask: (taskId, opts) => this.runLifecycle.startTask(taskId, opts),
+      updateTask: (taskId, input) => this.updateTask(taskId, input),
+      syncPullRequestSnapshot: (taskId, next) =>
+        this.syncTaskPullRequestSnapshot(taskId, next),
+      isTaskActive: (taskId) => this.runLifecycle.isActive(taskId),
       topOrder: (column, excludingId) => this.topOrder(column, excludingId)
     });
   }
@@ -207,7 +194,7 @@ export class BoardService {
 
   public async initialize(): Promise<void> {
     await this.store.load();
-    await this.recoverOrphanedRuns();
+    await this.runLifecycle.recoverOrphanedRuns();
   }
 
   public async warmCodexAppServer(): Promise<void> {
@@ -541,7 +528,7 @@ export class BoardService {
   }
 
   public async deleteTask(taskId: string): Promise<DeleteResult> {
-    if (this.activeRuns.has(taskId)) {
+    if (this.runLifecycle.isActive(taskId)) {
       throw new AppError(
         409,
         "TASK_RUNNING",
@@ -577,7 +564,7 @@ export class BoardService {
     taskId: string,
     input: StartTaskBody = {}
   ): Promise<{ task: Task; run: Run }> {
-    return this.startTaskInternal(taskId, {
+    return this.runLifecycle.startTask(taskId, {
       targetOrder: input.order
     });
   }
@@ -587,123 +574,18 @@ export class BoardService {
   }
 
   public async stopTask(taskId: string): Promise<{ task: Task; run: Run }> {
-    const active = this.activeRuns.get(taskId);
-    if (!active) {
-      throw new AppError(400, "TASK_NOT_RUNNING", "Task does not have an active run");
-    }
-
-    const run = ensure(
-      this.store
-        .listRuns()
-        .find((entry) => entry.taskId === taskId && entry.status === "running"),
-      404,
-      "RUN_NOT_FOUND",
-      "Run not found"
-    );
-    const task = this.requireTask(taskId);
-
-    active.stopRequested = true;
-    await active.control.stop();
-    return { task, run };
+    return this.runLifecycle.stopRun(taskId);
   }
 
   public async sendTaskInput(
     taskId: string,
     input: TaskInputBody
   ): Promise<{ task: Task; run: Run }> {
-    const text = input.text.trim();
-    if (!text) {
-      throw new AppError(400, "INVALID_TASK_INPUT", "Task input cannot be blank");
-    }
-
-    const task = this.requireTask(taskId);
-
-    if (task.runnerType !== "codex") {
-      throw new AppError(
-        400,
-        "TASK_INPUT_NOT_SUPPORTED",
-        "Only Codex tasks accept live input"
-      );
-    }
-
-    const active = this.activeRuns.get(taskId);
-    if (!active) {
-      if (task.column !== "review") {
-        throw new AppError(
-          409,
-          "TASK_INPUT_NOT_AVAILABLE",
-          "Task input is only available while a Codex task is running or in review"
-        );
-      }
-
-      return this.startTaskInternal(taskId, {
-        allowedColumns: ["review"],
-        initialInputText: text
-      });
-    }
-
-    if (!active.control.sendInput) {
-      throw new AppError(
-        400,
-        "TASK_INPUT_NOT_SUPPORTED",
-        "The active runner does not support live input"
-      );
-    }
-
-    const run = this.requireRun(active.runId);
-
-    await active.queue(async () => {
-      await this.appendAndPublishRunOutput(
-        task.id,
-        run.id,
-        this.createUserInputLogEntry(run.id, text)
-      );
-    });
-
-    try {
-      const result = await active.control.sendInput(text);
-      if (result?.metadata) {
-        await active.queue(async () => {
-          await this.updateRunMetadata(run.id, result.metadata ?? {});
-        });
-      }
-    } catch (error) {
-      const inputError =
-        error instanceof AppError
-          ? error
-          : new AppError(
-              409,
-              "TASK_INPUT_REJECTED",
-              error instanceof Error ? error.message : String(error)
-            );
-
-      await active.queue(async () => {
-        await this.appendAndPublishRunOutput(
-          task.id,
-          run.id,
-          createRunLogEntry(run.id, {
-            kind: "system",
-            stream: "system",
-            title: "Input error",
-            text: `${inputError.message}\n`
-          })
-        );
-      });
-
-      throw inputError;
-    }
-
-    const updatedTask = this.requireTask(taskId);
-    const updatedRun = this.requireRun(run.id);
-
-    return {
-      task: updatedTask,
-      run: updatedRun
-    };
+    return this.runLifecycle.sendInput(taskId, input);
   }
 
   public async cleanupTaskWorktree(taskId: string): Promise<Task> {
-    if (this.activeRuns.has(taskId)) {
+    if (this.runLifecycle.isActive(taskId)) {
       throw new AppError(
         409,
         "TASK_RUNNING",
@@ -767,7 +649,7 @@ export class BoardService {
   }
 
   public async requestTaskReview(taskId: string): Promise<{ task: Task; run: Run }> {
-    if (this.activeRuns.has(taskId)) {
+    if (this.runLifecycle.isActive(taskId)) {
       throw new AppError(409, "TASK_ALREADY_RUNNING", "Task already has an active run");
     }
 
@@ -790,7 +672,7 @@ export class BoardService {
     }
 
     const refreshedTask = await this.refreshTaskPullRequestSnapshotForReview(task, workspace);
-    return this.startTaskInternal(refreshedTask.id, {
+    return this.runLifecycle.startTask(refreshedTask.id, {
       allowedColumns: ["review"],
       runnerConfigOverride: this.aiReview.buildManualReviewRunnerConfig(refreshedTask),
       runMetadata: this.aiReview.buildManualReviewRunMetadata(refreshedTask)
@@ -841,272 +723,8 @@ export class BoardService {
     return this.store.readLogEntries(runId);
   }
 
-  private createUserInputLogEntry(runId: string, text: string): RunLogEntry {
-    return createRunLogEntry(runId, {
-      kind: "user",
-      stream: "system",
-      title: "User input",
-      text
-    });
-  }
-
-  private async appendAndPublishRunOutput(
-    taskId: string,
-    runId: string,
-    entry: RunLogEntry
-  ): Promise<void> {
-    await this.store.appendLogEntry(runId, entry);
-    this.events.publish({
-      type: "run.output",
-      taskId,
-      runId,
-      entry
-    });
-  }
-
-  private async updateRunMetadata(
-    runId: string,
-    metadata: Record<string, string>
-  ): Promise<Run> {
-    const runs = this.store.listRuns();
-    const run = this.requireRun(runId, runs);
-
-    run.metadata = {
-      ...(run.metadata ?? {}),
-      ...metadata
-    };
-
-    this.store.setRuns(runs);
-    await this.store.save();
-    return run;
-  }
-
-  private async startTaskInternal(
-    taskId: string,
-    options: StartTaskOptions = {}
-  ): Promise<{ task: Task; run: Run }> {
-    if (this.activeRuns.has(taskId)) {
-      throw new AppError(409, "TASK_ALREADY_RUNNING", "Task already has an active run");
-    }
-
-    const tasks = this.store.listTasks();
-    const task = this.requireTask(taskId, tasks);
-    this.ensureStartableTask(task, options.allowedColumns);
-    const workspace = this.requireWorkspace(task.workspaceId);
-    let executionWorkspace = workspace;
-
-    if (workspace.isGitRepo) {
-      task.worktree = await this.gitWorktrees.ensureTaskWorktree(workspace, task);
-      executionWorkspace = {
-        ...workspace,
-        rootPath: task.worktree.path ?? workspace.rootPath
-      };
-    }
-
-    const executionTask = options.runnerConfigOverride
-      ? {
-          ...task,
-          runnerType: options.runnerConfigOverride.type,
-          runnerConfig: options.runnerConfigOverride
-        }
-      : task;
-    const currentRuns = this.store.listRuns();
-    const previousRunId = resolveContinuationCandidateRunId(task, executionTask.runnerType);
-    const previousRunEntry =
-      previousRunId !== undefined
-        ? currentRuns.find((entry) => entry.id === previousRunId)
-        : undefined;
-    const previousRun = previousRunEntry
-      ? cloneRun(previousRunEntry)
-      : undefined;
-    const reusableRunEntry = canContinueCodexRun(
-      executionTask.runnerType,
-      previousRunEntry
-    )
-      ? previousRunEntry
-      : undefined;
-    const run: Run = reusableRunEntry
-      ? buildContinuationRun(reusableRunEntry, (id) => this.store.createLogPath(id), options.runMetadata)
-      : (() => {
-          const runId = createId();
-          return {
-            id: runId,
-            taskId: task.id,
-            status: "queued",
-            runnerType: executionTask.runnerType,
-            command: "",
-            startedAt: new Date().toISOString(),
-            logFile: this.store.createLogPath(runId),
-            metadata: options.runMetadata
-          } satisfies Run;
-        })();
-
-    const runs = reusableRunEntry
-      ? currentRuns.map((entry) => (entry.id === reusableRunEntry.id ? run : entry))
-      : [...currentRuns, run];
-    const taskIndex = tasks.findIndex((entry) => entry.id === task.id);
-    const targetColumn = options.targetColumn ?? "running";
-    tasks[taskIndex] = {
-      ...task,
-      column: targetColumn,
-      order: options.targetOrder ?? this.topOrder(targetColumn, task.id),
-      lastRunId: run.id,
-      continuationRunId:
-        executionTask.runnerType === "codex" ? run.id : task.continuationRunId,
-      updatedAt: new Date().toISOString()
-    };
-
-    this.store.setRuns(runs);
-    this.store.setTasks(tasks);
-    await this.store.save();
-    this.events.publish({
-      type: "task.updated",
-      action: "updated",
-      taskId: tasks[taskIndex].id,
-      task: tasks[taskIndex]
-    });
-
-    if (options.initialInputText) {
-      await this.appendAndPublishRunOutput(
-        task.id,
-        run.id,
-        this.createUserInputLogEntry(run.id, options.initialInputText)
-      );
-    }
-
-    const runner = this.runners[executionTask.runnerType];
-    if (!runner) {
-      throw new AppError(
-        400,
-        "RUNNER_NOT_SUPPORTED",
-        `No runner available for ${executionTask.runnerType}`
-      );
-    }
-
-    let outputChain = Promise.resolve();
-    const queueOutput = (work: () => Promise<void>) => {
-      const next = outputChain.then(work);
-      outputChain = next.catch(() => {});
-      return next;
-    };
-
-    try {
-      const control = await runner.start(
-        {
-          run: {
-            ...run,
-            logFile: this.store.createLogPath(run.id)
-          },
-          previousRun,
-          task: executionTask,
-          workspace: executionWorkspace,
-          inputText: options.initialInputText
-        },
-        {
-          onOutput: async (output) => {
-            await queueOutput(async () => {
-              const entry = createRunLogEntry(run.id, output);
-              await this.appendAndPublishRunOutput(task.id, run.id, entry);
-            });
-          },
-          onExit: async (result) => {
-            await outputChain;
-            await this.transitionTaskRunToReview(task.id, run.id, {
-              status: this.activeRuns.get(task.id)?.stopRequested
-                ? "canceled"
-                : result.status,
-              exitCode: result.exitCode,
-              metadata: result.metadata
-            });
-          }
-        }
-      );
-
-      run.status = "running";
-      run.command = control.command;
-      run.pid = control.pid;
-      run.logFile = this.store.createLogPath(run.id);
-      run.metadata = {
-        ...(run.metadata ?? {}),
-        ...(control.metadata ?? {})
-      };
-      this.store.setRuns(runs);
-      await this.store.save();
-
-      this.activeRuns.set(task.id, {
-        control,
-        stopRequested: false,
-        runId: run.id,
-        queue: queueOutput
-      });
-
-      this.events.publish({
-        type: "run.started",
-        taskId: task.id,
-        run
-      });
-
-      return {
-        task: tasks[taskIndex],
-        run
-      };
-    } catch (error) {
-      run.status = "failed";
-      run.endedAt = new Date().toISOString();
-      const entry = createRunLogEntry(run.id, {
-        kind: "system",
-        stream: "system",
-        text: `${error instanceof Error ? error.message : String(error)}\n`,
-        title: "Runner error"
-      });
-      await this.appendAndPublishRunOutput(task.id, run.id, entry);
-      tasks[taskIndex] = {
-        ...tasks[taskIndex],
-        column: "review",
-        order: this.topOrder("review", task.id),
-        updatedAt: new Date().toISOString()
-      };
-      this.store.setRuns(runs);
-      this.store.setTasks(tasks);
-      await this.store.save();
-      this.events.publish({
-        type: "task.updated",
-        action: "updated",
-        taskId: tasks[taskIndex].id,
-        task: tasks[taskIndex]
-      });
-      this.events.publish({
-        type: "run.finished",
-        taskId: tasks[taskIndex].id,
-        run,
-        task: tasks[taskIndex]
-      });
-      throw error;
-    }
-  }
-
-
-
   private async archiveTaskCodexThread(task: Task): Promise<void> {
-    const runId = task.continuationRunId ?? task.lastRunId;
-    if (this.activeRuns.has(task.id) || !runId) {
-      return;
-    }
-
-    const run = this.store.listRuns().find((entry) => entry.id === runId);
-    const threadId =
-      run?.runnerType === "codex"
-        ? run.metadata?.threadId?.trim()
-        : undefined;
-    if (!threadId) {
-      return;
-    }
-
-    try {
-      await this.codexAppServer.archiveThread(threadId);
-    } catch {
-      // Archiving the remote thread is best-effort and should not block task completion.
-    }
+    return this.runLifecycle.archiveTaskCodexThread(task);
   }
 
 
@@ -1213,92 +831,6 @@ export class BoardService {
     });
   }
 
-  private async recoverOrphanedRuns(): Promise<void> {
-    const runs = this.store.listRuns();
-    for (const run of runs) {
-      if (run.status !== "queued" && run.status !== "running") {
-        continue;
-      }
-
-      await this.transitionTaskRunToReview(run.taskId, run.id, {
-        status: this.resolveOrphanedRunStatus(run)
-      });
-    }
-  }
-
-  private async transitionTaskRunToReview(
-    taskId: string,
-    runId: string,
-    result: {
-      status: Run["status"];
-      exitCode?: number;
-      metadata?: Record<string, string>;
-    }
-  ): Promise<{ run: Run; task: Task }> {
-    const currentRuns = this.store.listRuns();
-    const currentTasks = this.store.listTasks();
-    const runEntry = this.requireRun(runId, currentRuns);
-    const taskEntry = this.requireTask(taskId, currentTasks);
-
-    runEntry.status = result.status;
-    runEntry.exitCode = result.exitCode;
-    runEntry.endedAt = new Date().toISOString();
-    runEntry.metadata = result.metadata
-      ? {
-          ...(runEntry.metadata ?? {}),
-          ...result.metadata
-        }
-      : runEntry.metadata;
-    this.activeRuns.delete(taskId);
-
-    const shouldAutoReview = this.aiReview.shouldAutoTriggerAiReview(taskEntry, runEntry, result.status);
-    const isAiReviewRun = this.aiReview.isAiReviewTrigger(runEntry.metadata?.trigger);
-    const shouldRework =
-      isAiReviewRun &&
-      result.status === "succeeded" &&
-      runEntry.metadata?.reviewVerdict === "request_changes";
-    const nextColumn: Task["column"] =
-      shouldAutoReview || shouldRework ? "running" : "review";
-
-    taskEntry.column = nextColumn;
-    taskEntry.order = this.topOrder(nextColumn, taskId);
-    taskEntry.pullRequestUrl = resolveTaskPullRequestUrl(taskEntry, runEntry);
-    taskEntry.pullRequest = resolveTaskPullRequestSummary(taskEntry, runEntry);
-    taskEntry.updatedAt = new Date().toISOString();
-
-    this.store.setRuns(currentRuns);
-    this.store.setTasks(currentTasks);
-    await this.store.save();
-    if (isAiReviewRun) {
-      await this.aiReview.maybePublishManualReviewToPullRequest(taskEntry, runEntry);
-    }
-    this.events.publish({
-      type: "task.updated",
-      action: "updated",
-      taskId: taskEntry.id,
-      task: taskEntry
-    });
-
-    this.events.publish({
-      type: "run.finished",
-      taskId: taskEntry.id,
-      run: runEntry,
-      task: taskEntry
-    });
-
-    if (shouldAutoReview) {
-      void this.aiReview.triggerAiReview(taskEntry).catch(() => {});
-    }
-
-    if (shouldRework) {
-      void this.aiReview.triggerReworkFromReview(taskEntry, runEntry).catch(() => {});
-    }
-
-    return {
-      run: runEntry,
-      task: taskEntry
-    };
-  }
 
   private async ensureReadableDirectory(path: string): Promise<void> {
     try {
@@ -1362,21 +894,6 @@ export class BoardService {
     throw new AppError(400, "INVALID_RUNNER_CONFIG", "Unsupported runner configuration");
   }
 
-  private ensureStartableTask(
-    task: Task,
-    allowedColumns: Task["column"][] = ["backlog", "todo", "review"]
-  ): void {
-    if (allowedColumns.includes(task.column)) {
-      return;
-    }
-
-    throw new AppError(
-      409,
-      "TASK_NOT_STARTABLE",
-      `Tasks in ${task.column} cannot be started`
-    );
-  }
-
   private buildTaskPlan(task: Task): string {
     const description = task.description.trim();
     const context = description || "No additional context provided yet.";
@@ -1425,14 +942,4 @@ export class BoardService {
     return first ? first.order - 1_024 : 1_024;
   }
 
-  private resolveOrphanedRunStatus(run: Run): Run["status"] {
-    if (
-      run.runnerType === "codex" &&
-      (run.status === "running" || typeof run.metadata?.threadId === "string")
-    ) {
-      return "interrupted";
-    }
-
-    return "canceled";
-  }
 }
