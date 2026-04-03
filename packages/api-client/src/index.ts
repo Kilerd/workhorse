@@ -1,32 +1,31 @@
 import { Fetcher, type Middleware } from "openapi-typescript-fetch";
 
 import type {
-  CleanupTaskWorktreeResponse,
+  CleanupTaskWorktreeData,
   CreateTaskBody,
   CreateWorkspaceBody,
-  DeleteTaskResponse,
-  DeleteWorkspaceResponse,
-  HealthResponse,
-  PickWorkspaceRootResponse,
-  SettingsResponse,
-  WorkspaceGitRefsResponse,
-  PlanTaskResponse,
-  RequestTaskReviewResponse,
-  TaskDiffResponse,
-  RunLogResponse,
-  RunsResponse,
-  StartTaskResponse,
+  DeleteResult,
+  HealthData,
+  ListRunsData,
+  ListTasksData,
+  ListWorkspacesData,
+  PickWorkspaceRootData,
+  PlanTaskData,
+  RequestTaskReviewData,
+  RunLogData,
+  SettingsData,
   StartTaskBody,
-  StopTaskResponse,
+  StartTaskData,
+  StopTaskData,
+  TaskData,
+  TaskDiffData,
   TaskInputBody,
-  TaskInputResponse,
-  TaskResponse,
-  TasksResponse,
+  TaskInputData,
   UpdateSettingsBody,
   UpdateTaskBody,
   UpdateWorkspaceBody,
-  WorkspaceResponse,
-  WorkspacesResponse
+  WorkspaceData,
+  WorkspaceGitRefsData
 } from "@workhorse/contracts";
 import type { paths } from "./generated/openapi";
 
@@ -139,72 +138,77 @@ export function createApiClient(baseUrl: string) {
     return payload;
   }
 
+  function unwrap<T>(response: { ok: true; data: T }): T {
+    return response.data;
+  }
+
   return {
-    health: async (): Promise<HealthResponse> => (await health({})).data,
-    getSettings: async (): Promise<SettingsResponse> => requestJson("/api/settings"),
-    updateSettings: async (body: UpdateSettingsBody): Promise<SettingsResponse> =>
-      requestJson("/api/settings", {
-        method: "PATCH",
-        body: JSON.stringify(body)
-      }),
-    listWorkspaces: async (): Promise<WorkspacesResponse> =>
-      (await listWorkspaces({})).data,
-    pickWorkspaceRoot: async (): Promise<PickWorkspaceRootResponse> =>
-      (await pickWorkspaceRoot({})).data,
-    createWorkspace: async (body: CreateWorkspaceBody): Promise<WorkspaceResponse> =>
-      (await createWorkspace(body)).data,
+    health: async (): Promise<HealthData> => unwrap((await health({})).data),
+    getSettings: async (): Promise<SettingsData> =>
+      unwrap(await requestJson("/api/settings")),
+    updateSettings: async (body: UpdateSettingsBody): Promise<SettingsData> =>
+      unwrap(
+        await requestJson("/api/settings", {
+          method: "PATCH",
+          body: JSON.stringify(body)
+        })
+      ),
+    listWorkspaces: async (): Promise<ListWorkspacesData> =>
+      unwrap((await listWorkspaces({})).data),
+    pickWorkspaceRoot: async (): Promise<PickWorkspaceRootData> =>
+      unwrap((await pickWorkspaceRoot({})).data),
+    createWorkspace: async (body: CreateWorkspaceBody): Promise<WorkspaceData> =>
+      unwrap((await createWorkspace(body)).data),
     updateWorkspace: async (
       workspaceId: string,
       body: UpdateWorkspaceBody
-    ): Promise<WorkspaceResponse> =>
-      (await updateWorkspace({ workspaceId, ...body })).data,
+    ): Promise<WorkspaceData> =>
+      unwrap((await updateWorkspace({ workspaceId, ...body })).data),
     listWorkspaceGitRefs: async (
       workspaceId: string
-    ): Promise<WorkspaceGitRefsResponse> =>
-      (await listWorkspaceGitRefs({ workspaceId })).data,
-    deleteWorkspace: async (
-      workspaceId: string
-    ): Promise<DeleteWorkspaceResponse> =>
-      (await deleteWorkspace({ workspaceId })).data,
-    listTasks: async (workspaceId?: string): Promise<TasksResponse> =>
-      (await listTasks(workspaceId ? { workspaceId } : {})).data,
-    createTask: async (body: CreateTaskBody): Promise<TaskResponse> =>
-      (await createTask(body)).data,
+    ): Promise<WorkspaceGitRefsData> =>
+      unwrap((await listWorkspaceGitRefs({ workspaceId })).data),
+    deleteWorkspace: async (workspaceId: string): Promise<DeleteResult> =>
+      unwrap((await deleteWorkspace({ workspaceId })).data),
+    listTasks: async (workspaceId?: string): Promise<ListTasksData> =>
+      unwrap((await listTasks(workspaceId ? { workspaceId } : {})).data),
+    createTask: async (body: CreateTaskBody): Promise<TaskData> =>
+      unwrap((await createTask(body)).data),
     updateTask: async (
       taskId: string,
       body: UpdateTaskBody
-    ): Promise<TaskResponse> =>
-      (await updateTask({ taskId, ...body })).data,
-    deleteTask: async (taskId: string): Promise<DeleteTaskResponse> =>
-      (await deleteTask({ taskId })).data,
+    ): Promise<TaskData> =>
+      unwrap((await updateTask({ taskId, ...body })).data),
+    deleteTask: async (taskId: string): Promise<DeleteResult> =>
+      unwrap((await deleteTask({ taskId })).data),
     startTask: async (
       taskId: string,
       body: StartTaskBody = {}
-    ): Promise<StartTaskResponse> =>
-      (await startTask({ taskId, ...body })).data,
-    stopTask: async (taskId: string): Promise<StopTaskResponse> =>
-      (await stopTask({ taskId })).data,
+    ): Promise<StartTaskData> =>
+      unwrap((await startTask({ taskId, ...body })).data),
+    stopTask: async (taskId: string): Promise<StopTaskData> =>
+      unwrap((await stopTask({ taskId })).data),
     sendTaskInput: async (
       taskId: string,
       body: TaskInputBody
-    ): Promise<TaskInputResponse> =>
-      (await sendTaskInput({ taskId, ...body })).data,
-    planTask: async (taskId: string): Promise<PlanTaskResponse> =>
-      (await planTask({ taskId })).data,
+    ): Promise<TaskInputData> =>
+      unwrap((await sendTaskInput({ taskId, ...body })).data),
+    planTask: async (taskId: string): Promise<PlanTaskData> =>
+      unwrap((await planTask({ taskId })).data),
     requestTaskReview: async (
       taskId: string
-    ): Promise<RequestTaskReviewResponse> =>
-      (await requestTaskReview({ taskId })).data,
+    ): Promise<RequestTaskReviewData> =>
+      unwrap((await requestTaskReview({ taskId })).data),
     cleanupTaskWorktree: async (
       taskId: string
-    ): Promise<CleanupTaskWorktreeResponse> =>
-      (await cleanupTaskWorktree({ taskId })).data,
-    getTaskDiff: async (taskId: string): Promise<TaskDiffResponse> =>
-      (await getTaskDiff({ taskId })).data,
-    listRuns: async (taskId: string): Promise<RunsResponse> =>
-      (await listRuns({ taskId })).data,
-    getRunLog: async (runId: string): Promise<RunLogResponse> =>
-      (await getRunLog({ runId })).data
+    ): Promise<CleanupTaskWorktreeData> =>
+      unwrap((await cleanupTaskWorktree({ taskId })).data),
+    getTaskDiff: async (taskId: string): Promise<TaskDiffData> =>
+      unwrap((await getTaskDiff({ taskId })).data),
+    listRuns: async (taskId: string): Promise<ListRunsData> =>
+      unwrap((await listRuns({ taskId })).data),
+    getRunLog: async (runId: string): Promise<RunLogData> =>
+      unwrap((await getRunLog({ runId })).data)
   };
 }
 

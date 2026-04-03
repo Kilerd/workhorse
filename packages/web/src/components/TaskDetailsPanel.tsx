@@ -289,8 +289,7 @@ export function TaskDetailsPanel({
     queryKey: ["task-diff", task?.id ?? ""],
     queryFn: async () => {
       if (!task) return null;
-      const response = await api.getTaskDiff(task.id);
-      return response.data;
+      return api.getTaskDiff(task.id);
     },
     enabled: Boolean(task && worktreeReady)
   });

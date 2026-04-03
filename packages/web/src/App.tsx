@@ -390,7 +390,7 @@ function TaskDetailsRoute({
         return [];
       }
 
-      return (await api.getRunLog(viewedRunId)).data.items;
+      return (await api.getRunLog(viewedRunId)).items;
     },
     enabled: isSelectedTaskActive && Boolean(viewedRunId)
   });

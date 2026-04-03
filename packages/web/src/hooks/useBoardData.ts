@@ -29,10 +29,6 @@ import { useLiveLog } from "./useLiveLog";
 import { useModalState } from "./useModalState";
 import { useSelectionState } from "./useSelectionState";
 
-function unwrap<T>(payload: { ok: true; data: T }): T {
-  return payload.data;
-}
-
 function queryKey(name: string, extra?: string) {
   return extra ? [name, extra] : [name];
 }
@@ -47,7 +43,7 @@ export function useBoardData() {
     queryKey: queryKey("workspaces"),
     queryFn: async (): Promise<Workspace[]> => {
       const response = await api.listWorkspaces();
-      return unwrap(response).items;
+      return response.items;
     }
   });
 
@@ -55,13 +51,13 @@ export function useBoardData() {
     queryKey: queryKey("tasks"),
     queryFn: async (): Promise<Task[]> => {
       const response = await api.listTasks();
-      return unwrap(response).items;
+      return response.items;
     }
   });
 
   const healthQuery = useQuery({
     queryKey: queryKey("health"),
-    queryFn: async () => unwrap(await api.health()),
+    queryFn: async () => api.health(),
     refetchInterval: 60_000
   });
 
@@ -69,7 +65,7 @@ export function useBoardData() {
     queryKey: queryKey("settings"),
     queryFn: async (): Promise<GlobalSettings> => {
       const response = await api.getSettings();
-      return unwrap(response).settings;
+      return response.settings;
     }
   });
 
@@ -98,7 +94,7 @@ export function useBoardData() {
         return [];
       }
       const response = await api.listRuns(selectedTask.id);
-      return unwrap(response).items;
+      return response.items;
     },
     enabled: Boolean(selectedTask?.id)
   });
@@ -119,7 +115,7 @@ export function useBoardData() {
   const createWorkspaceMutation = useMutation({
     mutationFn: async (input: { name: string; rootPath: string }) => {
       const response = await api.createWorkspace(input);
-      return unwrap(response).workspace;
+      return response.workspace;
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKey("workspaces") });
@@ -129,7 +125,7 @@ export function useBoardData() {
   const createTaskMutation = useMutation({
     mutationFn: async (input: TaskFormValues) => {
       const response = await api.createTask(input);
-      return unwrap(response).task;
+      return response.task;
     },
     onSuccess: async (task) => {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
@@ -147,7 +143,7 @@ export function useBoardData() {
       body: UpdateWorkspaceBody;
     }) => {
       const response = await api.updateWorkspace(workspaceId, body);
-      return unwrap(response).workspace;
+      return response.workspace;
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKey("workspaces") });
@@ -157,7 +153,7 @@ export function useBoardData() {
   const updateSettingsMutation = useMutation({
     mutationFn: async (body: UpdateSettingsBody) => {
       const response = await api.updateSettings(body);
-      return unwrap(response).settings;
+      return response.settings;
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKey("settings") });
@@ -173,7 +169,7 @@ export function useBoardData() {
       body?: StartTaskBody;
     }) => {
       const response = await api.startTask(taskId, body);
-      return unwrap(response);
+      return response;
     },
     onMutate: async ({ taskId, body }) => {
       await queryClient.cancelQueries({ queryKey: queryKey("tasks") });
@@ -213,7 +209,7 @@ export function useBoardData() {
   const stopTaskMutation = useMutation({
     mutationFn: async (taskId: string) => {
       const response = await api.stopTask(taskId);
-      return unwrap(response);
+      return response;
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
@@ -230,7 +226,7 @@ export function useBoardData() {
       text: string;
     }) => {
       const response = await api.sendTaskInput(taskId, { text });
-      return unwrap(response);
+      return response;
     },
     onSuccess: async (result, { taskId }) => {
       if (taskId === selection.selectedTaskId) {
@@ -251,7 +247,7 @@ export function useBoardData() {
       body: Record<string, unknown>;
     }) => {
       const response = await api.updateTask(taskId, body);
-      return unwrap(response).task;
+      return response.task;
     },
     onMutate: async ({ taskId, body }) => {
       await queryClient.cancelQueries({ queryKey: queryKey("tasks") });
@@ -277,7 +273,7 @@ export function useBoardData() {
   const planTaskMutation = useMutation({
     mutationFn: async (taskId: string) => {
       const response = await api.planTask(taskId);
-      return unwrap(response).task;
+      return response.task;
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
@@ -287,7 +283,7 @@ export function useBoardData() {
   const requestTaskReviewMutation = useMutation({
     mutationFn: async (taskId: string) => {
       const response = await api.requestTaskReview(taskId);
-      return unwrap(response);
+      return response;
     },
     onSuccess: async (result, taskId) => {
       if (taskId === selection.selectedTaskId) {
@@ -302,7 +298,7 @@ export function useBoardData() {
   const cleanupTaskWorktreeMutation = useMutation({
     mutationFn: async (taskId: string) => {
       const response = await api.cleanupTaskWorktree(taskId);
-      return unwrap(response).task;
+      return response.task;
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
@@ -312,7 +308,7 @@ export function useBoardData() {
   const changeColumnMutation = useMutation({
     mutationFn: async ({ taskId, column }: { taskId: string; column: TaskColumn }) => {
       const response = await api.updateTask(taskId, { column });
-      return unwrap(response).task;
+      return response.task;
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
@@ -322,7 +318,7 @@ export function useBoardData() {
   const deleteWorkspaceMutation = useMutation({
     mutationFn: async (workspaceId: string) => {
       const response = await api.deleteWorkspace(workspaceId);
-      return unwrap(response);
+      return response;
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKey("workspaces") });
@@ -334,7 +330,7 @@ export function useBoardData() {
   const deleteTaskMutation = useMutation({
     mutationFn: async (taskId: string) => {
       const response = await api.deleteTask(taskId);
-      return unwrap(response);
+      return response;
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });

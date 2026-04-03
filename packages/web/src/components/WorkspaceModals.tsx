@@ -299,7 +299,7 @@ export function WorkspaceModal({ open, onClose, onSubmit }: WorkspaceModalProps)
                 void api
                   .pickWorkspaceRoot()
                   .then((response) => {
-                    const selectedRootPath = response.data.rootPath;
+                    const selectedRootPath = response.rootPath;
                     if (!selectedRootPath) {
                       return;
                     }
@@ -625,7 +625,7 @@ export function TaskModal({
         return [];
       }
       const response = await api.listWorkspaceGitRefs(selectedWorkspace.id);
-      return response.data.items;
+      return response.items;
     },
     enabled: open && Boolean(selectedWorkspace?.isGitRepo && selectedWorkspace.id)
   });
