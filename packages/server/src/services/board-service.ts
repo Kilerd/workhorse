@@ -17,8 +17,6 @@ import type {
   TaskInputBody,
   Task,
   TaskPullRequest,
-  TaskPullRequestChecks,
-  TaskPullRequestFile,
   TaskWorktree,
   UpdateSettingsBody,
   UpdateTaskBody,
@@ -30,9 +28,7 @@ import type {
 import { AppError, ensure } from "../lib/errors.js";
 import {
   GhCliPullRequestProvider,
-  type GitHubCheckBucket,
   type GitHubPullRequestCheck,
-  type GitHubPullRequestFile,
   type GitHubPullRequestProvider,
   type GitHubPullRequestReviewAction,
   type GitHubPullRequestSummary
@@ -60,6 +56,25 @@ import {
   type TaskIdentityGenerator
 } from "./openrouter-task-naming-service.js";
 import {
+  baseRefMatches,
+  buildTaskPullRequestSummary,
+  buildUnresolvedConversationSignature,
+  didTimestampOccurAfter,
+  extractRemoteName,
+  formatMonitorFeedback,
+  formatMonitorUnresolvedConversations,
+  joinMonitorReasonDescriptions,
+  quoteShell,
+  resolveTaskPullRequestSummary,
+  resolveTaskPullRequestUrl,
+  summarizeMonitorFeedbackBody,
+  summarizeRequiredChecks,
+  summarizeTaskPullRequestChecks,
+  taskPullRequestEquals,
+  type MonitorCiStatus,
+  type MonitorReason
+} from "./pull-request-snapshot.js";
+import {
   NativeWorkspaceRootPicker,
   type WorkspaceRootPicker
 } from "./workspace-root-picker.js";
@@ -78,20 +93,6 @@ interface StartTaskOptions {
   initialInputText?: string;
   targetOrder?: number;
   targetColumn?: Task["column"];
-}
-
-type MonitorCiStatus = GitHubCheckBucket | "not_required";
-
-type MonitorReasonCode =
-  | "behind"
-  | "conflict"
-  | "ci_failed"
-  | "new_feedback"
-  | "unresolved_conversations";
-
-interface MonitorReason {
-  code: MonitorReasonCode;
-  description: string;
 }
 
 interface BoardServiceDependencies {
@@ -116,16 +117,6 @@ const COLUMN_ORDER: Record<Task["column"], number> = {
   done: 4,
   archived: 5
 };
-
-function toOptionalNumber(value?: string): number | undefined {
-  if (value === undefined || value === "") {
-    return undefined;
-  }
-
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
 
 export class BoardService {
   private readonly store: StateStore;
@@ -625,7 +616,7 @@ export class BoardService {
       }
 
       try {
-        for (const remoteName of new Set(tasks.map((task) => this.extractRemoteName(task.worktree.baseRef)))) {
+        for (const remoteName of new Set(tasks.map((task) => extractRemoteName(task.worktree.baseRef)))) {
           await this.gitWorktrees.fetchWorkspace(workspace, remoteName);
         }
       } catch {
@@ -648,7 +639,7 @@ export class BoardService {
               repositoryFullName,
               task.worktree.branchName
             );
-            if (mergedPr && this.baseRefMatches(task.worktree.baseRef, mergedPr.baseRef)) {
+            if (mergedPr && baseRefMatches(task.worktree.baseRef, mergedPr.baseRef)) {
               await this.updateTask(task.id, {
                 column: "done",
                 order: this.topOrder("done", task.id)
@@ -663,9 +654,9 @@ export class BoardService {
           );
           await this.syncTaskPullRequestSnapshot(task.id, {
             pullRequestUrl: openPr.url,
-            pullRequest: this.buildTaskPullRequestSummary(openPr, checks)
+            pullRequest: buildTaskPullRequestSummary(openPr, checks)
           });
-          const ciStatus = this.summarizeRequiredChecks(checks);
+          const ciStatus = summarizeRequiredChecks(checks);
           const monitorReasons = this.collectMonitorReasons(task, runsById, openPr, ciStatus);
           if (monitorReasons.length === 0) {
             continue;
@@ -1293,7 +1284,7 @@ export class BoardService {
     pullRequest: GitHubPullRequestSummary,
     ciStatus: MonitorCiStatus
   ): MonitorReason[] {
-    if (!this.baseRefMatches(task.worktree.baseRef, pullRequest.baseRef)) {
+    if (!baseRefMatches(task.worktree.baseRef, pullRequest.baseRef)) {
       return [];
     }
 
@@ -1371,7 +1362,7 @@ export class BoardService {
       run.metadata.monitorPrUnresolvedConversationUpdatedAt ===
         (pullRequest.unresolvedConversationUpdatedAt ?? "") &&
       run.metadata.monitorPrUnresolvedConversationSignature ===
-        this.buildUnresolvedConversationSignature(pullRequest)
+        buildUnresolvedConversationSignature(pullRequest)
     );
   }
 
@@ -1386,21 +1377,21 @@ export class BoardService {
         ...task.runnerConfig,
         command: [
           "set -eu",
-          `git fetch ${this.quoteShell(this.extractRemoteName(task.worktree.baseRef))} --prune`,
-          `git rebase ${this.quoteShell(task.worktree.baseRef)}`,
+          `git fetch ${quoteShell(extractRemoteName(task.worktree.baseRef))} --prune`,
+          `git rebase ${quoteShell(task.worktree.baseRef)}`,
           task.runnerConfig.command.trim()
         ].join("\n")
       };
     }
 
-    const feedbackLines = this.formatMonitorFeedback(pullRequest);
-    const unresolvedConversationLines = this.formatMonitorUnresolvedConversations(pullRequest);
+    const feedbackLines = formatMonitorFeedback(pullRequest);
+    const unresolvedConversationLines = formatMonitorUnresolvedConversations(pullRequest);
     return {
       ...task.runnerConfig,
       prompt: [
         task.runnerConfig.prompt.trim(),
         "GitHub PR monitor update:",
-        `- PR #${pullRequest.number} (${pullRequest.url}) needs attention because ${this.joinMonitorReasonDescriptions(reasons)}.`,
+        `- PR #${pullRequest.number} (${pullRequest.url}) needs attention because ${joinMonitorReasonDescriptions(reasons)}.`,
         `- Required CI status is currently \`${ciStatus}\`.`,
         pullRequest.statusCheckRollupState
           ? `- Overall PR check rollup is \`${pullRequest.statusCheckRollupState}\`.`
@@ -1493,7 +1484,7 @@ export class BoardService {
     ciStatus: MonitorCiStatus,
     checks: GitHubPullRequestCheck[]
   ): Record<string, string> {
-    const checkSummary = this.summarizeTaskPullRequestChecks(checks);
+    const checkSummary = summarizeTaskPullRequestChecks(checks);
 
     return {
       trigger: "gh_pr_monitor",
@@ -1515,103 +1506,12 @@ export class BoardService {
       monitorPrUnresolvedConversationUpdatedAt:
         pullRequest.unresolvedConversationUpdatedAt ?? "",
       monitorPrUnresolvedConversationSignature:
-        this.buildUnresolvedConversationSignature(pullRequest),
+        buildUnresolvedConversationSignature(pullRequest),
       monitorPrReviewDecision: pullRequest.reviewDecision ?? "",
       monitorPrRequiredChecksTotal: String(checkSummary?.total ?? 0),
       monitorPrRequiredChecksPassed: String(checkSummary?.passed ?? 0),
       monitorPrRequiredChecksFailed: String(checkSummary?.failed ?? 0),
       monitorPrRequiredChecksPending: String(checkSummary?.pending ?? 0)
-    };
-  }
-
-  private buildTaskPullRequestSummary(
-    pullRequest: GitHubPullRequestSummary,
-    checks: GitHubPullRequestCheck[]
-  ): TaskPullRequest {
-    const summary: TaskPullRequest = {
-      number: pullRequest.number,
-      changedFiles: pullRequest.changedFiles,
-      mergeable: pullRequest.mergeable,
-      mergeStateStatus: pullRequest.mergeStateStatus,
-      reviewDecision: pullRequest.reviewDecision,
-      statusCheckRollupState: pullRequest.statusCheckRollupState,
-      unresolvedConversationCount: pullRequest.unresolvedConversationCount,
-      checks: this.summarizeTaskPullRequestChecks(checks),
-      statusChecks: pullRequest.statusChecks,
-      files: this.mapTaskPullRequestFiles(pullRequest.files)
-    };
-
-    if (pullRequest.title) {
-      summary.title = pullRequest.title;
-    }
-    if (pullRequest.state) {
-      summary.state = pullRequest.state;
-    }
-    if (pullRequest.isDraft !== undefined) {
-      summary.isDraft = pullRequest.isDraft;
-    }
-    if (pullRequest.threadCount !== undefined) {
-      summary.threadCount = pullRequest.threadCount;
-    }
-    if (pullRequest.reviewCount !== undefined) {
-      summary.reviewCount = pullRequest.reviewCount;
-    }
-    if (pullRequest.approvalCount !== undefined) {
-      summary.approvalCount = pullRequest.approvalCount;
-    }
-    if (pullRequest.changesRequestedCount !== undefined) {
-      summary.changesRequestedCount = pullRequest.changesRequestedCount;
-    }
-
-    return summary;
-  }
-
-  private mapTaskPullRequestFiles(
-    files?: GitHubPullRequestFile[]
-  ): TaskPullRequestFile[] | undefined {
-    if (!files?.length) {
-      return undefined;
-    }
-
-    return files.map((file) => ({
-      path: file.path,
-      additions: file.additions,
-      deletions: file.deletions
-    }));
-  }
-
-  private summarizeTaskPullRequestChecks(
-    checks: GitHubPullRequestCheck[]
-  ): TaskPullRequestChecks | undefined {
-    if (checks.length === 0) {
-      return undefined;
-    }
-
-    let passed = 0;
-    let failed = 0;
-    let pending = 0;
-
-    for (const check of checks) {
-      if (check.bucket === "pass") {
-        passed += 1;
-        continue;
-      }
-
-      if (check.bucket === "fail" || check.bucket === "cancel") {
-        failed += 1;
-        continue;
-      }
-
-      if (check.bucket === "pending" || check.bucket === "skipping") {
-        pending += 1;
-      }
-    }
-
-    return {
-      total: checks.length,
-      passed,
-      failed,
-      pending
     };
   }
 
@@ -1637,7 +1537,7 @@ export class BoardService {
 
     if (
       task.pullRequestUrl === nextPullRequestUrl &&
-      this.taskPullRequestEquals(task.pullRequest, nextPullRequest)
+      taskPullRequestEquals(task.pullRequest, nextPullRequest)
     ) {
       return;
     }
@@ -1687,45 +1587,13 @@ export class BoardService {
       );
       await this.syncTaskPullRequestSnapshot(task.id, {
         pullRequestUrl: openPr.url,
-        pullRequest: this.buildTaskPullRequestSummary(openPr, checks)
+        pullRequest: buildTaskPullRequestSummary(openPr, checks)
       });
     } catch {
       return this.store.listTasks().find((entry) => entry.id === task.id) ?? task;
     }
 
     return this.store.listTasks().find((entry) => entry.id === task.id) ?? task;
-  }
-
-  private taskPullRequestEquals(
-    left?: TaskPullRequest,
-    right?: TaskPullRequest
-  ): boolean {
-    if (left === right) {
-      return true;
-    }
-
-    return JSON.stringify(left) === JSON.stringify(right);
-  }
-
-  private summarizeRequiredChecks(checks: { bucket: GitHubCheckBucket }[]): MonitorCiStatus {
-    if (checks.length === 0) {
-      return "not_required";
-    }
-
-    if (checks.some((check) => check.bucket === "fail" || check.bucket === "cancel")) {
-      return "fail";
-    }
-    if (checks.some((check) => check.bucket === "pending")) {
-      return "pending";
-    }
-    if (checks.some((check) => check.bucket === "pass")) {
-      return "pass";
-    }
-    if (checks.some((check) => check.bucket === "skipping")) {
-      return "skipping";
-    }
-
-    return "not_required";
   }
 
   private hasFailingPullRequestCi(
@@ -1772,7 +1640,7 @@ export class BoardService {
       );
     }
 
-    return this.didTimestampOccurAfter(run.endedAt ?? run.startedAt, feedbackUpdatedAt);
+    return didTimestampOccurAfter(run.endedAt ?? run.startedAt, feedbackUpdatedAt);
   }
 
   private hasUnresolvedPullRequestConversations(
@@ -1785,7 +1653,7 @@ export class BoardService {
     }
 
     const unresolvedConversationSignature =
-      this.buildUnresolvedConversationSignature(pullRequest);
+      buildUnresolvedConversationSignature(pullRequest);
     if (!unresolvedConversationSignature) {
       return false;
     }
@@ -1819,7 +1687,7 @@ export class BoardService {
     }
 
     const unresolvedConversationSignature =
-      this.buildUnresolvedConversationSignature(pullRequest);
+      buildUnresolvedConversationSignature(pullRequest);
     if (!unresolvedConversationSignature) {
       return false;
     }
@@ -1829,80 +1697,6 @@ export class BoardService {
       run?.metadata?.monitorPrUnresolvedConversationSignature !==
       unresolvedConversationSignature
     );
-  }
-
-  private didTimestampOccurAfter(referenceTime?: string, candidateTime?: string): boolean {
-    const referenceMs = referenceTime ? Date.parse(referenceTime) : Number.NaN;
-    const candidateMs = candidateTime ? Date.parse(candidateTime) : Number.NaN;
-    if (!Number.isFinite(candidateMs)) {
-      return false;
-    }
-    if (!Number.isFinite(referenceMs)) {
-      return true;
-    }
-
-    return candidateMs > referenceMs;
-  }
-
-  private joinMonitorReasonDescriptions(reasons: MonitorReason[]): string {
-    const descriptions = reasons.map((reason) => reason.description);
-    if (descriptions.length === 0) {
-      return "the PR needs attention";
-    }
-    if (descriptions.length === 1) {
-      return descriptions[0]!;
-    }
-    if (descriptions.length === 2) {
-      return `${descriptions[0]} and ${descriptions[1]}`;
-    }
-
-    return `${descriptions.slice(0, -1).join(", ")}, and ${descriptions.at(-1)}`;
-  }
-
-  private formatMonitorFeedback(pullRequest: GitHubPullRequestSummary): string[] {
-    return (pullRequest.feedbackItems ?? [])
-      .slice(0, 5)
-      .map((item) => {
-        const author = item.author ? `@${item.author}` : "someone";
-        const state = item.source === "review" && item.state ? ` (${item.state})` : "";
-        const body = this.summarizeMonitorFeedbackBody(item.body);
-        const when = item.updatedAt ?? item.createdAt;
-        return `${author}${state}${when ? ` at ${when}` : ""}: ${body}`;
-      });
-  }
-
-  private formatMonitorUnresolvedConversations(
-    pullRequest: GitHubPullRequestSummary
-  ): string[] {
-    return (pullRequest.unresolvedConversationItems ?? [])
-      .slice(0, 5)
-      .map((item) => {
-        const author = item.author ? `@${item.author}` : "someone";
-        const location = item.path
-          ? `${item.path}${item.line ? `:${item.line}` : ""}`
-          : "the PR diff";
-        const outdated = item.isOutdated ? " [outdated]" : "";
-        const when = item.updatedAt ?? item.createdAt;
-        return `${author}${when ? ` at ${when}` : ""} in ${location}${outdated}: ${this.summarizeMonitorFeedbackBody(item.body)}`;
-      });
-  }
-
-  private buildUnresolvedConversationSignature(
-    pullRequest: GitHubPullRequestSummary
-  ): string {
-    const ids = (pullRequest.unresolvedConversationItems ?? [])
-      .map((item) => item.id.trim())
-      .filter((value) => value.length > 0)
-      .sort();
-    if (ids.length === 0) {
-      return "";
-    }
-
-    return [
-      String(pullRequest.unresolvedConversationCount ?? ids.length),
-      pullRequest.unresolvedConversationUpdatedAt ?? "",
-      ids.join(",")
-    ].join("|");
   }
 
   private async postUnresolvedConversationComment(
@@ -1916,7 +1710,7 @@ export class BoardService {
     }
 
     const conversationLabel = count === 1 ? "conversation" : "conversations";
-    const summaryLines = this.formatMonitorUnresolvedConversations(pullRequest)
+    const summaryLines = formatMonitorUnresolvedConversations(pullRequest)
       .slice(0, 3)
       .map((line) => `- ${line}`);
     const body = [
@@ -1936,38 +1730,6 @@ export class BoardService {
     } catch {
       // Best effort: the task should still resume even if the PR comment fails.
     }
-  }
-
-  private summarizeMonitorFeedbackBody(body?: string): string {
-    const normalized = body?.replace(/\s+/g, " ").trim();
-    if (!normalized) {
-      return "No text included.";
-    }
-
-    if (normalized.length <= 160) {
-      return normalized;
-    }
-
-    return `${normalized.slice(0, 157)}...`;
-  }
-
-  private baseRefMatches(baseRef: string, branchName: string): boolean {
-    const trimmed = baseRef.trim();
-    return trimmed === branchName || trimmed.endsWith(`/${branchName}`);
-  }
-
-  private quoteShell(value: string): string {
-    return `'${value.replace(/'/g, `'\"'\"'`)}'`;
-  }
-
-  private extractRemoteName(baseRef: string): string {
-    const trimmed = baseRef.trim();
-    if (!trimmed.includes("/")) {
-      return "origin";
-    }
-
-    const [remoteName] = trimmed.split("/", 1);
-    return remoteName || "origin";
   }
 
   private async resetTaskWorktree(
@@ -2040,8 +1802,8 @@ export class BoardService {
 
     taskEntry.column = nextColumn;
     taskEntry.order = this.topOrder(nextColumn, taskId);
-    taskEntry.pullRequestUrl = this.resolveTaskPullRequestUrl(taskEntry, runEntry);
-    taskEntry.pullRequest = this.resolveTaskPullRequestSummary(taskEntry, runEntry);
+    taskEntry.pullRequestUrl = resolveTaskPullRequestUrl(taskEntry, runEntry);
+    taskEntry.pullRequest = resolveTaskPullRequestSummary(taskEntry, runEntry);
     taskEntry.updatedAt = new Date().toISOString();
 
     this.store.setRuns(currentRuns);
@@ -2409,102 +2171,6 @@ export class BoardService {
     } catch {
       return undefined;
     }
-  }
-
-  private resolveTaskPullRequestUrl(task: Task, run: Run): string | undefined {
-    const latestPullRequestUrl = run.metadata?.prUrl?.trim();
-    if (latestPullRequestUrl) {
-      return latestPullRequestUrl;
-    }
-
-    const monitoredPullRequestUrl = run.metadata?.monitorPrUrl?.trim();
-    if (monitoredPullRequestUrl) {
-      return monitoredPullRequestUrl;
-    }
-
-    const existingPullRequestUrl = task.pullRequestUrl?.trim();
-    return existingPullRequestUrl || undefined;
-  }
-
-  private resolveTaskPullRequestSummary(task: Task, run: Run): TaskPullRequest | undefined {
-    const metadata = run.metadata;
-    if (!metadata) {
-      return task.pullRequest;
-    }
-
-    const number = toOptionalNumber(metadata.monitorPrNumber);
-    const checksTotal = toOptionalNumber(metadata.monitorPrRequiredChecksTotal);
-    const checksPassed = toOptionalNumber(metadata.monitorPrRequiredChecksPassed);
-    const checksFailed = toOptionalNumber(metadata.monitorPrRequiredChecksFailed);
-    const checksPending = toOptionalNumber(metadata.monitorPrRequiredChecksPending);
-    const unresolvedConversationCount = toOptionalNumber(
-      metadata.monitorPrUnresolvedConversationCount
-    );
-    const hasMonitorData =
-      number !== undefined ||
-      Boolean(metadata.monitorPrMergeable) ||
-      Boolean(metadata.monitorPrMergeState) ||
-      Boolean(metadata.monitorPrStatusCheckRollupState) ||
-      Boolean(metadata.monitorPrReviewDecision) ||
-      unresolvedConversationCount !== undefined ||
-      checksTotal !== undefined;
-
-    if (!hasMonitorData) {
-      return task.pullRequest;
-    }
-
-    const checks =
-      checksTotal !== undefined && checksTotal > 0
-        ? {
-            total: checksTotal,
-            passed: checksPassed ?? 0,
-            failed: checksFailed ?? 0,
-            pending: checksPending ?? 0
-          }
-        : undefined;
-
-    const summary: TaskPullRequest = {
-      number,
-      mergeable: metadata.monitorPrMergeable || undefined,
-      mergeStateStatus: metadata.monitorPrMergeState || undefined,
-      reviewDecision: metadata.monitorPrReviewDecision || undefined,
-      statusCheckRollupState: metadata.monitorPrStatusCheckRollupState || undefined,
-      unresolvedConversationCount,
-      checks
-    };
-
-    if (task.pullRequest?.title) {
-      summary.title = task.pullRequest.title;
-    }
-    if (task.pullRequest?.state) {
-      summary.state = task.pullRequest.state;
-    }
-    if (task.pullRequest?.isDraft !== undefined) {
-      summary.isDraft = task.pullRequest.isDraft;
-    }
-    if (task.pullRequest?.changedFiles !== undefined) {
-      summary.changedFiles = task.pullRequest.changedFiles;
-    }
-    if (task.pullRequest?.threadCount !== undefined) {
-      summary.threadCount = task.pullRequest.threadCount;
-    }
-    if (task.pullRequest?.reviewCount !== undefined) {
-      summary.reviewCount = task.pullRequest.reviewCount;
-    }
-    if (task.pullRequest?.approvalCount !== undefined) {
-      summary.approvalCount = task.pullRequest.approvalCount;
-    }
-    if (task.pullRequest?.changesRequestedCount !== undefined) {
-      summary.changesRequestedCount = task.pullRequest.changesRequestedCount;
-    }
-    if (task.pullRequest?.files) {
-      summary.files = task.pullRequest.files;
-    }
-    if (task.pullRequest?.statusChecks) {
-      summary.statusChecks = task.pullRequest.statusChecks;
-    }
-
-    return summary;
   }
 
   private async ensureReadableDirectory(path: string): Promise<void> {
