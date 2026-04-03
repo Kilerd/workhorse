@@ -95,6 +95,7 @@ interface BoardServiceDependencies {
   codexAppServer?: CodexAppServer;
   taskIdentityGenerator?: TaskIdentityGenerator;
   workspaceRootPicker?: WorkspaceRootPicker;
+  runners?: Record<string, RunnerAdapter>;
 }
 
 export type { GitReviewMonitorResult } from "./pr-monitor-service.js";
@@ -139,7 +140,7 @@ export class BoardService {
     this.store = store;
     this.events = events;
     this.codexAppServer = dependencies.codexAppServer ?? new CodexAppServerManager();
-    this.runners = {
+    this.runners = dependencies.runners ?? {
       claude: new ClaudeCliRunner(),
       shell: new ShellRunner(),
       codex: new CodexAcpRunner(this.codexAppServer)
