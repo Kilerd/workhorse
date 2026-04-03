@@ -9,7 +9,6 @@ interface Props {
   onPlan(): void;
   onStart(): void;
   onStop(): void;
-  onSkipReview(): void;
   onMoveToTodo(): void;
   onMarkDone(): void;
   onArchive(): void;
@@ -21,7 +20,6 @@ export function TaskActionBar({
   onPlan,
   onStart,
   onStop,
-  onSkipReview,
   onMoveToTodo,
   onMarkDone,
   onArchive
@@ -65,9 +63,6 @@ export function TaskActionBar({
                   break;
                 case "stop":
                   onStop();
-                  break;
-                case "skip-review":
-                  onSkipReview();
                   break;
                 case "move-to-todo":
                   onMoveToTodo();

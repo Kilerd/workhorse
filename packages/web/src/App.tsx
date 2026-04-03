@@ -279,9 +279,6 @@ function ReactAppShell() {
                   onPlan={(taskId) => board.planTask(taskId)}
                   onTaskStart={(taskId) => board.startTask(taskId)}
                   onTaskStop={(taskId) => board.stopTask(taskId)}
-                  onSkipReview={(taskId) =>
-                    board.updateTask({ taskId, body: { column: "review" } })
-                  }
                   onMoveToTodo={(taskId) => board.moveToTodo(taskId)}
                   onMarkDone={(taskId) => board.markDone(taskId)}
                   onArchive={(taskId) => board.archiveTask(taskId)}
@@ -448,9 +445,6 @@ function TaskDetailsRoute({
         onStart={() => board.startTask(task.id)}
         onRequestReview={() => board.requestTaskReview(task.id)}
         onStop={() => board.stopTask(task.id)}
-        onSkipReview={() =>
-          board.updateTask({ taskId: task.id, body: { column: "review" } })
-        }
         onSendInput={(text) => board.sendTaskInput({ taskId: task.id, text })}
         onMoveToTodo={() => board.moveToTodo(task.id)}
         onMarkDone={() => board.markDone(task.id)}

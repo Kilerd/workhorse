@@ -111,10 +111,9 @@ const COLUMN_ORDER: Record<Task["column"], number> = {
   backlog: 0,
   todo: 1,
   running: 2,
-  "ai-review": 3,
-  review: 4,
-  done: 5,
-  archived: 6
+  review: 3,
+  done: 4,
+  archived: 5
 };
 
 function toOptionalNumber(value?: string): number | undefined {
@@ -622,10 +621,7 @@ export class BoardService {
     const reviewTasksByWorkspace = new Map<string, Task[]>();
 
     for (const task of this.store.listTasks()) {
-      if (
-        (task.column !== "review" && task.column !== "ai-review") ||
-        this.activeRuns.has(task.id)
-      ) {
+      if (task.column !== "review" || this.activeRuns.has(task.id)) {
         continue;
       }
 
@@ -706,7 +702,7 @@ export class BoardService {
           const shouldCommentOnUnresolvedConversations =
             this.shouldCommentOnUnresolvedConversations(task, runsById, openPr);
           await this.startTaskInternal(task.id, {
-            allowedColumns: ["ai-review", "review"],
+            allowedColumns: ["review"],
             runnerConfigOverride: this.buildMonitorRunnerConfig(
               task,
               openPr,
@@ -972,11 +968,11 @@ export class BoardService {
       "TASK_NOT_FOUND",
       "Task not found"
     );
-    if (task.column !== "review" && task.column !== "ai-review") {
+    if (task.column !== "review") {
       throw new AppError(
         409,
         "TASK_NOT_REVIEWABLE",
-        "Only tasks in review or ai-review can request a reviewer run"
+        "Only tasks in review can request a reviewer run"
       );
     }
 
@@ -996,8 +992,7 @@ export class BoardService {
 
     const refreshedTask = await this.refreshTaskPullRequestSnapshotForReview(task, workspace);
     return this.startTaskInternal(refreshedTask.id, {
-      allowedColumns: ["review", "ai-review"],
-      targetColumn: task.column,
+      allowedColumns: ["review"],
       runnerConfigOverride: this.buildManualReviewRunnerConfig(refreshedTask),
       runMetadata: this.buildManualReviewRunMetadata(refreshedTask)
     });
@@ -2222,11 +2217,8 @@ export class BoardService {
       isAiReviewRun &&
       result.status === "succeeded" &&
       runEntry.metadata?.reviewVerdict === "request_changes";
-    const nextColumn: Task["column"] = shouldAutoReview
-      ? "ai-review"
-      : shouldRework
-        ? "running"
-        : "review";
+    const nextColumn: Task["column"] =
+      shouldAutoReview || shouldRework ? "running" : "review";
 
     taskEntry.column = nextColumn;
     taskEntry.order = this.topOrder(nextColumn, taskId);
@@ -2281,6 +2273,10 @@ export class BoardService {
       return false;
     }
 
+    if (task.runnerType === "shell") {
+      return false;
+    }
+
     if (this.isAiReviewTrigger(run.metadata?.trigger)) {
       return false;
     }
@@ -2309,8 +2305,8 @@ export class BoardService {
         workspace
       );
       await this.startTaskInternal(refreshedTask.id, {
-        allowedColumns: ["ai-review"],
-        targetColumn: "ai-review",
+        allowedColumns: ["running"],
+        targetColumn: "running",
         runnerConfigOverride: this.buildManualReviewRunnerConfig(refreshedTask),
         runMetadata: {
           ...this.buildManualReviewRunMetadata(refreshedTask),
@@ -2763,7 +2759,7 @@ export class BoardService {
 
   private ensureStartableTask(
     task: Task,
-    allowedColumns: Task["column"][] = ["backlog", "todo", "ai-review", "review"]
+    allowedColumns: Task["column"][] = ["backlog", "todo", "review"]
   ): void {
     if (allowedColumns.includes(task.column)) {
       return;

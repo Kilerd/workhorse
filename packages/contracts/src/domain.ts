@@ -2,7 +2,6 @@ export type TaskColumn =
   | "backlog"
   | "todo"
   | "running"
-  | "ai-review"
   | "review"
   | "done"
   | "archived";

@@ -35,7 +35,6 @@ interface Props {
   onPlan(taskId: string): void;
   onTaskStart(taskId: string): void;
   onTaskStop(taskId: string): void;
-  onSkipReview(taskId: string): void;
   onMoveToTodo(taskId: string): void;
   onMarkDone(taskId: string): void;
   onArchive(taskId: string): void;
@@ -61,7 +60,6 @@ function groupTasks(): Record<DisplayTaskColumn, DisplayTask[]> {
     backlog: [],
     todo: [],
     running: [],
-    "ai-review": [],
     review: [],
     done: [],
     archived: []
@@ -104,13 +102,6 @@ function getTaskRunBadge(task: DisplayTask) {
     return {
       label: "RUNNING",
       className: "border-[rgba(242,195,92,0.24)] bg-[rgba(242,195,92,0.1)] text-[var(--warning)]"
-    };
-  }
-
-  if (task.column === "ai-review") {
-    return {
-      label: "AI REVIEWING",
-      className: "border-[rgba(168,130,246,0.24)] bg-[rgba(168,130,246,0.1)] text-[var(--accent)]"
     };
   }
 
@@ -160,8 +151,6 @@ function getTaskCardToneClass(column: DisplayTaskColumn) {
       return "border-[rgba(104,199,246,0.28)]";
     case "running":
       return "border-[rgba(242,195,92,0.32)]";
-    case "ai-review":
-      return "border-[rgba(168,130,246,0.3)]";
     case "review":
       return "border-[rgba(73,214,196,0.34)]";
     case "done":
@@ -172,7 +161,7 @@ function getTaskCardToneClass(column: DisplayTaskColumn) {
 }
 
 function shouldShowCardActions(column: DisplayTaskColumn, isActive: boolean) {
-  if (column === "backlog" || column === "todo" || column === "ai-review") {
+  if (column === "backlog" || column === "todo") {
     return true;
   }
 
@@ -439,7 +428,6 @@ export function Board({
   onPlan,
   onTaskStart,
   onTaskStop,
-  onSkipReview,
   onMoveToTodo,
   onMarkDone,
   onArchive
@@ -574,7 +562,6 @@ export function Board({
                                   onPlan={() => onPlan(task.id)}
                                   onStart={() => onTaskStart(task.id)}
                                   onStop={() => onTaskStop(task.id)}
-                                  onSkipReview={() => onSkipReview(task.id)}
                                   onMoveToTodo={() => onMoveToTodo(task.id)}
                                   onMarkDone={() => onMarkDone(task.id)}
                                   onArchive={() => onArchive(task.id)}

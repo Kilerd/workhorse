@@ -25,7 +25,6 @@ interface Props {
   onStart(): void;
   onRequestReview(): void;
   onStop(): void;
-  onSkipReview(): void;
   onSendInput(text: string): Promise<unknown>;
   onMoveToTodo(): void;
   onMarkDone(): void;
@@ -76,7 +75,6 @@ function columnTone(column: DisplayTask["column"]): Tone {
     case "todo":
       return "info";
     case "running":
-    case "ai-review":
       return "warning";
     case "review":
       return "accent";
@@ -260,7 +258,6 @@ export function TaskDetailsPanel({
   onStart,
   onRequestReview,
   onStop,
-  onSkipReview,
   onSendInput,
   onMoveToTodo,
   onMarkDone,
@@ -338,7 +335,7 @@ export function TaskDetailsPanel({
       ? pullRequest.changedFiles
       : pullRequest?.files?.length;
   const canRequestReview =
-    (task.column === "review" || task.column === "ai-review") &&
+    task.column === "review" &&
     !activeRun &&
     Boolean(showWorktree && task.worktree.status !== "removed");
 
@@ -377,7 +374,6 @@ export function TaskDetailsPanel({
               onPlan={onPlan}
               onStart={onStart}
               onStop={onStop}
-              onSkipReview={onSkipReview}
               onMoveToTodo={onMoveToTodo}
               onMarkDone={onMarkDone}
               onArchive={onArchive}

@@ -372,7 +372,7 @@ export interface components {
             createdAt: string;
             updatedAt: string;
         };
-        TaskColumn: "backlog" | "todo" | "running" | "ai-review" | "review" | "done" | "archived";
+        TaskColumn: "backlog" | "todo" | "running" | "review" | "done" | "archived";
         RunnerType: "claude" | "codex" | "shell";
         RunnerConfig: components["schemas"]["ShellRunnerConfig"] | components["schemas"]["ClaudeRunnerConfig"] | components["schemas"]["CodexRunnerConfig"];
         ShellRunnerConfig: {
@@ -392,7 +392,7 @@ export interface components {
             prompt: string;
             agent?: string;
             model?: string;
-            permissionMode?: "default" | "acceptEdits" | "bypassPermissions" | "dontAsk" | "plan";
+            permissionMode?: "plan" | "acceptEdits" | "bypassPermissions" | "default" | "dontAsk";
         };
         CodexRunnerConfig: {
             /**
@@ -487,7 +487,7 @@ export interface components {
             description?: string;
             workspaceId: string;
             worktreeBaseRef?: string;
-            column?: "backlog" | "todo" | "running" | "ai-review" | "review" | "done" | "archived";
+            column?: "backlog" | "todo" | "running" | "review" | "done" | "archived";
             order?: number;
             runnerType: components["schemas"]["RunnerType"];
             runnerConfig: components["schemas"]["RunnerConfig"];
@@ -500,7 +500,7 @@ export interface components {
             description?: string;
             workspaceId?: string;
             worktreeBaseRef?: string;
-            column?: "backlog" | "todo" | "running" | "ai-review" | "review" | "done" | "archived";
+            column?: "backlog" | "todo" | "running" | "review" | "done" | "archived";
             order?: number;
             runnerType?: "claude" | "codex" | "shell";
             runnerConfig?: components["schemas"]["ShellRunnerConfig"] | components["schemas"]["ClaudeRunnerConfig"] | components["schemas"]["CodexRunnerConfig"];
@@ -707,7 +707,7 @@ export interface components {
             metadata?: components["schemas"]["Recordstringstring"];
         };
         RunLogStream: "stdout" | "stderr" | "system";
-        RunLogKind: "text" | "status" | "plan" | "system" | "user" | "agent" | "tool_call" | "tool_output";
+        RunLogKind: "system" | "text" | "user" | "agent" | "tool_call" | "tool_output" | "plan" | "status";
         HealthResponse: {
             /** @enum {unknown} */
             ok: true;

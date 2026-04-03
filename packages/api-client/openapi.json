@@ -1326,11 +1326,6 @@
           },
           {
             "enum": [
-              "ai-review"
-            ]
-          },
-          {
-            "enum": [
               "review"
             ]
           },
@@ -1424,7 +1419,7 @@
             "oneOf": [
               {
                 "enum": [
-                  "default"
+                  "plan"
                 ]
               },
               {
@@ -1439,12 +1434,12 @@
               },
               {
                 "enum": [
-                  "dontAsk"
+                  "default"
                 ]
               },
               {
                 "enum": [
-                  "plan"
+                  "dontAsk"
                 ]
               }
             ]
@@ -1819,11 +1814,6 @@
               },
               {
                 "enum": [
-                  "ai-review"
-                ]
-              },
-              {
-                "enum": [
                   "review"
                 ]
               },
@@ -1897,11 +1887,6 @@
               {
                 "enum": [
                   "running"
-                ]
-              },
-              {
-                "enum": [
-                  "ai-review"
                 ]
               },
               {
@@ -2729,22 +2714,12 @@
         "oneOf": [
           {
             "enum": [
-              "text"
-            ]
-          },
-          {
-            "enum": [
-              "status"
-            ]
-          },
-          {
-            "enum": [
-              "plan"
-            ]
-          },
-          {
-            "enum": [
               "system"
+            ]
+          },
+          {
+            "enum": [
+              "text"
             ]
           },
           {
@@ -2765,6 +2740,16 @@
           {
             "enum": [
               "tool_output"
+            ]
+          },
+          {
+            "enum": [
+              "plan"
+            ]
+          },
+          {
+            "enum": [
+              "status"
             ]
           }
         ]
