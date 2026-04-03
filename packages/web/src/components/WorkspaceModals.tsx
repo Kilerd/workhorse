@@ -12,6 +12,7 @@ import {
 } from "@workhorse/contracts";
 
 import { api } from "@/lib/api";
+import { slugifyBranchPreview } from "@/lib/format";
 import { BOARD_COLUMNS, type TaskFormValues } from "@/lib/task-view";
 import { resolveTaskWorkspaceId } from "@/lib/workspace-selection";
 import { cn } from "@/lib/utils";
@@ -181,15 +182,6 @@ function useCloseOnEscape(open: boolean, onClose: () => void) {
   }, [open, onClose]);
 }
 
-function slugifyBranchPreview(value: string): string {
-  const slug = value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40);
-
-  return slug || "task";
-}
 
 function describeApprovalPolicy(
   value: WorkspaceCodexSettings["approvalPolicy"]

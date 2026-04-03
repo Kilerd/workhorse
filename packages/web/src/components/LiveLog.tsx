@@ -15,6 +15,7 @@ import {
 } from "./live-log-entries";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { formatTimestamp, formatTimestampRange } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -56,28 +57,6 @@ function getLogStatusToneClass(tone: string): string {
   }
 }
 
-function formatTimestamp(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  return date.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit"
-  });
-}
-
-function formatTimestampRange(start: string, end: string): string {
-  const startLabel = formatTimestamp(start);
-  const endLabel = formatTimestamp(end);
-  if (!startLabel || !endLabel || startLabel === endLabel) {
-    return endLabel || startLabel;
-  }
-
-  return `${startLabel} - ${endLabel}`;
-}
 
 function getEntryTitle(entry: RunLogEntry): string | null {
   if (entry.kind === "tool_call") {

@@ -38,3 +38,36 @@ export function titleCase(value: string): string {
 export function formatCount(value: number, singular: string, plural = `${singular}s`): string {
   return `${value} ${value === 1 ? singular : plural}`;
 }
+
+export function formatTimestamp(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+}
+
+export function formatTimestampRange(start: string, end: string): string {
+  const startLabel = formatTimestamp(start);
+  const endLabel = formatTimestamp(end);
+  if (!startLabel || !endLabel || startLabel === endLabel) {
+    return endLabel || startLabel;
+  }
+
+  return `${startLabel} - ${endLabel}`;
+}
+
+export function slugifyBranchPreview(value: string): string {
+  const slug = value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+
+  return slug || "task";
+}
