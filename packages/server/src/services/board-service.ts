@@ -40,6 +40,7 @@ import {
 import { resolveWorkspaceCodexSettings } from "../lib/codex-settings.js";
 import { createId } from "../lib/id.js";
 import { parseUnifiedDiff, type DiffFile } from "../lib/diff-parser.js";
+import { stripStructuredReviewBlocks } from "../lib/review-parser.js";
 import { createRunLogEntry } from "../lib/run-log.js";
 import { createTaskWorktree } from "../lib/task-worktree.js";
 import { resolveGlobalSettings } from "../lib/global-settings.js";
@@ -125,24 +126,6 @@ function toOptionalNumber(value?: string): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-const STRUCTURED_REVIEW_JSON_BLOCK_PATTERN = /```json\s*([\s\S]*?)```/giu;
-
-function isStructuredReviewPayload(value: string): boolean {
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (!parsed || typeof parsed !== "object") {
-      return false;
-    }
-
-    const record = parsed as Record<string, unknown>;
-    return (
-      typeof record.summary === "string" &&
-      typeof record.verdict === "string"
-    );
-  } catch {
-    return false;
-  }
-}
 
 export class BoardService {
   private readonly store: StateStore;
@@ -2428,13 +2411,7 @@ export class BoardService {
       return undefined;
     }
 
-    const cleaned = raw
-      .replace(STRUCTURED_REVIEW_JSON_BLOCK_PATTERN, (match, payload: string) =>
-        isStructuredReviewPayload(payload.trim()) ? "" : match
-      )
-      .replace(/\n{3,}/gu, "\n\n")
-      .trim();
-
+    const cleaned = stripStructuredReviewBlocks(raw);
     return cleaned || undefined;
   }
 

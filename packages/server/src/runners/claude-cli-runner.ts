@@ -3,6 +3,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import type { ClaudeRunnerConfig, RunStatus } from "@workhorse/contracts";
 
 import { AppError } from "../lib/errors.js";
+import { extractReviewResult, type ParsedReviewResult } from "../lib/review-parser.js";
 import type {
   RunnerAdapter,
   RunnerControl,
@@ -20,10 +21,6 @@ interface ClaudeRunnerState {
   metadata: Record<string, string>;
 }
 
-interface ParsedReviewResult {
-  summary: string;
-  verdict: "approve" | "comment" | "request_changes";
-}
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object") {
@@ -57,51 +54,6 @@ function ensureTrailingNewline(value: string): string {
   return value.endsWith("\n") ? value : `${value}\n`;
 }
 
-function trimReviewMetadataValue(value: string, maxLength = 4_000): string {
-  const trimmed = value.trim();
-  return trimmed.length <= maxLength ? trimmed : trimmed.slice(0, maxLength).trim();
-}
-
-function extractReviewResult(text: string): ParsedReviewResult | null {
-  const matches = [...text.matchAll(/```json\s*([\s\S]*?)```/giu)];
-  const candidates = matches.length > 0 ? matches.map((match) => match[1] ?? "") : [text];
-
-  for (let index = candidates.length - 1; index >= 0; index -= 1) {
-    const candidate = candidates[index]?.trim();
-    if (!candidate) {
-      continue;
-    }
-
-    try {
-      const parsed = JSON.parse(candidate) as unknown;
-      if (!parsed || typeof parsed !== "object") {
-        continue;
-      }
-
-      const record = parsed as Record<string, unknown>;
-      const verdict =
-        typeof record.verdict === "string" ? record.verdict.trim().toLowerCase() : "";
-      const summary =
-        typeof record.summary === "string" ? trimReviewMetadataValue(record.summary) : "";
-
-      if (
-        (verdict === "approve" ||
-          verdict === "comment" ||
-          verdict === "request_changes") &&
-        summary
-      ) {
-        return {
-          verdict,
-          summary
-        };
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  return null;
-}
 
 export class ClaudeCliRunner implements RunnerAdapter {
   public readonly type = "claude" as const;
