@@ -1637,7 +1637,7 @@ export class BoardService {
 
     if (
       task.pullRequestUrl === nextPullRequestUrl &&
-      this.taskPullRequestSummaryEquals(task.pullRequest, nextPullRequest)
+      this.taskPullRequestEquals(task.pullRequest, nextPullRequest)
     ) {
       return;
     }
@@ -1696,7 +1696,7 @@ export class BoardService {
     return this.store.listTasks().find((entry) => entry.id === task.id) ?? task;
   }
 
-  private taskPullRequestSummaryEquals(
+  private taskPullRequestEquals(
     left?: TaskPullRequest,
     right?: TaskPullRequest
   ): boolean {
@@ -1704,68 +1704,7 @@ export class BoardService {
       return true;
     }
 
-    return (
-      left?.number === right?.number &&
-      left?.title === right?.title &&
-      left?.state === right?.state &&
-      left?.isDraft === right?.isDraft &&
-      left?.changedFiles === right?.changedFiles &&
-      left?.mergeable === right?.mergeable &&
-      left?.mergeStateStatus === right?.mergeStateStatus &&
-      left?.reviewDecision === right?.reviewDecision &&
-      left?.statusCheckRollupState === right?.statusCheckRollupState &&
-      left?.threadCount === right?.threadCount &&
-      left?.unresolvedConversationCount === right?.unresolvedConversationCount &&
-      left?.reviewCount === right?.reviewCount &&
-      left?.approvalCount === right?.approvalCount &&
-      left?.changesRequestedCount === right?.changesRequestedCount &&
-      this.taskPullRequestChecksEqual(left?.checks, right?.checks) &&
-      this.taskPullRequestChecksEqual(left?.statusChecks, right?.statusChecks) &&
-      this.taskPullRequestFilesEqual(left?.files, right?.files)
-    );
-  }
-
-  private taskPullRequestChecksEqual(
-    left?: TaskPullRequestChecks,
-    right?: TaskPullRequestChecks
-  ): boolean {
-    if (left === right) {
-      return true;
-    }
-
-    return (
-      left?.total === right?.total &&
-      left?.passed === right?.passed &&
-      left?.failed === right?.failed &&
-      left?.pending === right?.pending &&
-      left?.skipped === right?.skipped
-    );
-  }
-
-  private taskPullRequestFilesEqual(
-    left?: TaskPullRequestFile[],
-    right?: TaskPullRequestFile[]
-  ): boolean {
-    if (left === right) {
-      return true;
-    }
-
-    if (!left || !right) {
-      return left === right;
-    }
-
-    if (left.length !== right.length) {
-      return false;
-    }
-
-    return left.every((file, index) => {
-      const other = right[index];
-      return (
-        file.path === other?.path &&
-        file.additions === other?.additions &&
-        file.deletions === other?.deletions
-      );
-    });
+    return JSON.stringify(left) === JSON.stringify(right);
   }
 
   private summarizeRequiredChecks(checks: { bucket: GitHubCheckBucket }[]): MonitorCiStatus {
