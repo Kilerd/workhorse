@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import {
   useMutation,
   useQuery,
@@ -8,8 +8,6 @@ import {
 import type {
   GlobalSettings,
   Run,
-  RunLogEntry,
-  ServerEvent,
   StartTaskBody,
   Task,
   TaskColumn,
@@ -19,7 +17,6 @@ import type {
 } from "@workhorse/contracts";
 
 import { api } from "@/lib/api";
-import { readStoredValue, writeStoredValue } from "@/lib/persist";
 import {
   resolveActiveRunId,
   resolveRunSelectionAfterStart,
@@ -28,10 +25,9 @@ import {
 import { applyOptimisticStartTask } from "@/lib/start-task";
 import { type DisplayTask, type TaskFormValues } from "@/lib/task-view";
 
-const STORAGE_KEYS = {
-  selectedWorkspaceId: "workhorse.selectedWorkspaceId",
-  selectedTaskId: "workhorse.selectedTaskId"
-} as const;
+import { useLiveLog } from "./useLiveLog";
+import { useModalState } from "./useModalState";
+import { useSelectionState } from "./useSelectionState";
 
 function unwrap<T>(payload: { ok: true; data: T }): T {
   return payload.data;
@@ -43,18 +39,9 @@ function queryKey(name: string, extra?: string) {
 
 export function useBoardData() {
   const queryClient = useQueryClient();
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | "all">(
-    () => readStoredValue<string | "all">(STORAGE_KEYS.selectedWorkspaceId, "all")
-  );
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(() =>
-    readStoredValue<string | null>(STORAGE_KEYS.selectedTaskId, null)
-  );
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const [liveLogByRunId, setLiveLogByRunId] = useState<Record<string, RunLogEntry[]>>({});
-  const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
-  const [workspaceSettingsModalOpen, setWorkspaceSettingsModalOpen] = useState(false);
-  const [globalSettingsModalOpen, setGlobalSettingsModalOpen] = useState(false);
-  const [taskModalOpen, setTaskModalOpen] = useState(false);
+  const modals = useModalState();
+  const liveLog = useLiveLog();
+  const selection = useSelectionState();
 
   const workspacesQuery = useQuery({
     queryKey: queryKey("workspaces"),
@@ -92,17 +79,17 @@ export function useBoardData() {
   );
 
   const selectedWorkspaceTasks = useMemo(() => {
-    if (selectedWorkspaceId === "all") {
+    if (selection.selectedWorkspaceId === "all") {
       return displayedTasks;
     }
-    return displayedTasks.filter((task) => task.workspaceId === selectedWorkspaceId);
-  }, [displayedTasks, selectedWorkspaceId]);
+    return displayedTasks.filter((task) => task.workspaceId === selection.selectedWorkspaceId);
+  }, [displayedTasks, selection.selectedWorkspaceId]);
 
   const selectedTask = useMemo(() => {
-    return selectedTaskId
-      ? displayedTasks.find((task) => task.id === selectedTaskId) ?? null
+    return selection.selectedTaskId
+      ? displayedTasks.find((task) => task.id === selection.selectedTaskId) ?? null
       : null;
-  }, [displayedTasks, selectedTaskId]);
+  }, [displayedTasks, selection.selectedTaskId]);
 
   const selectedTaskRunsQuery = useQuery({
     queryKey: queryKey("runs", selectedTask?.id ?? ""),
@@ -124,10 +111,10 @@ export function useBoardData() {
   const viewedRunId = useMemo(() => {
     return resolveViewedRunId({
       runs: selectedTaskRunsQuery.data ?? [],
-      selectedRunId,
+      selectedRunId: selection.selectedRunId,
       lastRunId: selectedTask?.lastRunId
     });
-  }, [selectedRunId, selectedTask?.lastRunId, selectedTaskRunsQuery.data]);
+  }, [selection.selectedRunId, selectedTask?.lastRunId, selectedTaskRunsQuery.data]);
 
   const createWorkspaceMutation = useMutation({
     mutationFn: async (input: { name: string; rootPath: string }) => {
@@ -146,8 +133,8 @@ export function useBoardData() {
     },
     onSuccess: async (task) => {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
-      setSelectedTaskId(task.id);
-      setTaskModalOpen(false);
+      selection.setTaskSelection(task.id);
+      modals.setTaskModalOpen(false);
     }
   });
 
@@ -208,8 +195,8 @@ export function useBoardData() {
       await queryClient.invalidateQueries({ queryKey: queryKey("runs") });
     },
     onSuccess: async (result, { taskId }) => {
-      if (taskId === selectedTaskId) {
-        setSelectedRunId((current) =>
+      if (taskId === selection.selectedTaskId) {
+        selection.setSelectedRunId((current: string | null) =>
           resolveRunSelectionAfterStart({
             selectedRunId: current,
             previousLastRunId: selectedTask?.lastRunId,
@@ -246,8 +233,8 @@ export function useBoardData() {
       return unwrap(response);
     },
     onSuccess: async (result, { taskId }) => {
-      if (taskId === selectedTaskId) {
-        setSelectedRunId(result.run.id);
+      if (taskId === selection.selectedTaskId) {
+        selection.setSelectedRunId(result.run.id);
       }
 
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
@@ -303,8 +290,8 @@ export function useBoardData() {
       return unwrap(response);
     },
     onSuccess: async (result, taskId) => {
-      if (taskId === selectedTaskId) {
-        setSelectedRunId(result.run.id);
+      if (taskId === selection.selectedTaskId) {
+        selection.setSelectedRunId(result.run.id);
       }
 
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
@@ -340,7 +327,7 @@ export function useBoardData() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKey("workspaces") });
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
-      setSelectedWorkspaceId("all");
+      selection.setWorkspaceSelection("all");
     }
   });
 
@@ -351,50 +338,15 @@ export function useBoardData() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
-      setSelectedTaskId(null);
-      setSelectedRunId(null);
+      selection.setTaskSelection(null);
     }
   });
-
-  const setWorkspaceSelection = useCallback((workspaceId: string | "all") => {
-    setSelectedWorkspaceId(workspaceId);
-    writeStoredValue(STORAGE_KEYS.selectedWorkspaceId, workspaceId);
-  }, []);
-
-  const setTaskSelection = useCallback((taskId: string | null) => {
-    setSelectedTaskId(taskId);
-    writeStoredValue(STORAGE_KEYS.selectedTaskId, taskId);
-    setSelectedRunId(null);
-  }, []);
 
   const startTask = useCallback(
     (taskId: string, body?: StartTaskBody) =>
       startTaskMutation.mutateAsync({ taskId, body }),
     [startTaskMutation]
   );
-
-  const recordLiveOutput = useCallback((event: ServerEvent) => {
-    if (event.type !== "run.output") {
-      return;
-    }
-
-    setLiveLogByRunId((current) => ({
-      ...current,
-      [event.runId]: [...(current[event.runId] ?? []), event.entry]
-    }));
-  }, []);
-
-  const clearLiveOutput = useCallback((runId: string) => {
-    setLiveLogByRunId((current) => {
-      if (!(runId in current)) {
-        return current;
-      }
-
-      const next = { ...current };
-      delete next[runId];
-      return next;
-    });
-  }, []);
 
   return {
     queryClient,
@@ -403,27 +355,27 @@ export function useBoardData() {
     tasksQuery,
     settingsQuery,
     displayedTasks,
-    selectedWorkspaceId,
+    selectedWorkspaceId: selection.selectedWorkspaceId,
     selectedWorkspaceTasks,
     selectedTask,
     selectedTaskRunsQuery,
     activeRunId,
     viewedRunId,
-    selectedRunId,
-    liveLogByRunId,
-    workspaceModalOpen,
-    workspaceSettingsModalOpen,
-    globalSettingsModalOpen,
-    taskModalOpen,
-    setWorkspaceModalOpen,
-    setWorkspaceSettingsModalOpen,
-    setGlobalSettingsModalOpen,
-    setTaskModalOpen,
-    setWorkspaceSelection,
-    setTaskSelection,
-    setSelectedRunId,
-    recordLiveOutput,
-    clearLiveOutput,
+    selectedRunId: selection.selectedRunId,
+    liveLogByRunId: liveLog.liveLogByRunId,
+    workspaceModalOpen: modals.workspaceModalOpen,
+    workspaceSettingsModalOpen: modals.workspaceSettingsModalOpen,
+    globalSettingsModalOpen: modals.globalSettingsModalOpen,
+    taskModalOpen: modals.taskModalOpen,
+    setWorkspaceModalOpen: modals.setWorkspaceModalOpen,
+    setWorkspaceSettingsModalOpen: modals.setWorkspaceSettingsModalOpen,
+    setGlobalSettingsModalOpen: modals.setGlobalSettingsModalOpen,
+    setTaskModalOpen: modals.setTaskModalOpen,
+    setWorkspaceSelection: selection.setWorkspaceSelection,
+    setTaskSelection: selection.setTaskSelection,
+    setSelectedRunId: selection.setSelectedRunId,
+    recordLiveOutput: liveLog.recordLiveOutput,
+    clearLiveOutput: liveLog.clearLiveOutput,
     createWorkspace: createWorkspaceMutation.mutateAsync,
     updateSettings: updateSettingsMutation.mutateAsync,
     updateWorkspace: updateWorkspaceMutation.mutateAsync,
