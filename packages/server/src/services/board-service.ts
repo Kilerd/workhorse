@@ -187,6 +187,33 @@ export class BoardService {
       dependencies.workspaceRootPicker ?? new NativeWorkspaceRootPicker();
   }
 
+  private requireTask(taskId: string, source?: Task[]): Task {
+    return ensure(
+      (source ?? this.store.listTasks()).find((entry) => entry.id === taskId),
+      404,
+      "TASK_NOT_FOUND",
+      "Task not found"
+    );
+  }
+
+  private requireWorkspace(workspaceId: string, source?: Workspace[]): Workspace {
+    return ensure(
+      (source ?? this.store.listWorkspaces()).find((entry) => entry.id === workspaceId),
+      404,
+      "WORKSPACE_NOT_FOUND",
+      "Workspace not found"
+    );
+  }
+
+  private requireRun(runId: string, source?: Run[]): Run {
+    return ensure(
+      (source ?? this.store.listRuns()).find((entry) => entry.id === runId),
+      404,
+      "RUN_NOT_FOUND",
+      "Run not found"
+    );
+  }
+
   public async initialize(): Promise<void> {
     await this.store.load();
     await this.recoverOrphanedRuns();
@@ -234,12 +261,7 @@ export class BoardService {
   }
 
   public async listWorkspaceGitRefs(workspaceId: string): Promise<WorkspaceGitRef[]> {
-    const workspace = ensure(
-      this.store.listWorkspaces().find((entry) => entry.id === workspaceId),
-      404,
-      "WORKSPACE_NOT_FOUND",
-      "Workspace not found"
-    );
+    const workspace = this.requireWorkspace(workspaceId);
 
     return this.gitWorktrees.listRefs(workspace);
   }
@@ -282,12 +304,7 @@ export class BoardService {
     input: UpdateWorkspaceBody
   ): Promise<Workspace> {
     const workspaces = this.store.listWorkspaces();
-    const workspace = ensure(
-      workspaces.find((entry) => entry.id === workspaceId),
-      404,
-      "WORKSPACE_NOT_FOUND",
-      "Workspace not found"
-    );
+    const workspace = this.requireWorkspace(workspaceId, workspaces);
 
     if (input.name !== undefined) {
       const name = input.name.trim();
@@ -356,12 +373,7 @@ export class BoardService {
   }
 
   public async createTask(input: CreateTaskBody): Promise<Task> {
-    const workspace = ensure(
-      this.store.listWorkspaces().find((entry) => entry.id === input.workspaceId),
-      404,
-      "WORKSPACE_NOT_FOUND",
-      "Workspace not found"
-    );
+    const workspace = this.requireWorkspace(input.workspaceId);
 
     const description = input.description?.trim() ?? "";
     const providedTitle = input.title.trim();
@@ -434,26 +446,11 @@ export class BoardService {
 
   public async updateTask(taskId: string, input: UpdateTaskBody): Promise<Task> {
     const tasks = this.store.listTasks();
-    const task = ensure(
-      tasks.find((entry) => entry.id === taskId),
-      404,
-      "TASK_NOT_FOUND",
-      "Task not found"
-    );
-    const currentWorkspace = ensure(
-      this.store.listWorkspaces().find((entry) => entry.id === task.workspaceId),
-      404,
-      "WORKSPACE_NOT_FOUND",
-      "Workspace not found"
-    );
+    const task = this.requireTask(taskId, tasks);
+    const currentWorkspace = this.requireWorkspace(task.workspaceId);
     const nextWorkspace =
       input.workspaceId !== undefined
-        ? ensure(
-            this.store.listWorkspaces().find((entry) => entry.id === input.workspaceId),
-            404,
-            "WORKSPACE_NOT_FOUND",
-            "Workspace not found"
-          )
+        ? this.requireWorkspace(input.workspaceId)
         : currentWorkspace;
     const workspaceChanged = nextWorkspace.id !== currentWorkspace.id;
     const previousColumn = task.column;
@@ -561,12 +558,7 @@ export class BoardService {
       );
     }
 
-    const task = ensure(
-      this.store.listTasks().find((entry) => entry.id === taskId),
-      404,
-      "TASK_NOT_FOUND",
-      "Task not found"
-    );
+    const task = this.requireTask(taskId);
     if (task.worktree.status === "ready" || task.worktree.status === "cleanup_pending") {
       throw new AppError(
         409,
@@ -746,12 +738,7 @@ export class BoardService {
       "RUN_NOT_FOUND",
       "Run not found"
     );
-    const task = ensure(
-      this.store.listTasks().find((entry) => entry.id === taskId),
-      404,
-      "TASK_NOT_FOUND",
-      "Task not found"
-    );
+    const task = this.requireTask(taskId);
 
     active.stopRequested = true;
     await active.control.stop();
@@ -767,12 +754,7 @@ export class BoardService {
       throw new AppError(400, "INVALID_TASK_INPUT", "Task input cannot be blank");
     }
 
-    const task = ensure(
-      this.store.listTasks().find((entry) => entry.id === taskId),
-      404,
-      "TASK_NOT_FOUND",
-      "Task not found"
-    );
+    const task = this.requireTask(taskId);
 
     if (task.runnerType !== "codex") {
       throw new AppError(
@@ -806,12 +788,7 @@ export class BoardService {
       );
     }
 
-    const run = ensure(
-      this.store.listRuns().find((entry) => entry.id === active.runId),
-      404,
-      "RUN_NOT_FOUND",
-      "Run not found"
-    );
+    const run = this.requireRun(active.runId);
 
     await active.queue(async () => {
       await this.appendAndPublishRunOutput(
@@ -854,18 +831,8 @@ export class BoardService {
       throw inputError;
     }
 
-    const updatedTask = ensure(
-      this.store.listTasks().find((entry) => entry.id === taskId),
-      404,
-      "TASK_NOT_FOUND",
-      "Task not found"
-    );
-    const updatedRun = ensure(
-      this.store.listRuns().find((entry) => entry.id === run.id),
-      404,
-      "RUN_NOT_FOUND",
-      "Run not found"
-    );
+    const updatedTask = this.requireTask(taskId);
+    const updatedRun = this.requireRun(run.id);
 
     return {
       task: updatedTask,
@@ -883,18 +850,8 @@ export class BoardService {
     }
 
     const tasks = this.store.listTasks();
-    const task = ensure(
-      tasks.find((entry) => entry.id === taskId),
-      404,
-      "TASK_NOT_FOUND",
-      "Task not found"
-    );
-    const workspace = ensure(
-      this.store.listWorkspaces().find((entry) => entry.id === task.workspaceId),
-      404,
-      "WORKSPACE_NOT_FOUND",
-      "Workspace not found"
-    );
+    const task = this.requireTask(taskId, tasks);
+    const workspace = this.requireWorkspace(task.workspaceId);
 
     task.worktree = await this.gitWorktrees.cleanupTaskWorktree(workspace, task);
     task.updatedAt = new Date().toISOString();
@@ -913,12 +870,7 @@ export class BoardService {
 
   public async planTask(taskId: string): Promise<{ task: Task; plan: string }> {
     const tasks = this.store.listTasks();
-    const task = ensure(
-      tasks.find((entry) => entry.id === taskId),
-      404,
-      "TASK_NOT_FOUND",
-      "Task not found"
-    );
+    const task = this.requireTask(taskId, tasks);
 
     if (task.column !== "backlog") {
       throw new AppError(
@@ -928,12 +880,7 @@ export class BoardService {
       );
     }
 
-    const workspace = ensure(
-      this.store.listWorkspaces().find((entry) => entry.id === task.workspaceId),
-      404,
-      "WORKSPACE_NOT_FOUND",
-      "Workspace not found"
-    );
+    const workspace = this.requireWorkspace(task.workspaceId);
 
     if (workspace.isGitRepo) {
       task.worktree = await this.gitWorktrees.ensureTaskWorktree(workspace, task);
@@ -962,12 +909,7 @@ export class BoardService {
       throw new AppError(409, "TASK_ALREADY_RUNNING", "Task already has an active run");
     }
 
-    const task = ensure(
-      this.store.listTasks().find((entry) => entry.id === taskId),
-      404,
-      "TASK_NOT_FOUND",
-      "Task not found"
-    );
+    const task = this.requireTask(taskId);
     if (task.column !== "review") {
       throw new AppError(
         409,
@@ -976,12 +918,7 @@ export class BoardService {
       );
     }
 
-    const workspace = ensure(
-      this.store.listWorkspaces().find((entry) => entry.id === task.workspaceId),
-      404,
-      "WORKSPACE_NOT_FOUND",
-      "Workspace not found"
-    );
+    const workspace = this.requireWorkspace(task.workspaceId);
     if (!workspace.isGitRepo) {
       throw new AppError(
         400,
@@ -1001,18 +938,8 @@ export class BoardService {
   public async getTaskDiff(
     taskId: string
   ): Promise<{ files: DiffFile[]; baseRef: string; headRef: string }> {
-    const task = ensure(
-      this.store.listTasks().find((entry) => entry.id === taskId),
-      404,
-      "TASK_NOT_FOUND",
-      "Task not found"
-    );
-    const workspace = ensure(
-      this.store.listWorkspaces().find((entry) => entry.id === task.workspaceId),
-      404,
-      "WORKSPACE_NOT_FOUND",
-      "Workspace not found"
-    );
+    const task = this.requireTask(taskId);
+    const workspace = this.requireWorkspace(task.workspaceId);
 
     if (!workspace.isGitRepo || !task.worktree.path || task.worktree.status === "removed") {
       throw new AppError(400, "DIFF_NOT_AVAILABLE", "Worktree is not available for diffing");
@@ -1038,10 +965,7 @@ export class BoardService {
   }
 
   public listRuns(taskId: string): Run[] {
-    const exists = this.store.listTasks().some((task) => task.id === taskId);
-    if (!exists) {
-      throw new AppError(404, "TASK_NOT_FOUND", "Task not found");
-    }
+    this.requireTask(taskId);
 
     return this.store
       .listRuns()
@@ -1050,10 +974,7 @@ export class BoardService {
   }
 
   public async getRunLog(runId: string) {
-    const run = this.store.listRuns().find((entry) => entry.id === runId);
-    if (!run) {
-      throw new AppError(404, "RUN_NOT_FOUND", "Run not found");
-    }
+    const run = this.requireRun(runId);
 
     return this.store.readLogEntries(runId);
   }
@@ -1086,12 +1007,7 @@ export class BoardService {
     metadata: Record<string, string>
   ): Promise<Run> {
     const runs = this.store.listRuns();
-    const run = ensure(
-      runs.find((entry) => entry.id === runId),
-      404,
-      "RUN_NOT_FOUND",
-      "Run not found"
-    );
+    const run = this.requireRun(runId, runs);
 
     run.metadata = {
       ...(run.metadata ?? {}),
@@ -1112,19 +1028,9 @@ export class BoardService {
     }
 
     const tasks = this.store.listTasks();
-    const task = ensure(
-      tasks.find((entry) => entry.id === taskId),
-      404,
-      "TASK_NOT_FOUND",
-      "Task not found"
-    );
+    const task = this.requireTask(taskId, tasks);
     this.ensureStartableTask(task, options.allowedColumns);
-    const workspace = ensure(
-      this.store.listWorkspaces().find((entry) => entry.id === task.workspaceId),
-      404,
-      "WORKSPACE_NOT_FOUND",
-      "Workspace not found"
-    );
+    const workspace = this.requireWorkspace(task.workspaceId);
     let executionWorkspace = workspace;
 
     if (workspace.isGitRepo) {
@@ -2187,18 +2093,8 @@ export class BoardService {
   ): Promise<{ run: Run; task: Task }> {
     const currentRuns = this.store.listRuns();
     const currentTasks = this.store.listTasks();
-    const runEntry = ensure(
-      currentRuns.find((entry) => entry.id === runId),
-      404,
-      "RUN_NOT_FOUND",
-      "Run not found"
-    );
-    const taskEntry = ensure(
-      currentTasks.find((entry) => entry.id === taskId),
-      404,
-      "TASK_NOT_FOUND",
-      "Task not found"
-    );
+    const runEntry = this.requireRun(runId, currentRuns);
+    const taskEntry = this.requireTask(taskId, currentTasks);
 
     runEntry.status = result.status;
     runEntry.exitCode = result.exitCode;
