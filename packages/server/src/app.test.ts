@@ -11,10 +11,38 @@ import { createApp } from "./app.js";
 import { createRunLogEntry } from "./lib/run-log.js";
 import { StateStore } from "./persistence/state-store.js";
 import type { CodexAppServer } from "./runners/codex-app-server-manager.js";
+import { CodexAcpRunner } from "./runners/codex-acp-runner.js";
+import type { RunnerAdapter, RunnerControl, RunnerLifecycleHooks, RunnerStartContext } from "./runners/types.js";
+import { ShellRunner } from "./runners/shell-runner.js";
 import type { TaskIdentityGenerator } from "./services/openrouter-task-naming-service.js";
 import { BoardService } from "./services/board-service.js";
 import type { WorkspaceRootPicker } from "./services/workspace-root-picker.js";
 import { EventBus } from "./ws/event-bus.js";
+
+class MockClaudeRunner implements RunnerAdapter {
+  public readonly type = "claude" as const;
+  public async start(
+    _context: RunnerStartContext,
+    hooks: RunnerLifecycleHooks
+  ): Promise<RunnerControl> {
+    const planText = "# Plan\n\nMock plan for testing.";
+    setTimeout(async () => {
+      await hooks.onOutput({
+        kind: "agent",
+        text: planText,
+        stream: "stdout",
+        title: "Claude response",
+        source: "Claude CLI"
+      });
+      await hooks.onExit({ status: "succeeded", exitCode: 0, metadata: { claudeSessionId: "mock-session" } });
+    }, 10);
+    return {
+      command: "claude (mock)",
+      metadata: { claudeSessionId: "mock-session" },
+      async stop() {}
+    };
+  }
+}
 
 function createCodexAppServerStub(
   quota: HealthCodexQuotaData | null = null,
@@ -59,10 +87,16 @@ async function createRuntime(options?: {
   const workspaceDir = join(dataDir, "workspace");
   await mkdir(workspaceDir, { recursive: true });
 
+  const codexServer = options?.codexAppServer ?? createCodexAppServerStub();
   const service = new BoardService(new StateStore(dataDir), new EventBus(), {
-    codexAppServer: options?.codexAppServer ?? createCodexAppServerStub(),
+    codexAppServer: codexServer,
     taskIdentityGenerator: options?.taskIdentityGenerator,
-    workspaceRootPicker: options?.workspaceRootPicker
+    workspaceRootPicker: options?.workspaceRootPicker,
+    runners: {
+      claude: new MockClaudeRunner(),
+      shell: new ShellRunner(),
+      codex: new CodexAcpRunner(codexServer)
+    }
   });
   await service.initialize();
 
@@ -1254,7 +1288,7 @@ describe("workhorse runtime", () => {
     await waitForRunToFinish(service, task.id);
   });
 
-  it("plans backlog tasks and moves them into todo", async () => {
+  it("plans backlog tasks by starting a plan run", async () => {
     const { app, service, workspaceDir } = await createRuntime();
     const workspace = await createWorkspace(service, workspaceDir);
     const task = await service.createTask({
@@ -1275,12 +1309,17 @@ describe("workhorse runtime", () => {
     expect(response.status).toBe(200);
     const payload = await response.json();
     expect(payload.ok).toBe(true);
-    expect(payload.data.task.column).toBe("todo");
-    expect(payload.data.plan).toContain("# Plan");
-    expect(payload.data.task.description).toContain("Need a rollout.");
+    expect(payload.data.task.column).toBe("backlog");
+    expect(payload.data.run).toBeDefined();
+    expect(payload.data.run.metadata?.trigger).toBe("plan_generation");
+
+    await waitForRunToFinish(service, task.id);
+    const updatedTask = service.listTasks({}).find((entry) => entry.id === task.id);
+    expect(updatedTask?.column).toBe("todo");
+    expect(updatedTask?.plan).toContain("Mock plan");
   });
 
-  it("places planned tasks at the top of todo", async () => {
+  it("places planned tasks at the top of todo after plan run completes", async () => {
     const { service, workspaceDir } = await createRuntime();
     const workspace = await createWorkspace(service, workspaceDir);
 
@@ -1314,12 +1353,15 @@ describe("workhorse runtime", () => {
       }
     });
 
-    const result = await service.planTask(backlogTask.id);
+    await service.planTask(backlogTask.id);
+    await waitForRunToFinish(service, backlogTask.id);
     const todoTasks = service.listTasks({}).filter((task) => task.column === "todo");
+    const updatedBacklog = todoTasks.find((task) => task.id === backlogTask.id);
 
-    expect(result.task.order).toBeLessThan(todoOne.order);
+    expect(updatedBacklog).toBeDefined();
+    expect(updatedBacklog!.order).toBeLessThan(todoOne.order);
     expect(todoTasks.map((task) => task.id)).toEqual([
-      result.task.id,
+      backlogTask.id,
       todoOne.id,
       todoTwo.id
     ]);

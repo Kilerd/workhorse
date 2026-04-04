@@ -163,6 +163,7 @@ export interface Task {
   order: number;
   runnerType: RunnerType;
   runnerConfig: RunnerConfig;
+  plan?: string;
   worktree: TaskWorktree;
   lastRunId?: string;
   continuationRunId?: string;

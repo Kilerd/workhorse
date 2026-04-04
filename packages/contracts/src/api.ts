@@ -175,7 +175,20 @@ export interface TaskInputData {
 
 export interface PlanTaskData {
   task: Task;
-  plan: string;
+  run: Run;
+}
+
+export interface PlanFeedbackParams {
+  taskId: string;
+}
+
+export interface PlanFeedbackBody {
+  text: string;
+}
+
+export interface PlanFeedbackData {
+  task: Task;
+  run: Run;
 }
 
 export interface RequestTaskReviewData {
@@ -274,6 +287,7 @@ export type StartTaskResponse = ApiSuccess<StartTaskData>;
 export type StopTaskResponse = ApiSuccess<StopTaskData>;
 export type TaskInputResponse = ApiSuccess<TaskInputData>;
 export type PlanTaskResponse = ApiSuccess<PlanTaskData>;
+export type PlanFeedbackResponse = ApiSuccess<PlanFeedbackData>;
 export type RequestTaskReviewResponse = ApiSuccess<RequestTaskReviewData>;
 export type CleanupTaskWorktreeResponse = ApiSuccess<CleanupTaskWorktreeData>;
 export type TaskDiffResponse = ApiSuccess<TaskDiffData>;
@@ -327,6 +341,8 @@ export type SchemaName =
   | "TaskInputParams"
   | "TaskInputBody"
   | "PlanTaskParams"
+  | "PlanFeedbackParams"
+  | "PlanFeedbackBody"
   | "RequestTaskReviewParams"
   | "CleanupTaskWorktreeParams"
   | "TaskDiffParams"
@@ -343,6 +359,7 @@ export type SchemaName =
   | "StopTaskResponse"
   | "TaskInputResponse"
   | "PlanTaskResponse"
+  | "PlanFeedbackResponse"
   | "RequestTaskReviewResponse"
   | "CleanupTaskWorktreeResponse"
   | "TaskDiffResponse"
@@ -717,6 +734,32 @@ export const endpointRegistry: EndpointSpec[] = [
       {
         status: 400,
         description: "Unable to plan task",
+        schema: "ApiError"
+      },
+      {
+        status: 404,
+        description: "Task not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "sendPlanFeedback",
+    method: "post",
+    path: "/api/tasks/{taskId}/plan-feedback",
+    summary: "Send feedback to refine a task plan via session resume",
+    tag: "Tasks",
+    paramsSchema: "PlanFeedbackParams",
+    bodySchema: "PlanFeedbackBody",
+    responses: [
+      {
+        status: 200,
+        description: "Started plan feedback run",
+        schema: "PlanFeedbackResponse"
+      },
+      {
+        status: 400,
+        description: "Unable to send plan feedback",
         schema: "ApiError"
       },
       {

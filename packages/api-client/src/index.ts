@@ -10,6 +10,8 @@ import type {
   ListTasksData,
   ListWorkspacesData,
   PickWorkspaceRootData,
+  PlanFeedbackBody,
+  PlanFeedbackData,
   PlanTaskData,
   RequestTaskReviewData,
   RunLogData,
@@ -96,6 +98,10 @@ export function createApiClient(baseUrl: string) {
     .create();
   const planTask = fetcher
     .path("/api/tasks/{taskId}/plan")
+    .method("post")
+    .create();
+  const sendPlanFeedback = fetcher
+    .path("/api/tasks/{taskId}/plan-feedback")
     .method("post")
     .create();
   const requestTaskReview = fetcher
@@ -195,6 +201,11 @@ export function createApiClient(baseUrl: string) {
       unwrap((await sendTaskInput({ taskId, ...body })).data),
     planTask: async (taskId: string): Promise<PlanTaskData> =>
       unwrap((await planTask({ taskId })).data),
+    sendPlanFeedback: async (
+      taskId: string,
+      body: PlanFeedbackBody
+    ): Promise<PlanFeedbackData> =>
+      unwrap((await sendPlanFeedback({ taskId, ...body })).data),
     requestTaskReview: async (
       taskId: string
     ): Promise<RequestTaskReviewData> =>

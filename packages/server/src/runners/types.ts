@@ -13,6 +13,7 @@ export interface RunnerStartContext {
   task: Task;
   workspace: Workspace;
   inputText?: string;
+  resumeSessionId?: string;
 }
 
 export interface RunnerLifecycleHooks {

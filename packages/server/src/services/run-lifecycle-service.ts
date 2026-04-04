@@ -200,7 +200,8 @@ export class RunLifecycleService {
           previousRun,
           task: executionTask,
           workspace: executionWorkspace,
-          inputText: options.initialInputText
+          inputText: options.initialInputText,
+          resumeSessionId: options.runMetadata?.resumeSessionId
         },
         {
           onOutput: async (output) => {
@@ -479,6 +480,37 @@ export class RunLifecycleService {
       : runEntry.metadata;
     this.activeRuns.delete(taskId);
 
+    const isPlanRun = runEntry.metadata?.trigger === "plan_generation";
+
+    if (isPlanRun) {
+      if (result.status === "succeeded") {
+        const planText = await this.extractPlanText(runEntry.id);
+        if (planText) {
+          taskEntry.plan = planText;
+        }
+      }
+      taskEntry.column = "todo";
+      taskEntry.order = this.deps.topOrder("todo", taskId);
+      taskEntry.updatedAt = new Date().toISOString();
+
+      this.deps.store.setRuns(currentRuns);
+      this.deps.store.setTasks(currentTasks);
+      await this.deps.store.save();
+      this.deps.events.publish({
+        type: "task.updated",
+        action: "updated",
+        taskId: taskEntry.id,
+        task: taskEntry
+      });
+      this.deps.events.publish({
+        type: "run.finished",
+        taskId: taskEntry.id,
+        run: runEntry,
+        task: taskEntry
+      });
+      return { run: runEntry, task: taskEntry };
+    }
+
     const shouldAutoReview = this.deps.aiReview.shouldAutoTriggerAiReview(taskEntry, runEntry, result.status);
     const isAiReviewRun = this.deps.aiReview.isAiReviewTrigger(runEntry.metadata?.trigger);
     const shouldRework =
@@ -550,6 +582,13 @@ export class RunLifecycleService {
       "TASK_NOT_STARTABLE",
       `Tasks in ${task.column} cannot be started`
     );
+  }
+
+  private async extractPlanText(runId: string): Promise<string | undefined> {
+    const entries = await this.deps.store.readLogEntries(runId);
+    const agentEntries = entries.filter((entry) => entry.kind === "agent");
+    const lastAgent = agentEntries.at(-1);
+    return lastAgent?.text.trim() || undefined;
   }
 
   private resolveOrphanedRunStatus(run: Run): Run["status"] {

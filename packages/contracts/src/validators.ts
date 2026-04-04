@@ -15,6 +15,9 @@ import type {
   ListWorkspaceGitRefsParams,
   ListRunsParams,
   ListTasksQuery,
+  PlanFeedbackBody,
+  PlanFeedbackParams,
+  PlanFeedbackResponse,
   PlanTaskParams,
   PlanTaskResponse,
   RequestTaskReviewParams,
@@ -77,6 +80,8 @@ export const validateStopTaskParams = typia.createValidate<StopTaskParams>();
 export const validateTaskInputParams = typia.createValidate<TaskInputParams>();
 export const validateTaskInputBody = typia.createValidate<TaskInputBody>();
 export const validatePlanTaskParams = typia.createValidate<PlanTaskParams>();
+export const validatePlanFeedbackParams = typia.createValidate<PlanFeedbackParams>();
+export const validatePlanFeedbackBody = typia.createValidate<PlanFeedbackBody>();
 export const validateRequestTaskReviewParams =
   typia.createValidate<RequestTaskReviewParams>();
 export const validateCleanupTaskWorktreeParams =
@@ -110,6 +115,8 @@ export const schemaRegistry = {
   TaskInputParams: () => typia.json.schema<TaskInputParams>(),
   TaskInputBody: () => typia.json.schema<TaskInputBody>(),
   PlanTaskParams: () => typia.json.schema<PlanTaskParams>(),
+  PlanFeedbackParams: () => typia.json.schema<PlanFeedbackParams>(),
+  PlanFeedbackBody: () => typia.json.schema<PlanFeedbackBody>(),
   RequestTaskReviewParams: () => typia.json.schema<RequestTaskReviewParams>(),
   CleanupTaskWorktreeParams: () => typia.json.schema<CleanupTaskWorktreeParams>(),
   TaskDiffParams: () => typia.json.schema<TaskDiffParams>(),
@@ -128,6 +135,7 @@ export const schemaRegistry = {
   StopTaskResponse: () => typia.json.schema<StopTaskResponse>(),
   TaskInputResponse: () => typia.json.schema<TaskInputResponse>(),
   PlanTaskResponse: () => typia.json.schema<PlanTaskResponse>(),
+  PlanFeedbackResponse: () => typia.json.schema<PlanFeedbackResponse>(),
   RequestTaskReviewResponse: () => typia.json.schema<RequestTaskReviewResponse>(),
   CleanupTaskWorktreeResponse: () => typia.json.schema<CleanupTaskWorktreeResponse>(),
   TaskDiffResponse: () => typia.json.schema<TaskDiffResponse>(),

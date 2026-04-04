@@ -230,6 +230,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tasks/{taskId}/plan-feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send feedback to refine a task plan via session resume */
+        post: operations["sendPlanFeedback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tasks/{taskId}/review-request": {
         parameters: {
             query?: never;
@@ -364,6 +381,7 @@ export interface components {
             order: number;
             runnerType: components["schemas"]["RunnerType"];
             runnerConfig: components["schemas"]["RunnerConfig"];
+            plan?: string;
             worktree: components["schemas"]["TaskWorktree"];
             lastRunId?: string;
             continuationRunId?: string;
@@ -392,7 +410,7 @@ export interface components {
             prompt: string;
             agent?: string;
             model?: string;
-            permissionMode?: "plan" | "acceptEdits" | "bypassPermissions" | "default" | "dontAsk";
+            permissionMode?: "plan" | "default" | "acceptEdits" | "bypassPermissions" | "dontAsk";
         };
         CodexRunnerConfig: {
             /**
@@ -526,6 +544,12 @@ export interface components {
         PlanTaskParams: {
             taskId: string;
         };
+        PlanFeedbackParams: {
+            taskId: string;
+        };
+        PlanFeedbackBody: {
+            text: string;
+        };
         RequestTaskReviewParams: {
             taskId: string;
         };
@@ -644,7 +668,16 @@ export interface components {
         };
         PlanTaskData: {
             task: components["schemas"]["Task"];
-            plan: string;
+            run: components["schemas"]["Run"];
+        };
+        PlanFeedbackResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["PlanFeedbackData"];
+        };
+        PlanFeedbackData: {
+            task: components["schemas"]["Task"];
+            run: components["schemas"]["Run"];
         };
         RequestTaskReviewResponse: {
             /** @enum {unknown} */
@@ -707,7 +740,7 @@ export interface components {
             metadata?: components["schemas"]["Recordstringstring"];
         };
         RunLogStream: "stdout" | "stderr" | "system";
-        RunLogKind: "system" | "text" | "user" | "agent" | "tool_call" | "tool_output" | "plan" | "status";
+        RunLogKind: "text" | "status" | "plan" | "system" | "user" | "agent" | "tool_call" | "tool_output";
         HealthResponse: {
             /** @enum {unknown} */
             ok: true;
@@ -1329,6 +1362,50 @@ export interface operations {
                 };
             };
             /** @description Unable to plan task */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Task not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    sendPlanFeedback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanFeedbackBody"];
+            };
+        };
+        responses: {
+            /** @description Started plan feedback run */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanFeedbackResponse"];
+                };
+            };
+            /** @description Unable to send plan feedback */
             400: {
                 headers: {
                     [name: string]: unknown;

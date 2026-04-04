@@ -10,6 +10,8 @@ import {
   validateListWorkspaceGitRefsParams,
   validateListRunsParams,
   validateListTasksQuery,
+  validatePlanFeedbackBody,
+  validatePlanFeedbackParams,
   validatePlanTaskParams,
   validateRequestTaskReviewParams,
   validateTaskDiffParams,
@@ -252,6 +254,21 @@ export function createApp(
       "Invalid task params"
     );
     const result = await service.planTask(params.taskId);
+    return c.json(ok(result));
+  });
+
+  app.post("/api/tasks/:taskId/plan-feedback", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validatePlanFeedbackParams,
+      "Invalid task params"
+    );
+    const body = validateOrThrow(
+      await c.req.json(),
+      validatePlanFeedbackBody,
+      "Invalid plan feedback body"
+    );
+    const result = await service.sendPlanFeedback(params.taskId, body);
     return c.json(ok(result));
   });
 

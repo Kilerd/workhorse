@@ -22,6 +22,7 @@ interface Props {
   liveLog: RunLogEntry[];
   runLog: RunLogEntry[];
   onPlan(): void;
+  onSendPlanFeedback(text: string): Promise<unknown>;
   onStart(): void;
   onRequestReview(): void;
   onStop(): void;
@@ -95,7 +96,7 @@ function runStatusTone(run: Run | null): Tone {
 
 // --- Run phase grouping ---
 
-type RunPhase = "running" | "ai-review" | "monitor";
+type RunPhase = "plan" | "running" | "ai-review";
 
 interface PhaseTab {
   phase: RunPhase;
@@ -105,7 +106,7 @@ interface PhaseTab {
 
 function classifyRunPhase(run: Run): RunPhase {
   const trigger = run.metadata?.trigger;
-  if (trigger === "gh_pr_monitor") return "monitor";
+  if (trigger === "plan_generation") return "plan";
   if (
     trigger === "auto_ai_review" ||
     trigger === "manual_claude_review" ||
@@ -127,11 +128,11 @@ function buildPhaseTabs(runs: Run[]): PhaseTab[] {
     }
   }
 
-  const order: RunPhase[] = ["running", "ai-review", "monitor"];
+  const order: RunPhase[] = ["plan", "running", "ai-review"];
   const labels: Record<RunPhase, string> = {
+    plan: "Plan",
     running: "Running",
-    "ai-review": "AI Review",
-    monitor: "Monitor"
+    "ai-review": "AI Review"
   };
 
   return order
@@ -255,6 +256,7 @@ export function TaskDetailsPanel({
   liveLog,
   runLog,
   onPlan,
+  onSendPlanFeedback,
   onStart,
   onRequestReview,
   onStop,
@@ -316,16 +318,25 @@ export function TaskDetailsPanel({
   const canCleanupWorktree =
     showWorktree &&
     (task.worktree.status === "ready" || task.worktree.status === "cleanup_pending");
+  const isPlanPhaseActive = !showFilesTab && activePhase === "plan";
+  const hasPlanRun = phaseTabs.some((tab) => tab.phase === "plan");
+  const isPlanRunning = hasPlanRun && activeRun !== null && classifyRunPhase(activeRun) === "plan";
+  const canSendPlanFeedback =
+    hasPlanRun && !isPlanRunning && !activeRun && (task.column === "backlog" || task.column === "todo");
+
   const canSendInput =
-    task.runnerType === "codex" &&
-    ((activeRun?.id !== undefined && viewedRun?.id === activeRun.id) ||
-      (!activeRun && task.column === "review" && viewedRun?.id === task.lastRunId));
-  const inputMode =
-    activeRun?.id !== undefined && viewedRun?.id === activeRun.id
-      ? "running"
-      : !activeRun && task.column === "review" && viewedRun?.id === task.lastRunId
-        ? "review"
-        : null;
+    (isPlanPhaseActive && canSendPlanFeedback) ||
+    (task.runnerType === "codex" &&
+      ((activeRun?.id !== undefined && viewedRun?.id === activeRun.id) ||
+        (!activeRun && task.column === "review" && viewedRun?.id === task.lastRunId)));
+  const inputMode: "running" | "review" | "plan-feedback" | null =
+    isPlanPhaseActive && canSendPlanFeedback
+      ? "plan-feedback"
+      : activeRun?.id !== undefined && viewedRun?.id === activeRun.id
+        ? "running"
+        : !activeRun && task.column === "review" && viewedRun?.id === task.lastRunId
+          ? "review"
+          : null;
   const pullRequest = task.pullRequest;
   const showPullRequest = Boolean(task.pullRequestUrl || pullRequest);
   const pullRequestFiles = pullRequest?.files ?? [];
@@ -599,7 +610,7 @@ export function TaskDetailsPanel({
               showStatus={false}
               canSendInput={canSendInput}
               inputMode={inputMode}
-              onSendInput={onSendInput}
+              onSendInput={inputMode === "plan-feedback" ? onSendPlanFeedback : onSendInput}
             />
           )}
         </div>

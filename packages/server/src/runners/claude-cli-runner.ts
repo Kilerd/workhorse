@@ -58,7 +58,10 @@ function ensureTrailingNewline(value: string): string {
 export class ClaudeCliRunner implements RunnerAdapter {
   public readonly type = "claude" as const;
 
-  public buildCommandArgs(config: ClaudeRunnerConfig): string[] {
+  public buildCommandArgs(
+    config: ClaudeRunnerConfig,
+    options?: { resumeSessionId?: string }
+  ): string[] {
     const args = [
       "-p",
       "--verbose",
@@ -67,6 +70,10 @@ export class ClaudeCliRunner implements RunnerAdapter {
       "--permission-mode",
       config.permissionMode ?? "default"
     ];
+
+    if (options?.resumeSessionId) {
+      args.push("--resume", options.resumeSessionId);
+    }
 
     if (config.agent?.trim()) {
       args.push("--agent", config.agent.trim());
@@ -82,10 +89,12 @@ export class ClaudeCliRunner implements RunnerAdapter {
   public buildPrompt(context: RunnerStartContext, config: ClaudeRunnerConfig): string {
     const description = context.task.description.trim();
     const inputText = context.inputText?.trim();
+    const plan = context.task.plan?.trim();
 
     return [
       `Task: ${context.task.title}`,
       description ? `Task description:\n${description}` : undefined,
+      plan ? `Implementation plan:\n${plan}` : undefined,
       `Working directory: ${context.workspace.rootPath}`,
       `Instruction:\n${config.prompt.trim()}`,
       inputText ? `Additional instruction:\n${inputText}` : undefined
@@ -104,7 +113,9 @@ export class ClaudeCliRunner implements RunnerAdapter {
     }
 
     const claudeConfig = config as ClaudeRunnerConfig;
-    const args = this.buildCommandArgs(claudeConfig);
+    const args = this.buildCommandArgs(claudeConfig, {
+      resumeSessionId: context.resumeSessionId
+    });
     const prompt = this.buildPrompt(context, claudeConfig);
     const child = spawn("claude", args, {
       cwd: context.workspace.rootPath,

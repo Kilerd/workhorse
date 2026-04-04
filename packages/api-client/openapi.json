@@ -786,6 +786,67 @@
         ]
       }
     },
+    "/api/tasks/{taskId}/plan-feedback": {
+      "post": {
+        "operationId": "sendPlanFeedback",
+        "summary": "Send feedback to refine a task plan via session resume",
+        "tags": [
+          "Tasks"
+        ],
+        "responses": {
+          "200": {
+            "description": "Started plan feedback run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanFeedbackResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unable to send plan feedback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanFeedbackBody"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/tasks/{taskId}/review-request": {
       "post": {
         "operationId": "requestTaskReview",
@@ -1271,6 +1332,9 @@
           "runnerConfig": {
             "$ref": "#/components/schemas/RunnerConfig"
           },
+          "plan": {
+            "type": "string"
+          },
           "worktree": {
             "$ref": "#/components/schemas/TaskWorktree"
           },
@@ -1424,17 +1488,17 @@
               },
               {
                 "enum": [
+                  "default"
+                ]
+              },
+              {
+                "enum": [
                   "acceptEdits"
                 ]
               },
               {
                 "enum": [
                   "bypassPermissions"
-                ]
-              },
-              {
-                "enum": [
-                  "default"
                 ]
               },
               {
@@ -2027,6 +2091,28 @@
           "taskId"
         ]
       },
+      "PlanFeedbackParams": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      },
+      "PlanFeedbackBody": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
       "RequestTaskReviewParams": {
         "type": "object",
         "properties": {
@@ -2458,13 +2544,45 @@
           "task": {
             "$ref": "#/components/schemas/Task"
           },
-          "plan": {
-            "type": "string"
+          "run": {
+            "$ref": "#/components/schemas/Run"
           }
         },
         "required": [
           "task",
-          "plan"
+          "run"
+        ]
+      },
+      "PlanFeedbackResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/PlanFeedbackData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "PlanFeedbackData": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "$ref": "#/components/schemas/Task"
+          },
+          "run": {
+            "$ref": "#/components/schemas/Run"
+          }
+        },
+        "required": [
+          "task",
+          "run"
         ]
       },
       "RequestTaskReviewResponse": {
@@ -2714,12 +2832,22 @@
         "oneOf": [
           {
             "enum": [
-              "system"
+              "text"
             ]
           },
           {
             "enum": [
-              "text"
+              "status"
+            ]
+          },
+          {
+            "enum": [
+              "plan"
+            ]
+          },
+          {
+            "enum": [
+              "system"
             ]
           },
           {
@@ -2740,16 +2868,6 @@
           {
             "enum": [
               "tool_output"
-            ]
-          },
-          {
-            "enum": [
-              "plan"
-            ]
-          },
-          {
-            "enum": [
-              "status"
             ]
           }
         ]

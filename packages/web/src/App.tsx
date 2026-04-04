@@ -442,6 +442,7 @@ function TaskDetailsRoute({
         liveLog={liveLog}
         runLog={runLog}
         onPlan={() => board.planTask(task.id)}
+        onSendPlanFeedback={(text) => board.sendPlanFeedback({ taskId: task.id, text })}
         onStart={() => board.startTask(task.id)}
         onRequestReview={() => board.requestTaskReview(task.id)}
         onStop={() => board.stopTask(task.id)}

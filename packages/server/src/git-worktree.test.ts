@@ -16,8 +16,35 @@ import type {
   GitHubPullRequestSummary
 } from "./lib/github.js";
 import { StateStore } from "./persistence/state-store.js";
+import type { RunnerAdapter, RunnerControl, RunnerLifecycleHooks, RunnerStartContext } from "./runners/types.js";
+import { ShellRunner } from "./runners/shell-runner.js";
 import { BoardService } from "./services/board-service.js";
 import { EventBus } from "./ws/event-bus.js";
+
+class MockClaudeRunner implements RunnerAdapter {
+  public readonly type = "claude" as const;
+  public async start(
+    context: RunnerStartContext,
+    hooks: RunnerLifecycleHooks
+  ): Promise<RunnerControl> {
+    const planText = "# Plan\n\nMock plan for testing.";
+    setTimeout(async () => {
+      await hooks.onOutput({
+        kind: "agent",
+        text: planText,
+        stream: "stdout",
+        title: "Claude response",
+        source: "Claude CLI"
+      });
+      await hooks.onExit({ status: "succeeded", exitCode: 0, metadata: { claudeSessionId: "mock-session" } });
+    }, 10);
+    return {
+      command: "claude (mock)",
+      metadata: { claudeSessionId: "mock-session" },
+      async stop() {}
+    };
+  }
+}
 
 const execFileAsync = promisify(execFile);
 
@@ -75,7 +102,12 @@ async function pushMarkerUpdate(seedDir: string, text: string): Promise<void> {
 async function createGitRuntime() {
   const dataDir = await mkdtemp(join(tmpdir(), "workhorse-git-test-"));
   const gitRepo = await createGitRepository(dataDir);
-  const service = new BoardService(new StateStore(dataDir), new EventBus());
+  const service = new BoardService(new StateStore(dataDir), new EventBus(), {
+    runners: {
+      claude: new MockClaudeRunner(),
+      shell: new ShellRunner()
+    }
+  });
   await service.initialize();
 
   return {
@@ -90,7 +122,11 @@ async function createGitRuntimeWithProvider(githubPullRequests: GitHubPullReques
   const dataDir = await mkdtemp(join(tmpdir(), "workhorse-git-test-"));
   const gitRepo = await createGitRepository(dataDir);
   const service = new BoardService(new StateStore(dataDir), new EventBus(), {
-    githubPullRequests
+    githubPullRequests,
+    runners: {
+      claude: new MockClaudeRunner(),
+      shell: new ShellRunner()
+    }
   });
   await service.initialize();
 
@@ -343,13 +379,15 @@ describe("git worktree lifecycle", () => {
     const task = await createGitTask(service, workspace.id);
 
     const result = await service.planTask(task.id);
+    await waitForRunToFinish(service, task.id);
+    const updatedTask = service.listTasks({}).find((entry) => entry.id === task.id)!;
 
-    expect(result.task.column).toBe("todo");
-    expect(result.task.worktree.status).toBe("ready");
-    expect(result.task.worktree.path).toBeTruthy();
-    expect(await readFile(join(result.task.worktree.path!, "marker.txt"), "utf8")).toContain("v1");
-    expect(await runGit(["-C", result.task.worktree.path!, "rev-parse", "--abbrev-ref", "HEAD"])).toBe(
-      result.task.worktree.branchName
+    expect(updatedTask.column).toBe("todo");
+    expect(updatedTask.worktree.status).toBe("ready");
+    expect(updatedTask.worktree.path).toBeTruthy();
+    expect(await readFile(join(updatedTask.worktree.path!, "marker.txt"), "utf8")).toContain("v1");
+    expect(await runGit(["-C", updatedTask.worktree.path!, "rev-parse", "--abbrev-ref", "HEAD"])).toBe(
+      updatedTask.worktree.branchName
     );
   });
 
@@ -360,8 +398,10 @@ describe("git worktree lifecycle", () => {
       title: "Remove auto worktree UUID"
     });
 
-    const result = await service.planTask(task.id);
-    const worktreePath = result.task.worktree.path;
+    await service.planTask(task.id);
+    await waitForRunToFinish(service, task.id);
+    const updatedTask = service.listTasks({}).find((entry) => entry.id === task.id)!;
+    const worktreePath = updatedTask.worktree.path;
 
     if (!worktreePath) {
       throw new Error("Expected planned task to create a worktree path");
@@ -369,7 +409,7 @@ describe("git worktree lifecycle", () => {
 
     expect(basename(worktreePath)).toBe("remove-auto-worktree-uuid");
     expect(basename(worktreePath)).not.toContain(task.id);
-    expect(result.task.worktree.branchName).toContain(task.id);
+    expect(updatedTask.worktree.branchName).toContain(task.id);
   });
 
   it("falls back to the UUID-prefixed directory name when the friendly worktree path is taken", async () => {
@@ -379,11 +419,16 @@ describe("git worktree lifecycle", () => {
     const firstTask = await createGitTask(service, workspace.id, { title });
     const secondTask = await createGitTask(service, workspace.id, { title });
 
-    const firstResult = await service.planTask(firstTask.id);
-    const secondResult = await service.planTask(secondTask.id);
+    await service.planTask(firstTask.id);
+    await waitForRunToFinish(service, firstTask.id);
+    await service.planTask(secondTask.id);
+    await waitForRunToFinish(service, secondTask.id);
 
-    expect(basename(firstResult.task.worktree.path ?? "")).toBe("same-name");
-    expect(basename(secondResult.task.worktree.path ?? "")).toBe(`${secondTask.id}-same-name`);
+    const firstUpdated = service.listTasks({}).find((entry) => entry.id === firstTask.id)!;
+    const secondUpdated = service.listTasks({}).find((entry) => entry.id === secondTask.id)!;
+
+    expect(basename(firstUpdated.worktree.path ?? "")).toBe("same-name");
+    expect(basename(secondUpdated.worktree.path ?? "")).toBe(`${secondTask.id}-same-name`);
   });
 
   it("starts a task from a fetched origin/main worktree and uses the worktree cwd", async () => {
@@ -408,8 +453,10 @@ describe("git worktree lifecycle", () => {
     const { app, service, workspaceDir } = await createGitRuntime();
     const workspace = await createGitWorkspace(service, workspaceDir);
     const task = await createGitTask(service, workspace.id);
-    const planned = await service.planTask(task.id);
-    const worktreePath = planned.task.worktree.path;
+    await service.planTask(task.id);
+    await waitForRunToFinish(service, task.id);
+    const planned = service.listTasks({}).find((entry) => entry.id === task.id)!;
+    const worktreePath = planned.worktree.path;
 
     if (!worktreePath) {
       throw new Error("Expected planned task to create a worktree path");
@@ -448,7 +495,9 @@ describe("git worktree lifecycle", () => {
     const task = await createGitTask(service, workspace.id, {
       title: "Branch conflict"
     });
-    const planned = await service.planTask(task.id);
+    await service.planTask(task.id);
+    await waitForRunToFinish(service, task.id);
+    const planned = service.listTasks({}).find((entry) => entry.id === task.id)!;
 
     await expect(service.deleteTask(task.id)).rejects.toMatchObject({
       status: 409,
@@ -476,7 +525,7 @@ describe("git worktree lifecycle", () => {
       code: "TASK_WORKTREE_BRANCH_IN_USE"
     });
 
-    expect(planned.task.worktree.status).toBe("ready");
+    expect(planned.worktree.status).toBe("ready");
   });
 
   it("rejects invalid base refs before creating a task worktree", async () => {

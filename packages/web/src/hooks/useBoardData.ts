@@ -273,10 +273,36 @@ export function useBoardData() {
   const planTaskMutation = useMutation({
     mutationFn: async (taskId: string) => {
       const response = await api.planTask(taskId);
-      return response.task;
+      return response;
     },
-    onSuccess: async () => {
+    onSuccess: async (result, taskId) => {
+      if (taskId === selection.selectedTaskId) {
+        selection.setSelectedRunId(result.run.id);
+      }
+
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
+      await queryClient.invalidateQueries({ queryKey: queryKey("runs") });
+    }
+  });
+
+  const sendPlanFeedbackMutation = useMutation({
+    mutationFn: async ({
+      taskId,
+      text
+    }: {
+      taskId: string;
+      text: string;
+    }) => {
+      const response = await api.sendPlanFeedback(taskId, { text });
+      return response;
+    },
+    onSuccess: async (result, { taskId }) => {
+      if (taskId === selection.selectedTaskId) {
+        selection.setSelectedRunId(result.run.id);
+      }
+
+      await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
+      await queryClient.invalidateQueries({ queryKey: queryKey("runs") });
     }
   });
 
@@ -382,6 +408,7 @@ export function useBoardData() {
     sendTaskInput: sendTaskInputMutation.mutateAsync,
     updateTask: updateTaskMutation.mutateAsync,
     planTask: planTaskMutation.mutateAsync,
+    sendPlanFeedback: sendPlanFeedbackMutation.mutateAsync,
     requestTaskReview: requestTaskReviewMutation.mutateAsync,
     cleanupTaskWorktree: cleanupTaskWorktreeMutation.mutateAsync,
     moveToTodo: (taskId: string) => changeColumnMutation.mutateAsync({ taskId, column: "todo" }),
@@ -399,6 +426,7 @@ export function useBoardData() {
       sendTaskInputMutation,
       updateTaskMutation,
       planTaskMutation,
+      sendPlanFeedbackMutation,
       requestTaskReviewMutation,
       cleanupTaskWorktreeMutation,
       changeColumnMutation,

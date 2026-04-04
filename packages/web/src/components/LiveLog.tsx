@@ -29,7 +29,7 @@ interface Props {
   isLoading?: boolean;
   showStatus?: boolean;
   canSendInput?: boolean;
-  inputMode?: "running" | "review" | null;
+  inputMode?: "running" | "review" | "plan-feedback" | null;
   onSendInput?(text: string): Promise<unknown>;
 }
 
@@ -551,7 +551,9 @@ export function LiveLog({
       ? "Send a steering message into the active Codex run."
       : inputMode === "review"
         ? "Resume the latest Codex thread from review and continue in the same conversation."
-        : null;
+        : inputMode === "plan-feedback"
+          ? "Provide feedback to refine the plan. Claude will resume the planning session."
+          : null;
   const viewportClassName = showStatus
     ? "mx-4 mb-4 grid h-[clamp(260px,58vh,680px)] min-h-0 auto-rows-max content-start gap-2.5 overflow-auto border border-border bg-[var(--surface-faint)] p-4 max-[720px]:mx-3 max-[720px]:mb-3 max-[720px]:gap-2 max-[720px]:p-3"
     : "mx-4 mb-4 grid min-h-0 auto-rows-max content-start gap-2.5 overflow-auto border border-border bg-[var(--surface-faint)] p-4 max-[720px]:mx-3 max-[720px]:mb-3 max-[720px]:gap-2 max-[720px]:p-3";
@@ -706,7 +708,11 @@ export function LiveLog({
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="grid gap-1">
                 <strong className="text-[0.84rem]">
-                  {inputMode === "review" ? "Continue thread" : "Intervene live"}
+                  {inputMode === "plan-feedback"
+                    ? "Refine plan"
+                    : inputMode === "review"
+                      ? "Continue thread"
+                      : "Intervene live"}
                 </strong>
                 {inputAssistText ? (
                   <p className="m-0 text-[0.68rem] text-[var(--muted)]">{inputAssistText}</p>
@@ -739,9 +745,11 @@ export function LiveLog({
                 }}
                 rows={2}
                 placeholder={
-                  inputMode === "review"
-                    ? "Describe what should change next..."
-                    : "Tell the agent what to do next..."
+                  inputMode === "plan-feedback"
+                    ? "Describe how the plan should be adjusted..."
+                    : inputMode === "review"
+                      ? "Describe what should change next..."
+                      : "Tell the agent what to do next..."
                 }
                 disabled={submitState === "sending"}
                 className="min-h-16 resize-y"

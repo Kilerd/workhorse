@@ -612,40 +612,83 @@ export class BoardService {
     return task;
   }
 
-  public async planTask(taskId: string): Promise<{ task: Task; plan: string }> {
-    const tasks = this.store.listTasks();
-    const task = this.requireTask(taskId, tasks);
+  public async planTask(taskId: string): Promise<{ task: Task; run: Run }> {
+    const task = this.requireTask(taskId);
 
-    if (task.column !== "backlog") {
+    if (task.column !== "backlog" && task.column !== "todo") {
       throw new AppError(
         409,
         "TASK_NOT_PLANNABLE",
-        "Only backlog tasks can generate a plan"
+        "Only backlog or todo tasks can generate a plan"
       );
     }
 
-    const workspace = this.requireWorkspace(task.workspaceId);
+    const planPrompt = this.buildPlanPrompt(task);
 
-    if (workspace.isGitRepo) {
-      task.worktree = await this.gitWorktrees.ensureTaskWorktree(workspace, task);
+    return this.runLifecycle.startTask(taskId, {
+      allowedColumns: ["backlog", "todo"],
+      runnerConfigOverride: {
+        type: "claude",
+        prompt: planPrompt,
+        permissionMode: "plan"
+      },
+      runMetadata: { trigger: "plan_generation" },
+      targetColumn: "backlog"
+    });
+  }
+
+  public async sendPlanFeedback(
+    taskId: string,
+    input: { text: string }
+  ): Promise<{ task: Task; run: Run }> {
+    const text = input.text.trim();
+    if (!text) {
+      throw new AppError(400, "INVALID_PLAN_FEEDBACK", "Plan feedback cannot be blank");
     }
 
-    const plan = this.buildTaskPlan(task);
-    task.description = plan;
-    task.column = "todo";
-    task.order = this.topOrder("todo", task.id);
-    task.updatedAt = new Date().toISOString();
+    const task = this.requireTask(taskId);
+    if (task.column !== "backlog" && task.column !== "todo") {
+      throw new AppError(
+        409,
+        "TASK_NOT_PLANNABLE",
+        "Only backlog or todo tasks can receive plan feedback"
+      );
+    }
 
-    this.store.setTasks(tasks);
-    await this.store.save();
-    this.events.publish({
-      type: "task.updated",
-      action: "updated",
-      taskId: task.id,
-      task
+    const sessionId = this.findPlanSessionId(taskId);
+    if (!sessionId) {
+      throw new AppError(
+        400,
+        "NO_PLAN_SESSION",
+        "No previous plan session found to resume"
+      );
+    }
+
+    return this.runLifecycle.startTask(taskId, {
+      allowedColumns: ["backlog", "todo"],
+      runnerConfigOverride: {
+        type: "claude",
+        prompt: text,
+        permissionMode: "plan"
+      },
+      runMetadata: {
+        trigger: "plan_generation",
+        resumeSessionId: sessionId
+      },
+      targetColumn: "backlog"
     });
+  }
 
-    return { task, plan };
+  private findPlanSessionId(taskId: string): string | undefined {
+    const runs = this.store
+      .listRuns()
+      .filter(
+        (run) =>
+          run.taskId === taskId && run.metadata?.trigger === "plan_generation"
+      )
+      .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+
+    return runs[0]?.metadata?.claudeSessionId;
   }
 
   public async requestTaskReview(taskId: string): Promise<{ task: Task; run: Run }> {
@@ -894,32 +937,24 @@ export class BoardService {
     throw new AppError(400, "INVALID_RUNNER_CONFIG", "Unsupported runner configuration");
   }
 
-  private buildTaskPlan(task: Task): string {
+  private buildPlanPrompt(task: Task): string {
     const description = task.description.trim();
-    const context = description || "No additional context provided yet.";
-    const executionHint =
-      task.runnerType === "codex"
-        ? "Use the Codex runner to implement the task in small, verifiable steps."
-        : task.runnerType === "claude"
-          ? "Use the Claude CLI runner to execute the task in small, verifiable steps."
-        : "Use the shell runner to execute the task in small, verifiable steps.";
 
     return [
-      "# Plan",
-      "## Objective",
-      task.title,
-      "## Context",
-      context,
-      "## Steps",
-      "1. Confirm the expected outcome and any repo-specific constraints.",
-      "2. Break the work into one or two concrete implementation steps.",
-      `3. ${executionHint}`,
-      "4. Verify the result with the smallest useful test or smoke check.",
-      "## Exit Criteria",
-      "- The task result is visible or testable.",
-      "- For Git-backed Codex tasks, the agent creates or updates a GitHub PR before finishing.",
-      "- Any follow-up work is captured before moving to review."
-    ].join("\n\n");
+      "You are a planning assistant. Your job is to create a detailed implementation plan. Do NOT implement anything or modify any files.",
+      "",
+      `Task: ${task.title}`,
+      description ? `\nTask description:\n${description}` : "",
+      "",
+      "Output a clear, actionable implementation plan in markdown format. Include:",
+      "- Objective summary",
+      "- Step-by-step implementation steps",
+      "- Key files/modules to modify",
+      "- Edge cases and risks to consider",
+      "- Definition of done / exit criteria",
+      "",
+      "Do NOT write any code or make any file changes. Only output the plan."
+    ].join("\n");
   }
 
   private nextOrder(column: Task["column"]): number {
