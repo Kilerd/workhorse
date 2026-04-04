@@ -100,6 +100,12 @@ function getTaskRunBadge(task: DisplayTask) {
   }
 
   if (task.column === "todo") {
+    if (task.plan) {
+      return {
+        label: "PLANNED",
+        className: "border-[rgba(73,214,196,0.24)] bg-[rgba(73,214,196,0.1)] text-[var(--accent-strong)]"
+      };
+    }
     return {
       label: "TODO",
       className: "border-[rgba(104,199,246,0.24)] bg-[rgba(104,199,246,0.1)] text-[var(--info)]"
@@ -114,6 +120,12 @@ function getTaskRunBadge(task: DisplayTask) {
   }
 
   if (task.column === "backlog") {
+    if (task.lastRunId) {
+      return {
+        label: "PLANNING",
+        className: "border-[rgba(242,195,92,0.24)] bg-[rgba(242,195,92,0.1)] text-[var(--warning)]"
+      };
+    }
     return {
       label: "BACKLOG",
       className: "border-[rgba(128,146,152,0.24)] bg-[rgba(128,146,152,0.08)] text-[var(--muted)]"
@@ -126,8 +138,11 @@ function getTaskRunBadge(task: DisplayTask) {
   };
 }
 
-function shouldShowColumnBadge(column: DisplayTaskColumn) {
-  return column !== "backlog";
+function shouldShowColumnBadge(column: DisplayTaskColumn, task?: DisplayTask) {
+  if (column === "backlog") {
+    return Boolean(task?.lastRunId);
+  }
+  return true;
 }
 
 function getTaskCardToneClass(column: DisplayTaskColumn) {
@@ -227,7 +242,7 @@ export function Board({
                       ? getReviewCountdown(reviewMonitor, nowMs)
                       : null;
                   const taskRunBadge = getTaskRunBadge(task);
-                  const showColumnBadge = shouldShowColumnBadge(task.column);
+                  const showColumnBadge = shouldShowColumnBadge(task.column, task);
                   const showCardActions = shouldShowCardActions(task.column, isActive);
 
                   return (
@@ -298,6 +313,7 @@ export function Board({
                               {showCardActions ? (
                                 <TaskActionBar
                                   column={task.column}
+                                  task={task}
                                   compact
                                   onPlan={() => onPlan(task.id)}
                                   onStart={() => onTaskStart(task.id)}

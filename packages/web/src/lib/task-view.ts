@@ -37,7 +37,10 @@ export function isBoardVisibleColumn(column: TaskColumn): boolean {
   return column !== "archived";
 }
 
-export function getTaskActions(column: DisplayTaskColumn): TaskActionDescriptor[] {
+export function getTaskActions(
+  column: DisplayTaskColumn,
+  task?: DisplayTask
+): TaskActionDescriptor[] {
   switch (column) {
     case "backlog":
       return [
@@ -46,7 +49,7 @@ export function getTaskActions(column: DisplayTaskColumn): TaskActionDescriptor[
       ];
     case "todo":
       return [
-        { id: "plan", label: "Plan", kind: "secondary" },
+        ...(task?.plan ? [] : [{ id: "plan" as const, label: "Plan", kind: "secondary" as const }]),
         { id: "start", label: "Start", kind: "primary" }
       ];
     case "running":

@@ -368,8 +368,23 @@ export function TaskDetailsPanel({
                   <span>Back</span>
                 </button>
               ) : null}
-              <span className={cn(chipClass, chipTone(columnTone(task.column)))}>
-                {titleCase(task.column)}
+              <span
+                className={cn(
+                  chipClass,
+                  chipTone(
+                    task.column === "backlog" && task.lastRunId
+                      ? "warning"
+                      : task.column === "todo" && task.plan
+                        ? "accent"
+                        : columnTone(task.column)
+                  )
+                )}
+              >
+                {task.column === "backlog" && task.lastRunId
+                  ? "Planning"
+                  : task.column === "todo" && task.plan
+                    ? "Planned"
+                    : titleCase(task.column)}
               </span>
             </div>
             <h1 className="m-0 text-[0.92rem] font-semibold leading-[1.2]">
@@ -381,6 +396,7 @@ export function TaskDetailsPanel({
           <div className="flex flex-wrap items-center gap-1.5 border-b border-border px-4 py-2 max-[720px]:px-3">
             <TaskActionBar
               column={task.column}
+              task={task}
               onPlan={onPlan}
               onStart={onStart}
               onStop={onStop}

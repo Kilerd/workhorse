@@ -1,10 +1,11 @@
-import type { DisplayTaskColumn } from "@/lib/task-view";
+import type { DisplayTask, DisplayTaskColumn } from "@/lib/task-view";
 import { getTaskActions } from "@/lib/task-view";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 interface Props {
   column: DisplayTaskColumn;
+  task?: DisplayTask;
   compact?: boolean;
   onPlan(): void;
   onStart(): void;
@@ -16,6 +17,7 @@ interface Props {
 
 export function TaskActionBar({
   column,
+  task,
   compact = false,
   onPlan,
   onStart,
@@ -24,7 +26,7 @@ export function TaskActionBar({
   onMarkDone,
   onArchive
 }: Props) {
-  const actions = getTaskActions(column);
+  const actions = getTaskActions(column, task);
 
   if (actions.length === 0) {
     return null;
