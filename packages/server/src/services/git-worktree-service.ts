@@ -287,8 +287,16 @@ export class GitWorktreeService {
       );
 
       if (fallbackBranchName !== branchName) {
+        if (await this.branchExists(workspace.rootPath, fallbackBranchName)) {
+          throw new AppError(
+            409,
+            "TASK_WORKTREE_BRANCH_EXISTS",
+            `Task worktree branch already exists: ${fallbackBranchName}`
+          );
+        }
+
         branchName = fallbackBranchName;
-        branchExists = await this.branchExists(workspace.rootPath, branchName);
+        branchExists = false;
       }
     }
 

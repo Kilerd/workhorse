@@ -500,6 +500,32 @@ describe("git worktree lifecycle", () => {
     );
   });
 
+  it("rejects AI branch fallback when both friendly and task-id branches already exist", async () => {
+    const { service, workspaceDir } = await createGitRuntimeWithOptions({
+      taskIdentityGenerator: createTaskIdentityGeneratorStub()
+    });
+    const workspace = await createGitWorkspace(service, workspaceDir);
+    const task = await service.createTask({
+      title: "   ",
+      description: "Review the onboarding flow and identify the regressions.",
+      workspaceId: workspace.id,
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "true"
+      }
+    });
+    const fallbackBranchName = `task/${task.id}-fix-onboarding-flow`;
+
+    await runGit(["-C", workspaceDir, "branch", task.worktree.branchName, "origin/main"]);
+    await runGit(["-C", workspaceDir, "branch", fallbackBranchName, "origin/main"]);
+
+    await expect(service.planTask(task.id)).rejects.toMatchObject({
+      status: 409,
+      code: "TASK_WORKTREE_BRANCH_EXISTS"
+    });
+  });
+
   it("starts a task from a fetched origin/main worktree and uses the worktree cwd", async () => {
     const { service, seedDir, workspaceDir } = await createGitRuntime();
     const workspace = await createGitWorkspace(service, workspaceDir);

@@ -95,6 +95,24 @@ describe("task worktree naming", () => {
     ).toBe(expectedBranchName);
   });
 
+  it("ignores preserveAutoTaskId for non-task branches", () => {
+    const task = createTask({
+      worktree: {
+        baseRef: "origin/main",
+        branchName: "feature/fix-onboarding-flow",
+        status: "not_created"
+      }
+    });
+
+    expect(
+      basename(
+        deriveTaskWorktreePath(workspace, task, {
+          preserveAutoTaskId: true
+        })
+      )
+    ).toBe("fix-onboarding-flow");
+  });
+
   it("uses the friendly directory name for standard task branches", () => {
     const task = createTask();
 
