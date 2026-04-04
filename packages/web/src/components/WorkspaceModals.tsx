@@ -12,7 +12,7 @@ import {
 } from "@workhorse/contracts";
 
 import { api } from "@/lib/api";
-import { slugifyBranchPreview } from "@/lib/format";
+import { formatTaskBranchPreview } from "@/lib/format";
 import { BOARD_COLUMNS, type TaskFormValues } from "@/lib/task-view";
 import { resolveTaskWorkspaceId } from "@/lib/workspace-selection";
 import { cn } from "@/lib/utils";
@@ -696,15 +696,20 @@ export function TaskModal({
     !trimmedTitle && Boolean(trimmedDescription) && canGenerateTitle
       ? "Generating AI title and creating task..."
       : "Creating task...";
+  const usesAiBranchPreview =
+    !trimmedTitle && Boolean(trimmedDescription) && canGenerateTitle;
   const canSubmit =
     workspaces.length > 0 &&
     Boolean(workspaceId) &&
     (Boolean(trimmedTitle) || (Boolean(trimmedDescription) && canGenerateTitle)) &&
     (!selectedWorkspace?.isGitRepo || Boolean(worktreeBaseRef)) &&
     !isSubmitting;
-  const branchPreview = `task/<generated-id>-${slugifyBranchPreview(
-    trimmedTitle || (canGenerateTitle ? "ai-generated-name" : "task")
-  )}`;
+  const branchPreview = formatTaskBranchPreview(
+    usesAiBranchPreview ? "ai-generated-name" : trimmedTitle || "task",
+    {
+      omitGeneratedId: usesAiBranchPreview
+    }
+  );
 
   return (
     <div className={modalBackdropClass} role="presentation" onClick={onClose}>

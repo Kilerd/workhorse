@@ -71,3 +71,18 @@ export function slugifyBranchPreview(value: string): string {
 
   return slug || "task";
 }
+
+export function formatTaskBranchPreview(
+  value: string,
+  options: {
+    omitGeneratedId?: boolean;
+  } = {}
+): string {
+  const slug = slugifyBranchPreview(value);
+
+  if (options.omitGeneratedId) {
+    return `task/${slug}`;
+  }
+
+  return `task/<generated-id>-${slug}`;
+}
