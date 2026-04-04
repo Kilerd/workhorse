@@ -13,7 +13,8 @@ import type {
   TaskColumn,
   UpdateSettingsBody,
   UpdateWorkspaceBody,
-  Workspace
+  Workspace,
+  WorkspaceGitStatusData
 } from "@workhorse/contracts";
 
 import { api } from "@/lib/api";
@@ -59,6 +60,37 @@ export function useBoardData() {
     queryKey: queryKey("health"),
     queryFn: async () => api.health(),
     refetchInterval: 60_000
+  });
+
+  const workspaceGitStatusQuery = useQuery({
+    queryKey: queryKey("workspaceGitStatus", selection.selectedWorkspaceId),
+    queryFn: async (): Promise<WorkspaceGitStatusData | null> => {
+      if (selection.selectedWorkspaceId === "all") {
+        return null;
+      }
+      const workspace = workspacesQuery.data?.find(
+        (w) => w.id === selection.selectedWorkspaceId
+      );
+      if (!workspace?.isGitRepo) {
+        return null;
+      }
+      return api.getWorkspaceGitStatus(selection.selectedWorkspaceId);
+    },
+    enabled:
+      selection.selectedWorkspaceId !== "all" &&
+      workspacesQuery.isSuccess,
+    refetchInterval: 30_000
+  });
+
+  const pullWorkspaceMutation = useMutation({
+    mutationFn: async (workspaceId: string) => {
+      return api.pullWorkspace(workspaceId);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: queryKey("workspaceGitStatus")
+      });
+    }
   });
 
   const settingsQuery = useQuery({
@@ -376,6 +408,9 @@ export function useBoardData() {
     workspacesQuery,
     tasksQuery,
     settingsQuery,
+    workspaceGitStatus: workspaceGitStatusQuery.data ?? null,
+    pullWorkspace: pullWorkspaceMutation.mutateAsync,
+    isPulling: pullWorkspaceMutation.isPending,
     displayedTasks,
     selectedWorkspaceId: selection.selectedWorkspaceId,
     selectedWorkspaceTasks,
@@ -431,7 +466,8 @@ export function useBoardData() {
       cleanupTaskWorktreeMutation,
       changeColumnMutation,
       deleteWorkspaceMutation,
-      deleteTaskMutation
+      deleteTaskMutation,
+      pullWorkspaceMutation
     ].some((m) => m.isPending)
   };
 }

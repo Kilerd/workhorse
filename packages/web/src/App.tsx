@@ -263,6 +263,13 @@ function ReactAppShell() {
           boardCount={boardTasks.length}
           runtimeStatus={board.healthQuery.data?.status ?? "connecting"}
           codexQuota={board.healthQuery.data?.codexQuota}
+          gitStatus={board.workspaceGitStatus}
+          onPull={() => {
+            if (board.selectedWorkspaceId !== "all") {
+              void board.pullWorkspace(board.selectedWorkspaceId);
+            }
+          }}
+          isPulling={board.isPulling}
         />}
 
         <Routes>

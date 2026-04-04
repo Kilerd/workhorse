@@ -13,6 +13,8 @@ import type {
   HealthResponse,
   PickWorkspaceRootResponse,
   ListWorkspaceGitRefsParams,
+  WorkspaceGitStatusParams,
+  WorkspaceGitPullParams,
   ListRunsParams,
   ListTasksQuery,
   PlanFeedbackBody,
@@ -44,6 +46,8 @@ import type {
   UpdateWorkspaceBody,
   UpdateWorkspaceParams,
   WorkspaceGitRefsResponse,
+  WorkspaceGitStatusResponse,
+  WorkspaceGitPullResponse,
   WorkspaceResponse,
   WorkspacesResponse
 } from "./api.js";
@@ -68,6 +72,10 @@ export const validateDeleteWorkspaceParams =
   typia.createValidate<DeleteWorkspaceParams>();
 export const validateListWorkspaceGitRefsParams =
   typia.createValidate<ListWorkspaceGitRefsParams>();
+export const validateWorkspaceGitStatusParams =
+  typia.createValidate<WorkspaceGitStatusParams>();
+export const validateWorkspaceGitPullParams =
+  typia.createValidate<WorkspaceGitPullParams>();
 
 export const validateListTasksQuery = typia.createValidate<ListTasksQuery>();
 export const validateCreateTaskBody = typia.createValidate<CreateTaskBody>();
@@ -101,6 +109,8 @@ export const schemaRegistry = {
   UpdateSettingsBody: () => typia.json.schema<UpdateSettingsBody>(),
   CreateWorkspaceBody: () => typia.json.schema<CreateWorkspaceBody>(),
   ListWorkspaceGitRefsParams: () => typia.json.schema<ListWorkspaceGitRefsParams>(),
+  WorkspaceGitStatusParams: () => typia.json.schema<WorkspaceGitStatusParams>(),
+  WorkspaceGitPullParams: () => typia.json.schema<WorkspaceGitPullParams>(),
   UpdateWorkspaceBody: () => typia.json.schema<UpdateWorkspaceBody>(),
   UpdateWorkspaceParams: () => typia.json.schema<UpdateWorkspaceParams>(),
   DeleteWorkspaceParams: () => typia.json.schema<DeleteWorkspaceParams>(),
@@ -126,6 +136,8 @@ export const schemaRegistry = {
   WorkspacesResponse: () => typia.json.schema<WorkspacesResponse>(),
   WorkspaceResponse: () => typia.json.schema<WorkspaceResponse>(),
   WorkspaceGitRefsResponse: () => typia.json.schema<WorkspaceGitRefsResponse>(),
+  WorkspaceGitStatusResponse: () => typia.json.schema<WorkspaceGitStatusResponse>(),
+  WorkspaceGitPullResponse: () => typia.json.schema<WorkspaceGitPullResponse>(),
   PickWorkspaceRootResponse: () => typia.json.schema<PickWorkspaceRootResponse>(),
   DeleteWorkspaceResponse: () => typia.json.schema<DeleteWorkspaceResponse>(),
   TasksResponse: () => typia.json.schema<TasksResponse>(),

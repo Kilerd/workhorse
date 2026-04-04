@@ -27,7 +27,9 @@ import type {
   UpdateTaskBody,
   UpdateWorkspaceBody,
   WorkspaceData,
-  WorkspaceGitRefsData
+  WorkspaceGitRefsData,
+  WorkspaceGitStatusData,
+  WorkspaceGitPullData
 } from "@workhorse/contracts";
 import type { paths } from "./generated/openapi";
 
@@ -174,6 +176,20 @@ export function createApiClient(baseUrl: string) {
       workspaceId: string
     ): Promise<WorkspaceGitRefsData> =>
       unwrap((await listWorkspaceGitRefs({ workspaceId })).data),
+    getWorkspaceGitStatus: async (
+      workspaceId: string
+    ): Promise<WorkspaceGitStatusData> =>
+      unwrap(
+        await requestJson(`/api/workspaces/${encodeURIComponent(workspaceId)}/git/status`)
+      ),
+    pullWorkspace: async (
+      workspaceId: string
+    ): Promise<WorkspaceGitPullData> =>
+      unwrap(
+        await requestJson(`/api/workspaces/${encodeURIComponent(workspaceId)}/git/pull`, {
+          method: "POST"
+        })
+      ),
     deleteWorkspace: async (workspaceId: string): Promise<DeleteResult> =>
       unwrap((await deleteWorkspace({ workspaceId })).data),
     listTasks: async (workspaceId?: string): Promise<ListTasksData> =>

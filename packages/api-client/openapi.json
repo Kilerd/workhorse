@@ -341,6 +341,98 @@
         ]
       }
     },
+    "/api/workspaces/{workspaceId}/git/status": {
+      "get": {
+        "operationId": "getWorkspaceGitStatus",
+        "summary": "Get Git sync status for a workspace",
+        "tags": [
+          "Workspaces"
+        ],
+        "responses": {
+          "200": {
+            "description": "Workspace Git sync status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceGitStatusResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Workspace not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/workspaces/{workspaceId}/git/pull": {
+      "post": {
+        "operationId": "pullWorkspace",
+        "summary": "Pull latest changes from origin for a workspace",
+        "tags": [
+          "Workspaces"
+        ],
+        "responses": {
+          "200": {
+            "description": "Pull result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceGitPullResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Pull failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Workspace not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
     "/api/tasks": {
       "get": {
         "operationId": "listTasks",
@@ -1801,6 +1893,28 @@
           "workspaceId"
         ]
       },
+      "WorkspaceGitStatusParams": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId"
+        ]
+      },
+      "WorkspaceGitPullParams": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId"
+        ]
+      },
       "UpdateWorkspaceBody": {
         "type": "object",
         "properties": {
@@ -2284,6 +2398,82 @@
         },
         "required": [
           "items"
+        ]
+      },
+      "WorkspaceGitStatusResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/WorkspaceGitStatusData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "WorkspaceGitStatusData": {
+        "type": "object",
+        "properties": {
+          "branch": {
+            "type": "string"
+          },
+          "ahead": {
+            "type": "number"
+          },
+          "behind": {
+            "type": "number"
+          },
+          "changedFiles": {
+            "type": "number"
+          },
+          "addedFiles": {
+            "type": "number"
+          },
+          "deletedFiles": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "branch",
+          "ahead",
+          "behind",
+          "changedFiles",
+          "addedFiles",
+          "deletedFiles"
+        ]
+      },
+      "WorkspaceGitPullResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/WorkspaceGitPullData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "WorkspaceGitPullData": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success"
         ]
       },
       "PickWorkspaceRootResponse": {

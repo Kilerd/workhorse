@@ -75,6 +75,27 @@ export interface ListWorkspaceGitRefsParams {
   workspaceId: string;
 }
 
+export interface WorkspaceGitStatusParams {
+  workspaceId: string;
+}
+
+export interface WorkspaceGitStatusData {
+  branch: string;
+  ahead: number;
+  behind: number;
+  changedFiles: number;
+  addedFiles: number;
+  deletedFiles: number;
+}
+
+export interface WorkspaceGitPullParams {
+  workspaceId: string;
+}
+
+export interface WorkspaceGitPullData {
+  success: boolean;
+}
+
 export interface UpdateWorkspaceParams {
   workspaceId: string;
 }
@@ -278,6 +299,8 @@ export type SettingsResponse = ApiSuccess<SettingsData>;
 export type WorkspacesResponse = ApiSuccess<ListWorkspacesData>;
 export type WorkspaceResponse = ApiSuccess<WorkspaceData>;
 export type WorkspaceGitRefsResponse = ApiSuccess<WorkspaceGitRefsData>;
+export type WorkspaceGitStatusResponse = ApiSuccess<WorkspaceGitStatusData>;
+export type WorkspaceGitPullResponse = ApiSuccess<WorkspaceGitPullData>;
 export type PickWorkspaceRootResponse = ApiSuccess<PickWorkspaceRootData>;
 export type DeleteWorkspaceResponse = ApiSuccess<DeleteResult>;
 export type TasksResponse = ApiSuccess<ListTasksData>;
@@ -327,6 +350,8 @@ export type SchemaName =
   | "Run"
   | "CreateWorkspaceBody"
   | "ListWorkspaceGitRefsParams"
+  | "WorkspaceGitStatusParams"
+  | "WorkspaceGitPullParams"
   | "UpdateWorkspaceBody"
   | "UpdateWorkspaceParams"
   | "DeleteWorkspaceParams"
@@ -351,6 +376,8 @@ export type SchemaName =
   | "WorkspacesResponse"
   | "WorkspaceResponse"
   | "WorkspaceGitRefsResponse"
+  | "WorkspaceGitStatusResponse"
+  | "WorkspaceGitPullResponse"
   | "DeleteWorkspaceResponse"
   | "TasksResponse"
   | "TaskResponse"
@@ -507,6 +534,51 @@ export const endpointRegistry: EndpointSpec[] = [
         status: 200,
         description: "Workspace Git refs",
         schema: "WorkspaceGitRefsResponse"
+      },
+      {
+        status: 404,
+        description: "Workspace not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "getWorkspaceGitStatus",
+    method: "get",
+    path: "/api/workspaces/{workspaceId}/git/status",
+    summary: "Get Git sync status for a workspace",
+    tag: "Workspaces",
+    paramsSchema: "WorkspaceGitStatusParams",
+    responses: [
+      {
+        status: 200,
+        description: "Workspace Git sync status",
+        schema: "WorkspaceGitStatusResponse"
+      },
+      {
+        status: 404,
+        description: "Workspace not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "pullWorkspace",
+    method: "post",
+    path: "/api/workspaces/{workspaceId}/git/pull",
+    summary: "Pull latest changes from origin for a workspace",
+    tag: "Workspaces",
+    paramsSchema: "WorkspaceGitPullParams",
+    responses: [
+      {
+        status: 200,
+        description: "Pull result",
+        schema: "WorkspaceGitPullResponse"
+      },
+      {
+        status: 400,
+        description: "Pull failed",
+        schema: "ApiError"
       },
       {
         status: 404,

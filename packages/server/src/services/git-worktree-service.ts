@@ -4,7 +4,13 @@ import { constants } from "node:fs";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 
-import type { Task, TaskWorktree, Workspace, WorkspaceGitRef } from "@workhorse/contracts";
+import type {
+  Task,
+  TaskWorktree,
+  Workspace,
+  WorkspaceGitRef,
+  WorkspaceGitStatusData
+} from "@workhorse/contracts";
 
 import { AppError } from "../lib/errors.js";
 import { normalizeGitHubRepositoryFullName } from "../lib/github.js";
@@ -387,6 +393,100 @@ export class GitWorktreeService {
         error,
         "TASK_WORKTREE_FETCH_FAILED",
         "Failed to fetch the workspace remotes"
+      );
+    }
+  }
+
+  public async getWorkspaceGitStatus(
+    workspace: Workspace
+  ): Promise<WorkspaceGitStatusData> {
+    this.ensureGitWorkspace(workspace);
+
+    const { stdout: branch } = await this.runGit(workspace.rootPath, [
+      "rev-parse",
+      "--abbrev-ref",
+      "HEAD"
+    ]);
+
+    const branchName = branch.trim();
+
+    const { stdout: statusOutput } = await this.runGit(workspace.rootPath, [
+      "status",
+      "--porcelain"
+    ]);
+
+    let changedFiles = 0;
+    let addedFiles = 0;
+    let deletedFiles = 0;
+
+    for (const line of statusOutput.split("\n")) {
+      if (!line.trim()) {
+        continue;
+      }
+
+      const xy = line.slice(0, 2);
+      if (xy.includes("?")) {
+        addedFiles++;
+      } else if (xy.includes("D")) {
+        deletedFiles++;
+      } else {
+        changedFiles++;
+      }
+    }
+
+    let ahead = 0;
+    let behind = 0;
+
+    const trackingRef = `origin/${branchName}`;
+    const hasTracking = await this.isRemoteTrackingRef(
+      workspace.rootPath,
+      trackingRef
+    );
+
+    if (hasTracking) {
+      try {
+        const { stdout: behindOutput } = await this.runGit(workspace.rootPath, [
+          "rev-list",
+          "--count",
+          `HEAD..${trackingRef}`
+        ]);
+        behind = parseInt(behindOutput.trim(), 10) || 0;
+      } catch {
+        // ignore if rev-list fails
+      }
+
+      try {
+        const { stdout: aheadOutput } = await this.runGit(workspace.rootPath, [
+          "rev-list",
+          "--count",
+          `${trackingRef}..HEAD`
+        ]);
+        ahead = parseInt(aheadOutput.trim(), 10) || 0;
+      } catch {
+        // ignore if rev-list fails
+      }
+    }
+
+    return {
+      branch: branchName,
+      ahead,
+      behind,
+      changedFiles,
+      addedFiles,
+      deletedFiles
+    };
+  }
+
+  public async pullWorkspace(workspace: Workspace): Promise<void> {
+    this.ensureGitWorkspace(workspace);
+
+    try {
+      await this.runGit(workspace.rootPath, ["pull", "--ff-only"]);
+    } catch (error) {
+      throw this.toAppError(
+        error,
+        "WORKSPACE_GIT_PULL_FAILED",
+        "Failed to pull from origin"
       );
     }
   }

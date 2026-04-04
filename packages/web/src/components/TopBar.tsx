@@ -1,7 +1,8 @@
 import type {
   HealthCodexQuotaData,
   HealthCodexQuotaWindowData,
-  Workspace
+  Workspace,
+  WorkspaceGitStatusData
 } from "@workhorse/contracts";
 
 import { formatCount, formatRelativeTime } from "@/lib/format";
@@ -30,6 +31,9 @@ interface Props {
   boardCount: number;
   runtimeStatus: string;
   codexQuota?: HealthCodexQuotaData | null;
+  gitStatus: WorkspaceGitStatusData | null;
+  onPull(): void;
+  isPulling: boolean;
 }
 
 function formatRuntimeStatus(runtimeStatus: string) {
@@ -130,7 +134,10 @@ export function TopBar({
   lastSyncedAt,
   boardCount,
   runtimeStatus,
-  codexQuota
+  codexQuota,
+  gitStatus,
+  onPull,
+  isPulling
 }: Props) {
   const metaChipClass =
     "inline-flex min-h-5 items-center gap-2 whitespace-nowrap rounded-none border border-border bg-[var(--panel)] px-2 text-[0.64rem] uppercase tracking-[0.08em] text-[var(--muted)]";
@@ -210,6 +217,50 @@ export function TopBar({
           <span className={metaChipClass}>{formatCount(boardCount, "task")}</span>
           <span className={metaChipClass}>Updated {formatRelativeTime(lastSyncedAt)}</span>
           <span className={metaChipClass}>Scope {selectedWorkspaceName}</span>
+          {gitStatus ? (
+            <>
+              <span className={cn(metaChipClass, "gap-1.5")}>
+                <svg
+                  aria-hidden="true"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 16 16"
+                  fill="currentColor"
+                  className="shrink-0 opacity-60"
+                >
+                  <path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.493 2.493 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Z" />
+                </svg>
+                {gitStatus.branch}
+              </span>
+              {gitStatus.changedFiles + gitStatus.addedFiles + gitStatus.deletedFiles > 0 ? (
+                <span className={metaChipClass}>
+                  {gitStatus.changedFiles + gitStatus.addedFiles + gitStatus.deletedFiles} files
+                  {gitStatus.addedFiles > 0 ? (
+                    <span className="text-[var(--success)]"> +{gitStatus.addedFiles}</span>
+                  ) : null}
+                  {gitStatus.deletedFiles > 0 ? (
+                    <span className="text-[var(--error)]"> -{gitStatus.deletedFiles}</span>
+                  ) : null}
+                </span>
+              ) : null}
+              <span className={metaChipClass}>
+                ↓ {gitStatus.behind}
+              </span>
+              <span className={metaChipClass}>
+                ↑ {gitStatus.ahead}
+              </span>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={onPull}
+                disabled={isPulling}
+                className="h-5 min-h-5 px-2 text-[0.64rem]"
+                title="Pull latest from origin"
+              >
+                {isPulling ? "Pulling…" : "↓ Pull"}
+              </Button>
+            </>
+          ) : null}
         </div>
       </div>
 

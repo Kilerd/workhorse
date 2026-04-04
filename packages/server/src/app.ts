@@ -25,7 +25,9 @@ import {
   validateUpdateTaskBody,
   validateUpdateTaskParams,
   validateUpdateWorkspaceBody,
-  validateUpdateWorkspaceParams
+  validateUpdateWorkspaceParams,
+  validateWorkspaceGitStatusParams,
+  validateWorkspaceGitPullParams
 } from "@workhorse/contracts";
 
 import { getGitReviewMonitorIntervalMs } from "./config.js";
@@ -151,6 +153,26 @@ export function createApp(
     );
     const items = await service.listWorkspaceGitRefs(params.workspaceId);
     return c.json(ok({ items }));
+  });
+
+  app.get("/api/workspaces/:workspaceId/git/status", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateWorkspaceGitStatusParams,
+      "Invalid workspace params"
+    );
+    const status = await service.getWorkspaceGitStatus(params.workspaceId);
+    return c.json(ok(status));
+  });
+
+  app.post("/api/workspaces/:workspaceId/git/pull", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateWorkspaceGitPullParams,
+      "Invalid workspace params"
+    );
+    const result = await service.pullWorkspace(params.workspaceId);
+    return c.json(ok(result));
   });
 
   app.delete("/api/workspaces/:workspaceId", async (c) => {

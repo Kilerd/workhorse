@@ -109,6 +109,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{workspaceId}/git/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Git sync status for a workspace */
+        get: operations["getWorkspaceGitStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{workspaceId}/git/pull": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pull latest changes from origin for a workspace */
+        post: operations["pullWorkspace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tasks": {
         parameters: {
             query?: never;
@@ -487,6 +521,12 @@ export interface components {
         ListWorkspaceGitRefsParams: {
             workspaceId: string;
         };
+        WorkspaceGitStatusParams: {
+            workspaceId: string;
+        };
+        WorkspaceGitPullParams: {
+            workspaceId: string;
+        };
         UpdateWorkspaceBody: {
             name?: string;
             codexSettings?: components["schemas"]["WorkspaceCodexSettings"];
@@ -596,6 +636,27 @@ export interface components {
         };
         WorkspaceGitRefsData: {
             items: components["schemas"]["WorkspaceGitRef"][];
+        };
+        WorkspaceGitStatusResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["WorkspaceGitStatusData"];
+        };
+        WorkspaceGitStatusData: {
+            branch: string;
+            ahead: number;
+            behind: number;
+            changedFiles: number;
+            addedFiles: number;
+            deletedFiles: number;
+        };
+        WorkspaceGitPullResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["WorkspaceGitPullData"];
+        };
+        WorkspaceGitPullData: {
+            success: boolean;
         };
         PickWorkspaceRootResponse: {
             /** @enum {unknown} */
@@ -1030,6 +1091,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkspaceGitRefsResponse"];
+                };
+            };
+            /** @description Workspace not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getWorkspaceGitStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Workspace Git sync status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceGitStatusResponse"];
+                };
+            };
+            /** @description Workspace not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    pullWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pull result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceGitPullResponse"];
+                };
+            };
+            /** @description Pull failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
             /** @description Workspace not found */

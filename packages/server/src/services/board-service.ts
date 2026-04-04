@@ -244,6 +244,19 @@ export class BoardService {
     return this.gitWorktrees.listRefs(workspace);
   }
 
+  public async getWorkspaceGitStatus(workspaceId: string) {
+    const workspace = this.requireWorkspace(workspaceId);
+
+    return this.gitWorktrees.getWorkspaceGitStatus(workspace);
+  }
+
+  public async pullWorkspace(workspaceId: string) {
+    const workspace = this.requireWorkspace(workspaceId);
+
+    await this.gitWorktrees.pullWorkspace(workspace);
+    return { success: true };
+  }
+
   public async createWorkspace(input: CreateWorkspaceBody): Promise<Workspace> {
     const name = input.name.trim();
     const rootPath = input.rootPath.trim();
