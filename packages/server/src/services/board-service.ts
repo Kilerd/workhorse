@@ -379,20 +379,32 @@ export class BoardService {
       throw new AppError(400, "INVALID_TASK", "Task title is required");
     }
     this.ensureRunnerConfig(input.runnerType, input.runnerConfig);
+    const existingTasks = this.store.listTasks();
     const taskId = createId();
-    const worktree = workspace.isGitRepo
-      ? createTaskWorktree(taskId, title, {
-          workspace,
-          branchLabel,
-          baseRef: await this.gitWorktrees.resolveBaseRef(
-            workspace,
-            input.worktreeBaseRef
-          )
-        })
-      : createTaskWorktree(taskId, title, {
-          workspace,
-          branchLabel
-        });
+    const baseRef = workspace.isGitRepo
+      ? await this.gitWorktrees.resolveBaseRef(workspace, input.worktreeBaseRef)
+      : undefined;
+    let worktree = createTaskWorktree(taskId, title, {
+      workspace,
+      branchLabel,
+      baseRef
+    });
+
+    if (
+      branchLabel &&
+      existingTasks.some(
+        (task) =>
+          task.workspaceId === workspace.id &&
+          task.worktree.branchName === worktree.branchName
+      )
+    ) {
+      worktree = createTaskWorktree(taskId, title, {
+        workspace,
+        branchLabel,
+        baseRef,
+        preserveAutoTaskId: true
+      });
+    }
 
     const now = new Date().toISOString();
     const column = input.column ?? "backlog";
@@ -410,7 +422,7 @@ export class BoardService {
       updatedAt: now
     };
 
-    const tasks = [...this.store.listTasks(), task];
+    const tasks = [...existingTasks, task];
     this.store.setTasks(tasks);
     await this.store.save();
     this.events.publish({

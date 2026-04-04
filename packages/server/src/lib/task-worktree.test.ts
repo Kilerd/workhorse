@@ -7,6 +7,7 @@ import type { Task, Workspace } from "@workhorse/contracts";
 import {
   createTaskWorktree,
   deriveTaskBranchName,
+  deriveTaskBranchFallbackName,
   deriveTaskWorktreePath
 } from "./task-worktree.js";
 
@@ -49,6 +50,50 @@ describe("task worktree naming", () => {
     });
 
     expect(worktree.branchName).toBe("task/fix-onboarding-flow");
+  });
+
+  it("falls back to a task-id-prefixed branch name for colliding AI task branches", () => {
+    const worktree = createTaskWorktree("task-123", "修复引导流程", {
+      workspace,
+      branchLabel: "fix-onboarding-flow",
+      preserveAutoTaskId: true
+    });
+
+    expect(worktree.branchName).toBe("task/task-123-fix-onboarding-flow");
+  });
+
+  it("keeps standard task branch names stable when deriving fallback branch names", () => {
+    expect(
+      deriveTaskBranchFallbackName(
+        "task/task-123-fix-onboarding-flow",
+        "task-123",
+        "Fix onboarding flow"
+      )
+    ).toBe("task/task-123-fix-onboarding-flow");
+  });
+
+  it("derives task-id-prefixed fallback branch names for friendly AI task branches", () => {
+    expect(
+      deriveTaskBranchFallbackName("task/fix-onboarding-flow", "task-123", "Fix onboarding flow")
+    ).toBe("task/task-123-fix-onboarding-flow");
+  });
+
+  it("uses the friendly directory name for standard task branches", () => {
+    const task = createTask();
+
+    expect(basename(deriveTaskWorktreePath(workspace, task))).toBe("fix-onboarding-flow");
+  });
+
+  it("preserves the task id in fallback directory names for standard task branches", () => {
+    const task = createTask();
+
+    expect(
+      basename(
+        deriveTaskWorktreePath(workspace, task, {
+          preserveAutoTaskId: true
+        })
+      )
+    ).toBe("task-123-fix-onboarding-flow");
   });
 
   it("uses the friendly directory name for AI-generated task branches", () => {

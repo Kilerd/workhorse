@@ -10,6 +10,7 @@ import { AppError } from "../lib/errors.js";
 import { normalizeGitHubRepositoryFullName } from "../lib/github.js";
 import {
   createTaskWorktree,
+  deriveTaskBranchFallbackName,
   deriveTaskWorktreePath,
   pickDefaultGitRef
 } from "../lib/task-worktree.js";
@@ -275,8 +276,22 @@ export class GitWorktreeService {
       }
     }
 
-    const branchName = reconciled.branchName;
-    const branchExists = await this.branchExists(workspace.rootPath, branchName);
+    let branchName = reconciled.branchName;
+    let branchExists = await this.branchExists(workspace.rootPath, branchName);
+
+    if (branchExists) {
+      const fallbackBranchName = deriveTaskBranchFallbackName(
+        branchName,
+        task.id,
+        task.title
+      );
+
+      if (fallbackBranchName !== branchName) {
+        branchName = fallbackBranchName;
+        branchExists = await this.branchExists(workspace.rootPath, branchName);
+      }
+    }
+
     const addArgs = branchExists
       ? ["worktree", "add", nextPath, branchName]
       : ["worktree", "add", "-b", branchName, nextPath, baseRef];
@@ -308,6 +323,7 @@ export class GitWorktreeService {
 
     return {
       ...reconciled,
+      branchName,
       path: await normalizePath(nextPath),
       status: "ready",
       cleanupReason: undefined,

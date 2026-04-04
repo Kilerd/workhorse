@@ -19,6 +19,7 @@ import { StateStore } from "./persistence/state-store.js";
 import type { RunnerAdapter, RunnerControl, RunnerLifecycleHooks, RunnerStartContext } from "./runners/types.js";
 import { ShellRunner } from "./runners/shell-runner.js";
 import { BoardService } from "./services/board-service.js";
+import type { TaskIdentityGenerator } from "./services/openrouter-task-naming-service.js";
 import { EventBus } from "./ws/event-bus.js";
 
 class MockClaudeRunner implements RunnerAdapter {
@@ -100,9 +101,16 @@ async function pushMarkerUpdate(seedDir: string, text: string): Promise<void> {
 }
 
 async function createGitRuntime() {
+  return createGitRuntimeWithOptions();
+}
+
+async function createGitRuntimeWithOptions(options: {
+  taskIdentityGenerator?: TaskIdentityGenerator;
+} = {}) {
   const dataDir = await mkdtemp(join(tmpdir(), "workhorse-git-test-"));
   const gitRepo = await createGitRepository(dataDir);
   const service = new BoardService(new StateStore(dataDir), new EventBus(), {
+    taskIdentityGenerator: options.taskIdentityGenerator,
     runners: {
       claude: new MockClaudeRunner(),
       shell: new ShellRunner()
@@ -135,6 +143,19 @@ async function createGitRuntimeWithProvider(githubPullRequests: GitHubPullReques
     dataDir,
     service,
     ...gitRepo
+  };
+}
+
+function createTaskIdentityGeneratorStub(
+  result = {
+    title: "Fix onboarding flow",
+    worktreeName: "fix-onboarding-flow"
+  }
+): TaskIdentityGenerator {
+  return {
+    async generate() {
+      return result;
+    }
   };
 }
 
@@ -429,6 +450,54 @@ describe("git worktree lifecycle", () => {
 
     expect(basename(firstUpdated.worktree.path ?? "")).toBe("same-name");
     expect(basename(secondUpdated.worktree.path ?? "")).toBe(`${secondTask.id}-same-name`);
+  });
+
+  it("falls back to a task-id-prefixed branch name when AI-generated branches collide", async () => {
+    const { service, workspaceDir } = await createGitRuntimeWithOptions({
+      taskIdentityGenerator: createTaskIdentityGeneratorStub()
+    });
+    const workspace = await createGitWorkspace(service, workspaceDir);
+    const firstTask = await service.createTask({
+      title: "   ",
+      description: "Review the onboarding flow and identify the regressions.",
+      workspaceId: workspace.id,
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "true"
+      }
+    });
+    const secondTask = await service.createTask({
+      title: "   ",
+      description: "Review the onboarding flow and patch the regressions.",
+      workspaceId: workspace.id,
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "true"
+      }
+    });
+
+    expect(firstTask.worktree.branchName).toBe("task/fix-onboarding-flow");
+    expect(secondTask.worktree.branchName).toBe(
+      `task/${secondTask.id}-fix-onboarding-flow`
+    );
+
+    await service.planTask(firstTask.id);
+    await waitForRunToFinish(service, firstTask.id);
+    await service.planTask(secondTask.id);
+    await waitForRunToFinish(service, secondTask.id);
+
+    const firstUpdated = service.listTasks({}).find((entry) => entry.id === firstTask.id)!;
+    const secondUpdated = service.listTasks({}).find((entry) => entry.id === secondTask.id)!;
+
+    expect(basename(firstUpdated.worktree.path ?? "")).toBe("fix-onboarding-flow");
+    expect(basename(secondUpdated.worktree.path ?? "")).toBe(
+      `${secondTask.id}-fix-onboarding-flow`
+    );
+    expect(secondUpdated.worktree.branchName).toBe(
+      `task/${secondTask.id}-fix-onboarding-flow`
+    );
   });
 
   it("starts a task from a fetched origin/main worktree and uses the worktree cwd", async () => {
