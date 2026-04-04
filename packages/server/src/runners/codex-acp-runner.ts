@@ -630,9 +630,25 @@ export class CodexAcpRunner implements RunnerAdapter {
     const thread = await this.startOrResumeThread(request, context, config, hooks);
     threadId = thread.threadId;
 
+    const turnParams = this.buildTurnStartParams(context, config, threadId, thread.resumed);
+    const promptText = turnParams.input
+      .filter((item: { type: string }) => item.type === "text")
+      .map((item: { text: string }) => item.text)
+      .join("\n\n");
+
+    if (promptText) {
+      await hooks.onOutput({
+        kind: "user",
+        text: `${promptText}\n`,
+        stream: "system",
+        title: "Prompt",
+        source: "Codex ACP"
+      });
+    }
+
     const turn = await request<TurnStartResult>(
       "turn/start",
-      this.buildTurnStartParams(context, config, threadId, thread.resumed)
+      turnParams
     );
 
     turnId = turn.turn.id;
@@ -704,6 +720,7 @@ export class CodexAcpRunner implements RunnerAdapter {
 
   private buildPrompt(context: RunnerStartContext, config: CodexRunnerConfig): string {
     const description = context.task.description.trim();
+    const plan = context.task.plan?.trim();
     const sections = [
       `Task: ${context.task.title}`
     ];
@@ -712,17 +729,42 @@ export class CodexAcpRunner implements RunnerAdapter {
       sections.push(`Task description:\n${description}`);
     }
 
+    if (plan) {
+      sections.push(`Implementation plan:\n${plan}`);
+    }
+
     sections.push(
       config.prompt.trim()
     );
 
     if (context.workspace.isGitRepo) {
+      const prBodyParts = [
+        "## Summary",
+        description ? `> ${context.task.title}` : context.task.title,
+        ...(plan
+          ? [
+              "",
+              "## Plan",
+              plan
+            ]
+          : []),
+        "",
+        "## Changes",
+        "<!-- List the concrete changes you made, one bullet per file or logical unit. -->"
+      ];
+
       sections.push(
         [
           "Git requirements:",
           `- Work on branch \`${context.task.worktree.branchName}\` from \`${context.task.worktree.baseRef}\`.`,
           "- You are responsible for creating any commits, pushing the branch, and opening or updating the GitHub PR yourself before finishing.",
           "- Use Conventional Commits for commit messages.",
+          "- When creating or updating the PR, write a thorough description that includes:",
+          "  - A summary of the motivation and what changed",
+          "  - The implementation plan (if one was provided above)",
+          "  - A concrete list of every file changed and why",
+          "  - How to verify / test the changes",
+          `- Use the following as a starting template for the PR body, then fill in the Changes section with your actual modifications:\n\`\`\`\n${prBodyParts.join("\n")}\n\`\`\``,
           "- Mention the PR URL in your final response."
         ].join("\n")
       );

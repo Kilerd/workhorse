@@ -204,6 +204,16 @@ export class ClaudeCliRunner implements RunnerAdapter {
       });
     });
 
+    void queue(async () => {
+      await hooks.onOutput({
+        kind: "user",
+        text: ensureTrailingNewline(prompt),
+        stream: "system",
+        title: "Prompt",
+        source: "Claude CLI"
+      });
+    });
+
     child.stdin.end(ensureTrailingNewline(prompt));
 
     const control: ActiveClaudeControl = {

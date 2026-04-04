@@ -635,7 +635,7 @@ export class BoardService {
       );
     }
 
-    const planPrompt = this.buildPlanPrompt(task);
+    const planPrompt = this.buildPlanPrompt();
 
     return this.runLifecycle.startTask(taskId, {
       allowedColumns: ["backlog", "todo"],
@@ -949,23 +949,37 @@ export class BoardService {
     throw new AppError(400, "INVALID_RUNNER_CONFIG", "Unsupported runner configuration");
   }
 
-  private buildPlanPrompt(task: Task): string {
-    const description = task.description.trim();
-
+  private buildPlanPrompt(): string {
     return [
-      "You are a planning assistant. Your job is to create a detailed implementation plan. Do NOT implement anything or modify any files.",
+      "You are a planning assistant. Thoroughly explore the codebase, understand existing patterns and architecture, then create a detailed implementation plan.",
+      "Do NOT implement anything or modify any files. Only output the plan.",
       "",
-      `Task: ${task.title}`,
-      description ? `\nTask description:\n${description}` : "",
+      "Your plan MUST include the following sections in markdown format:",
       "",
-      "Output a clear, actionable implementation plan in markdown format. Include:",
-      "- Objective summary",
-      "- Step-by-step implementation steps",
-      "- Key files/modules to modify",
-      "- Edge cases and risks to consider",
-      "- Definition of done / exit criteria",
+      "## Motivation",
+      "Why this change is needed. What problem does it solve or what value does it add.",
       "",
-      "Do NOT write any code or make any file changes. Only output the plan."
+      "## Current State",
+      "How the relevant code works today. Key files, functions, data flows involved.",
+      "",
+      "## Proposed Changes",
+      "Detailed list of every file and function to modify or create, with a clear description of what changes and why.",
+      "For each change, specify:",
+      "- File path",
+      "- What to add / modify / remove",
+      "- The reasoning behind the change",
+      "",
+      "## Impact & Scope",
+      "Which modules, APIs, tests, or downstream consumers are affected by this change.",
+      "",
+      "## Risks & Edge Cases",
+      "Potential pitfalls, race conditions, backward compatibility concerns, or tricky edge cases to watch for.",
+      "",
+      "## Verification",
+      "How to verify the change works: which tests to add or update, manual checks, commands to run.",
+      "",
+      "## Exit Criteria",
+      "Concrete definition of done — what must be true for this task to be considered complete."
     ].join("\n");
   }
 
