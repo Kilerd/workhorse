@@ -78,6 +78,23 @@ describe("task worktree naming", () => {
     ).toBe("task/task-123-fix-onboarding-flow");
   });
 
+  it("keeps UUID-length task ids consistent across collision fallback paths", () => {
+    const taskId = "12345678-1234-1234-1234-123456789012";
+    const branchLabel = "a".repeat(60);
+    const expectedBranchName = `task/${taskId}-${"a".repeat(48)}`;
+
+    expect(
+      createTaskWorktree(taskId, "修复引导流程", {
+        workspace,
+        branchLabel,
+        preserveAutoTaskId: true
+      }).branchName
+    ).toBe(expectedBranchName);
+    expect(
+      deriveTaskBranchFallbackName(`task/${branchLabel}`, taskId, "Fix onboarding flow")
+    ).toBe(expectedBranchName);
+  });
+
   it("uses the friendly directory name for standard task branches", () => {
     const task = createTask();
 
