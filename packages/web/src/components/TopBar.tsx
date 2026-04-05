@@ -1,7 +1,6 @@
 import type {
   HealthCodexQuotaData,
   HealthCodexQuotaWindowData,
-  Workspace,
   WorkspaceGitStatusData
 } from "@workhorse/contracts";
 
@@ -10,19 +9,12 @@ import type { ThemeMode } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { NativeSelect } from "@/components/ui/native-select";
 import { ThemeToggle } from "./ThemeToggle";
 
 interface Props {
-  workspaces: Workspace[];
-  selectedWorkspaceId: string | "all";
   selectedWorkspaceName: string;
   searchQuery: string;
   onSearchChange(value: string): void;
-  onWorkspaceChange(value: string | "all"): void;
-  onCreateWorkspace(): void;
-  onOpenWorkspaceSettings(): void;
-  onOpenGlobalSettings(): void;
   onCreateTask(): void;
   onRefresh(): void;
   theme: ThemeMode;
@@ -118,15 +110,9 @@ function buildQuotaGroupTitle(
 }
 
 export function TopBar({
-  workspaces,
-  selectedWorkspaceId,
   selectedWorkspaceName,
   searchQuery,
   onSearchChange,
-  onWorkspaceChange,
-  onCreateWorkspace,
-  onOpenWorkspaceSettings,
-  onOpenGlobalSettings,
   onCreateTask,
   onRefresh,
   theme,
@@ -168,12 +154,10 @@ export function TopBar({
   return (
     <header className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 gap-x-4 border-b border-border bg-[var(--panel)] px-4 py-3 max-[1040px]:grid-cols-1">
       <div className="flex min-w-0 flex-wrap items-center gap-3">
-        <div className="inline-flex shrink-0 items-center gap-2.5">
-          <span className="font-mono text-[0.72rem] font-bold tracking-[0.2em] text-[var(--accent)]">
-            WORKHORSE
-          </span>
-        </div>
         <div className="flex flex-wrap gap-2" aria-label="Board summary">
+          <span className={cn(metaChipClass, "text-foreground")}>
+            {selectedWorkspaceName}
+          </span>
           <span
             className={cn(metaChipClass, "text-foreground")}
           >
@@ -216,7 +200,6 @@ export function TopBar({
           ) : null}
           <span className={metaChipClass}>{formatCount(boardCount, "task")}</span>
           <span className={metaChipClass}>Updated {formatRelativeTime(lastSyncedAt)}</span>
-          <span className={metaChipClass}>Scope {selectedWorkspaceName}</span>
           {gitStatus ? (
             <>
               <span className={cn(metaChipClass, "gap-1.5")}>
@@ -285,46 +268,11 @@ export function TopBar({
           ) : null}
         </label>
 
-        <label className="flex items-center max-[1040px]:w-full">
-          <span className="sr-only">Workspace</span>
-          <NativeSelect
-            aria-label="Workspace"
-            value={selectedWorkspaceId}
-            onChange={(event) => onWorkspaceChange(event.target.value || "all")}
-            className="h-7 min-h-7 min-w-40 py-0 pr-7 text-[0.75rem] max-[1040px]:w-full max-[1040px]:min-w-0"
-          >
-            <option value="all">All workspaces</option>
-            {workspaces.map((workspace) => (
-              <option key={workspace.id} value={workspace.id}>
-                {workspace.name}
-              </option>
-            ))}
-          </NativeSelect>
-        </label>
-
         <Button type="button" variant="secondary" onClick={onRefresh}>
           Refresh
         </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={onOpenWorkspaceSettings}
-          disabled={selectedWorkspaceId === "all"}
-        >
-          Workspace settings
-        </Button>
-        <Button type="button" variant="secondary" onClick={onCreateWorkspace}>
-          Add workspace
-        </Button>
         <Button type="button" onClick={onCreateTask}>
           New
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={onOpenGlobalSettings}
-        >
-          Settings
         </Button>
         <ThemeToggle theme={theme} onToggle={onToggleTheme} />
       </div>

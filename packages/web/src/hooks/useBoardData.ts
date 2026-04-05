@@ -428,6 +428,8 @@ export function useBoardData() {
     setWorkspaceSettingsModalOpen: modals.setWorkspaceSettingsModalOpen,
     setGlobalSettingsModalOpen: modals.setGlobalSettingsModalOpen,
     setTaskModalOpen: modals.setTaskModalOpen,
+    sidebarCollapsed: selection.sidebarCollapsed,
+    toggleSidebarCollapsed: selection.toggleSidebarCollapsed,
     setWorkspaceSelection: selection.setWorkspaceSelection,
     setTaskSelection: selection.setTaskSelection,
     setSelectedRunId: selection.setSelectedRunId,

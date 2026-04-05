@@ -12,6 +12,7 @@ import {
 import type { RunLogEntry, ServerEvent, Workspace } from "@workhorse/contracts";
 
 import { Board } from "@/components/Board";
+import { Sidebar } from "@/components/Sidebar";
 import { TaskDetailsPanel } from "@/components/TaskDetailsPanel";
 import {
   GlobalSettingsModal,
@@ -229,24 +230,29 @@ function ReactAppShell() {
   const isTaskDetailView = location.pathname.startsWith("/tasks/");
 
   return (
-    <div className="min-h-screen">
+    <div className="grid h-screen min-h-screen grid-cols-[auto_1fr] overflow-hidden">
+      <Sidebar
+        workspaces={workspaces}
+        allTasks={allTasks}
+        selectedWorkspaceId={board.selectedWorkspaceId}
+        collapsed={board.sidebarCollapsed}
+        onToggleCollapse={board.toggleSidebarCollapsed}
+        onSelectWorkspace={board.setWorkspaceSelection}
+        onAddWorkspace={() => board.setWorkspaceModalOpen(true)}
+        onOpenWorkspaceSettings={() => board.setWorkspaceSettingsModalOpen(true)}
+        onOpenGlobalSettings={() => board.setGlobalSettingsModalOpen(true)}
+      />
+
       <main
         className={
           isTaskDetailView
-            ? "relative z-[1] grid h-screen min-h-screen grid-rows-[minmax(0,1fr)] overflow-hidden p-0"
-            : "relative z-[1] grid h-screen min-h-screen grid-rows-[auto_minmax(0,1fr)] overflow-hidden p-0"
+            ? "relative z-[1] grid min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden p-0"
+            : "relative z-[1] grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden p-0"
         }
       >
         {isTaskDetailView ? null : <TopBar
-          workspaces={workspaces}
-          selectedWorkspaceId={board.selectedWorkspaceId}
-          selectedWorkspaceName={selectedWorkspaceName}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
-          onWorkspaceChange={board.setWorkspaceSelection}
-          onCreateWorkspace={() => board.setWorkspaceModalOpen(true)}
-          onOpenWorkspaceSettings={() => board.setWorkspaceSettingsModalOpen(true)}
-          onOpenGlobalSettings={() => board.setGlobalSettingsModalOpen(true)}
           onCreateTask={() => board.setTaskModalOpen(true)}
           onRefresh={() => {
             void queryClient.invalidateQueries({ queryKey: ["workspaces"] });
@@ -270,6 +276,7 @@ function ReactAppShell() {
             }
           }}
           isPulling={board.isPulling}
+          selectedWorkspaceName={selectedWorkspaceName}
         />}
 
         <Routes>

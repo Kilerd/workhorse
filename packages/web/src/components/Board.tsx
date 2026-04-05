@@ -33,7 +33,7 @@ interface Props {
 }
 
 const boardClass =
-  "grid h-full min-h-0 auto-cols-[minmax(260px,1fr)] grid-flow-col overflow-x-auto overflow-y-hidden bg-[var(--panel)] max-[720px]:auto-cols-[minmax(250px,88vw)]";
+  "grid h-full min-h-0 auto-cols-[minmax(220px,1fr)] grid-flow-col overflow-x-auto overflow-y-hidden bg-[var(--panel)] max-[720px]:auto-cols-[minmax(180px,88vw)]";
 const columnClass =
   "grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-r border-border bg-transparent last:border-r-0";
 const columnHeaderClass =

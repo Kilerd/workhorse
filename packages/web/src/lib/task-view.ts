@@ -61,7 +61,7 @@ export function getTaskActions(
         { id: "mark-done", label: "Mark Done", shortLabel: "Done", kind: "primary" }
       ];
     case "done":
-      return [{ id: "archive", label: "Archive", kind: "secondary" }];
+      return [];
     case "archived":
       return [];
   }
