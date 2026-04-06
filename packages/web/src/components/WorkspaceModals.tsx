@@ -20,6 +20,11 @@ import {
 import { api } from "@/lib/api";
 import { formatTaskBranchPreview } from "@/lib/format";
 import { BOARD_COLUMNS, type TaskFormValues } from "@/lib/task-view";
+import {
+  createWorkspacePromptTemplateState,
+  EMPTY_WORKSPACE_PROMPT_TEMPLATES,
+  serializeWorkspacePromptTemplates
+} from "@/lib/workspace-prompt-templates";
 import { resolveTaskWorkspaceId } from "@/lib/workspace-selection";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -30,12 +35,6 @@ import { Textarea } from "@/components/ui/textarea";
 const DEFAULT_CODEX_PROMPT = "请完成用户请求的任务。";
 const DEFAULT_CLAUDE_PROMPT =
   "Review the current task carefully and summarize concrete risks, regressions, and missing tests.";
-const EMPTY_WORKSPACE_PROMPT_TEMPLATES: Record<WorkspacePromptTemplateId, string> = {
-  plan: "",
-  coding: "",
-  review: "",
-  reviewFollowUp: ""
-};
 const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
   language: DEFAULT_GLOBAL_LANGUAGE,
   openRouter: {
@@ -216,33 +215,6 @@ function useCloseOnEscape(open: boolean, onClose: () => void) {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [open, onClose]);
-}
-
-function createWorkspacePromptTemplateState(
-  templates?: WorkspacePromptTemplates
-): Record<WorkspacePromptTemplateId, string> {
-  return {
-    plan: templates?.plan ?? "",
-    coding: templates?.coding ?? "",
-    review: templates?.review ?? "",
-    reviewFollowUp: templates?.reviewFollowUp ?? ""
-  };
-}
-
-function serializeWorkspacePromptTemplates(
-  templates: Record<WorkspacePromptTemplateId, string>
-): WorkspacePromptTemplates | undefined {
-  const next: WorkspacePromptTemplates = {};
-
-  for (const templateId of WORKSPACE_PROMPT_TEMPLATE_IDS) {
-    const value = templates[templateId];
-    if (!value.trim()) {
-      continue;
-    }
-    next[templateId] = value;
-  }
-
-  return Object.keys(next).length > 0 ? next : undefined;
 }
 
 function describeApprovalPolicy(

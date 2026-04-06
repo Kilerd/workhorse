@@ -1241,6 +1241,24 @@ describe("workhorse runtime", () => {
     );
   });
 
+  it("clears workspace prompt templates when the update payload sends an empty object", async () => {
+    const { service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+
+    await service.updateWorkspace(workspace.id, {
+      promptTemplates: {
+        coding: "Prompt: {{taskPrompt}}"
+      }
+    });
+
+    const updated = await service.updateWorkspace(workspace.id, {
+      promptTemplates: {}
+    });
+
+    expect(updated.promptTemplates).toBeUndefined();
+    expect(service.listWorkspaces().find((entry) => entry.id === workspace.id)?.promptTemplates).toBeUndefined();
+  });
+
   it("rejects blank task title updates", async () => {
     const { service, workspaceDir } = await createRuntime();
     const workspace = await createWorkspace(service, workspaceDir);
