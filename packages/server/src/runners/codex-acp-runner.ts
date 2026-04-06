@@ -1,4 +1,8 @@
-import type { CodexRunnerConfig } from "@workhorse/contracts";
+import {
+  resolveTemplate,
+  resolveWorkspacePromptTemplate,
+  type CodexRunnerConfig
+} from "@workhorse/contracts";
 import WebSocket from "ws";
 
 import { resolveWorkspaceCodexSettings } from "../lib/codex-settings.js";
@@ -201,6 +205,39 @@ function buildItemStreamKey(context: { turnId: string; itemId?: string }): strin
 
 function isCommandLikeItemType(type: string | undefined): boolean {
   return Boolean(type?.toLowerCase().includes("command"));
+}
+
+function buildGitRequirementsPrompt(context: RunnerStartContext): string {
+  const description = context.task.description.trim();
+  const plan = context.task.plan?.trim();
+  const prBodyParts = [
+    "## Summary",
+    description ? `> ${context.task.title}` : context.task.title,
+    ...(plan
+      ? [
+          "",
+          "## Plan",
+          plan
+        ]
+      : []),
+    "",
+    "## Changes",
+    "<!-- List the concrete changes you made, one bullet per file or logical unit. -->"
+  ];
+
+  return [
+    "Git requirements:",
+    `- Work on branch \`${context.task.worktree.branchName}\` from \`${context.task.worktree.baseRef}\`.`,
+    "- You are responsible for creating any commits, pushing the branch, and opening or updating the GitHub PR yourself before finishing.",
+    "- Use Conventional Commits for commit messages.",
+    "- When creating or updating the PR, write a thorough description that includes:",
+    "  - A summary of the motivation and what changed",
+    "  - The implementation plan (if one was provided above)",
+    "  - A concrete list of every file changed and why",
+    "  - How to verify / test the changes",
+    `- Use the following as a starting template for the PR body, then fill in the Changes section with your actual modifications:\n\`\`\`\n${prBodyParts.join("\n")}\n\`\`\``,
+    "- Mention the PR URL in your final response."
+  ].join("\n");
 }
 
 export function classifyItemLifecycle(
@@ -734,41 +771,22 @@ export class CodexAcpRunner implements RunnerAdapter {
     }
 
     sections.push(
-      config.prompt.trim()
+      resolveTemplate(
+        resolveWorkspacePromptTemplate("coding", context.workspace.promptTemplates),
+        {
+          taskPrompt: config.prompt.trim(),
+          taskTitle: context.task.title,
+          taskDescription: description,
+          taskPlan: plan ?? "",
+          workingDirectory: context.workspace.rootPath,
+          baseRef: context.task.worktree.baseRef,
+          branchName: context.task.worktree.branchName,
+          gitRequirements: context.workspace.isGitRepo
+            ? buildGitRequirementsPrompt(context)
+            : ""
+        }
+      )
     );
-
-    if (context.workspace.isGitRepo) {
-      const prBodyParts = [
-        "## Summary",
-        description ? `> ${context.task.title}` : context.task.title,
-        ...(plan
-          ? [
-              "",
-              "## Plan",
-              plan
-            ]
-          : []),
-        "",
-        "## Changes",
-        "<!-- List the concrete changes you made, one bullet per file or logical unit. -->"
-      ];
-
-      sections.push(
-        [
-          "Git requirements:",
-          `- Work on branch \`${context.task.worktree.branchName}\` from \`${context.task.worktree.baseRef}\`.`,
-          "- You are responsible for creating any commits, pushing the branch, and opening or updating the GitHub PR yourself before finishing.",
-          "- Use Conventional Commits for commit messages.",
-          "- When creating or updating the PR, write a thorough description that includes:",
-          "  - A summary of the motivation and what changed",
-          "  - The implementation plan (if one was provided above)",
-          "  - A concrete list of every file changed and why",
-          "  - How to verify / test the changes",
-          `- Use the following as a starting template for the PR body, then fill in the Changes section with your actual modifications:\n\`\`\`\n${prBodyParts.join("\n")}\n\`\`\``,
-          "- Mention the PR URL in your final response."
-        ].join("\n")
-      );
-    }
 
     return sections.filter(Boolean).join("\n\n");
   }

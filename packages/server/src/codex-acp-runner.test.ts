@@ -119,6 +119,32 @@ describe("CodexAcpRunner prompt", () => {
     expect(prompt).toContain("Need to update the onboarding flow and keep tests green.");
   });
 
+  it("uses workspace coding templates when present", () => {
+    const runner = new CodexAcpRunner() as any;
+    const prompt = runner.buildPrompt(
+      createCodexContext({
+        workspace: {
+          ...createCodexContext().workspace,
+          promptTemplates: {
+            coding: [
+              "Custom coding wrapper",
+              "Prompt: {{taskPrompt}}",
+              "Branch: {{branchName}}"
+            ].join("\n")
+          }
+        }
+      }),
+      {
+        prompt: "Implement the feature"
+      }
+    );
+
+    expect(prompt).toContain("Custom coding wrapper");
+    expect(prompt).toContain("Prompt: Implement the feature");
+    expect(prompt).toContain("Branch: task/task-1-implement-feature");
+    expect(prompt).not.toContain("Git requirements:");
+  });
+
   it("starts persistent threads so they can be resumed later", () => {
     const runner = new CodexAcpRunner() as any;
 

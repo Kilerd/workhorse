@@ -2,6 +2,7 @@ import type {
   AppState,
   GlobalSettings,
   WorkspaceCodexSettings,
+  WorkspacePromptTemplates,
   Run,
   RunLogEntry,
   RunnerConfig,
@@ -69,6 +70,7 @@ export interface CreateWorkspaceBody {
   name: string;
   rootPath: string;
   codexSettings?: WorkspaceCodexSettings;
+  promptTemplates?: WorkspacePromptTemplates;
 }
 
 export interface ListWorkspaceGitRefsParams {
@@ -103,6 +105,7 @@ export interface UpdateWorkspaceParams {
 export interface UpdateWorkspaceBody {
   name?: string;
   codexSettings?: WorkspaceCodexSettings;
+  promptTemplates?: WorkspacePromptTemplates;
 }
 
 export interface DeleteWorkspaceParams {

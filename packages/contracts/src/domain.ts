@@ -101,6 +101,19 @@ export interface WorkspaceCodexSettings {
   sandboxMode: CodexSandboxMode;
 }
 
+export type WorkspacePromptTemplateId =
+  | "plan"
+  | "coding"
+  | "review"
+  | "reviewFollowUp";
+
+export interface WorkspacePromptTemplates {
+  plan?: string;
+  coding?: string;
+  review?: string;
+  reviewFollowUp?: string;
+}
+
 export const DEFAULT_GLOBAL_LANGUAGE = "中文";
 export const DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
@@ -121,6 +134,7 @@ export interface Workspace {
   rootPath: string;
   isGitRepo: boolean;
   codexSettings: WorkspaceCodexSettings;
+  promptTemplates?: WorkspacePromptTemplates;
   createdAt: string;
   updatedAt: string;
 }

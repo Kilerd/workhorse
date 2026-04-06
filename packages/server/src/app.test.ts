@@ -1216,6 +1216,31 @@ describe("workhorse runtime", () => {
     });
   });
 
+  it("updates workspace prompt templates and resolves plan prompts with workspace context", async () => {
+    const { service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+
+    const updated = await service.updateWorkspace(workspace.id, {
+      promptTemplates: {
+        plan: "Plan {{taskTitle}} inside {{workingDirectory}} on {{baseRef}}.",
+        coding: "Prompt: {{taskPrompt}}",
+        review: "Review {{taskTitle}}",
+        reviewFollowUp: "Rework {{taskTitle}}"
+      }
+    });
+    const task = await createCodexTask(service, workspace.id);
+
+    expect(updated.promptTemplates).toEqual({
+      plan: "Plan {{taskTitle}} inside {{workingDirectory}} on {{baseRef}}.",
+      coding: "Prompt: {{taskPrompt}}",
+      review: "Review {{taskTitle}}",
+      reviewFollowUp: "Rework {{taskTitle}}"
+    });
+    expect((service as any).buildPlanPrompt(task, updated)).toBe(
+      `Plan ${task.title} inside ${workspaceDir} on ${task.worktree.baseRef}.`
+    );
+  });
+
   it("rejects blank task title updates", async () => {
     const { service, workspaceDir } = await createRuntime();
     const workspace = await createWorkspace(service, workspaceDir);

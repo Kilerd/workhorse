@@ -23,6 +23,10 @@ import type {
   WorkspaceGitRef,
   Workspace
 } from "@workhorse/contracts";
+import {
+  resolveTemplate,
+  resolveWorkspacePromptTemplate
+} from "@workhorse/contracts";
 
 import { AppError, ensure } from "../lib/errors.js";
 import {
@@ -34,6 +38,7 @@ import { createId } from "../lib/id.js";
 import { parseUnifiedDiff, type DiffFile } from "../lib/diff-parser.js";
 import { createTaskWorktree } from "../lib/task-worktree.js";
 import { resolveGlobalSettings } from "../lib/global-settings.js";
+import { resolveWorkspacePromptTemplates } from "../lib/workspace-prompt-templates.js";
 import { StateStore } from "../persistence/state-store.js";
 import {
   CodexAppServerManager,
@@ -274,6 +279,9 @@ export class BoardService {
       codexSettings: resolveWorkspaceCodexSettings({
         codexSettings: input.codexSettings
       }),
+      promptTemplates: resolveWorkspacePromptTemplates({
+        promptTemplates: input.promptTemplates
+      }),
       createdAt: now,
       updatedAt: now
     };
@@ -307,6 +315,11 @@ export class BoardService {
     if (input.codexSettings !== undefined) {
       workspace.codexSettings = resolveWorkspaceCodexSettings({
         codexSettings: input.codexSettings
+      });
+    }
+    if (input.promptTemplates !== undefined) {
+      workspace.promptTemplates = resolveWorkspacePromptTemplates({
+        promptTemplates: input.promptTemplates
       });
     }
     workspace.updatedAt = new Date().toISOString();
@@ -648,7 +661,8 @@ export class BoardService {
       );
     }
 
-    const planPrompt = this.buildPlanPrompt();
+    const workspace = this.requireWorkspace(task.workspaceId);
+    const planPrompt = this.buildPlanPrompt(task, workspace);
 
     return this.runLifecycle.startTask(taskId, {
       allowedColumns: ["backlog", "todo"],
@@ -962,38 +976,17 @@ export class BoardService {
     throw new AppError(400, "INVALID_RUNNER_CONFIG", "Unsupported runner configuration");
   }
 
-  private buildPlanPrompt(): string {
-    return [
-      "You are a planning assistant. Thoroughly explore the codebase, understand existing patterns and architecture, then create a detailed implementation plan.",
-      "Do NOT implement anything or modify any files. Only output the plan.",
-      "",
-      "Your plan MUST include the following sections in markdown format:",
-      "",
-      "## Motivation",
-      "Why this change is needed. What problem does it solve or what value does it add.",
-      "",
-      "## Current State",
-      "How the relevant code works today. Key files, functions, data flows involved.",
-      "",
-      "## Proposed Changes",
-      "Detailed list of every file and function to modify or create, with a clear description of what changes and why.",
-      "For each change, specify:",
-      "- File path",
-      "- What to add / modify / remove",
-      "- The reasoning behind the change",
-      "",
-      "## Impact & Scope",
-      "Which modules, APIs, tests, or downstream consumers are affected by this change.",
-      "",
-      "## Risks & Edge Cases",
-      "Potential pitfalls, race conditions, backward compatibility concerns, or tricky edge cases to watch for.",
-      "",
-      "## Verification",
-      "How to verify the change works: which tests to add or update, manual checks, commands to run.",
-      "",
-      "## Exit Criteria",
-      "Concrete definition of done — what must be true for this task to be considered complete."
-    ].join("\n");
+  private buildPlanPrompt(task: Task, workspace: Workspace): string {
+    return resolveTemplate(
+      resolveWorkspacePromptTemplate("plan", workspace.promptTemplates),
+      {
+        taskTitle: task.title,
+        taskDescription: task.description.trim(),
+        workingDirectory: workspace.rootPath,
+        baseRef: task.worktree.baseRef,
+        branchName: task.worktree.branchName
+      }
+    );
   }
 
   private nextOrder(column: Task["column"]): number {
