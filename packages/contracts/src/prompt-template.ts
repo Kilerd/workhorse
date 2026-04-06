@@ -277,9 +277,19 @@ export const WORKSPACE_PROMPT_TEMPLATE_DEFINITIONS = {
         description: "Worktree branch under review."
       },
       {
+        key: "pullRequestUrl",
+        token: "{{pullRequestUrl}}",
+        description: "Raw GitHub PR URL when a PR exists."
+      },
+      {
         key: "pullRequestUrlLine",
         token: "{{pullRequestUrlLine}}",
         description: "Preformatted GitHub PR URL line when a PR exists."
+      },
+      {
+        key: "pullRequestTitle",
+        token: "{{pullRequestTitle}}",
+        description: "Raw PR title when available."
       },
       {
         key: "pullRequestTitleLine",
@@ -287,9 +297,19 @@ export const WORKSPACE_PROMPT_TEMPLATE_DEFINITIONS = {
         description: "Preformatted PR title line when available."
       },
       {
+        key: "pullRequestReviewDecision",
+        token: "{{pullRequestReviewDecision}}",
+        description: "Raw current GitHub review decision."
+      },
+      {
         key: "pullRequestReviewDecisionLine",
         token: "{{pullRequestReviewDecisionLine}}",
         description: "Preformatted current GitHub review decision line."
+      },
+      {
+        key: "pullRequestStatusRollup",
+        token: "{{pullRequestStatusRollup}}",
+        description: "Raw PR status rollup state."
       },
       {
         key: "pullRequestStatusRollupLine",
@@ -297,14 +317,29 @@ export const WORKSPACE_PROMPT_TEMPLATE_DEFINITIONS = {
         description: "Preformatted status rollup line."
       },
       {
+        key: "pullRequestMergeState",
+        token: "{{pullRequestMergeState}}",
+        description: "Raw PR merge state."
+      },
+      {
         key: "pullRequestMergeStateLine",
         token: "{{pullRequestMergeStateLine}}",
         description: "Preformatted merge-state line."
       },
       {
+        key: "unresolvedConversationCount",
+        token: "{{unresolvedConversationCount}}",
+        description: "Raw unresolved review conversation count."
+      },
+      {
         key: "unresolvedConversationCountLine",
         token: "{{unresolvedConversationCountLine}}",
         description: "Preformatted unresolved conversation count line."
+      },
+      {
+        key: "changedFiles",
+        token: "{{changedFiles}}",
+        description: "Raw newline-delimited changed files summary."
       },
       {
         key: "changedFilesBlock",
@@ -325,15 +360,26 @@ export const WORKSPACE_PROMPT_TEMPLATE_DEFINITIONS = {
         "Task description:\n让 workspace settings 支持自定义四类 prompt，并提供多 tab 的所见即所得 preview。",
       baseRef: "origin/main",
       branchName: "task/custom-workspace-prompts",
+      pullRequestUrl: "https://github.com/acme/workhorse/pull/42",
       pullRequestUrlLine:
         "GitHub PR: https://github.com/acme/workhorse/pull/42",
+      pullRequestTitle: "feat: add workspace prompt templates",
       pullRequestTitleLine: "PR title: feat: add workspace prompt templates",
+      pullRequestReviewDecision: "CHANGES_REQUESTED",
       pullRequestReviewDecisionLine:
         "Current GitHub review decision: CHANGES_REQUESTED",
+      pullRequestStatusRollup: "FAILURE",
       pullRequestStatusRollupLine:
         "Current PR status rollup: FAILURE",
+      pullRequestMergeState: "DIRTY",
       pullRequestMergeStateLine: "Merge state: DIRTY",
+      unresolvedConversationCount: "3",
       unresolvedConversationCountLine: "Unresolved review conversations: 3",
+      changedFiles: [
+        "- packages/contracts/src/prompt-template.ts (+180/-0)",
+        "- packages/server/src/services/board-service.ts (+42/-8)",
+        "- packages/web/src/components/WorkspaceModals.tsx (+220/-55)"
+      ].join("\n"),
       changedFilesBlock: [
         "Changed files snapshot:",
         "- packages/contracts/src/prompt-template.ts (+180/-0)",
