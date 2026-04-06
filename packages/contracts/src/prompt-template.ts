@@ -25,6 +25,15 @@ export const WORKSPACE_PROMPT_TEMPLATE_IDS = [
 ] as const satisfies WorkspacePromptTemplateId[];
 
 const DEFAULT_PLAN_TEMPLATE = [
+  "Task: {{taskTitle}}",
+  "",
+  "{{taskDescriptionBlock}}",
+  "",
+  "Working directory: {{workingDirectory}}",
+  "",
+  "Base ref: {{baseRef}}",
+  "Task branch: {{branchName}}",
+  "",
   "You are a planning assistant. Thoroughly explore the codebase, understand existing patterns and architecture, then create a detailed implementation plan.",
   "Do NOT implement anything or modify any files. Only output the plan.",
   "",
@@ -124,6 +133,11 @@ export const WORKSPACE_PROMPT_TEMPLATE_DEFINITIONS = {
         description: "Current task description."
       },
       {
+        key: "taskDescriptionBlock",
+        token: "{{taskDescriptionBlock}}",
+        description: "Preformatted task description block."
+      },
+      {
         key: "workingDirectory",
         token: "{{workingDirectory}}",
         description: "Workspace path used for the run."
@@ -142,6 +156,8 @@ export const WORKSPACE_PROMPT_TEMPLATE_DEFINITIONS = {
     previewValues: {
       taskTitle: "自定义工作区提示词设置",
       taskDescription: "让 workspace settings 支持自定义四类 prompt，并提供可视化 preview。",
+      taskDescriptionBlock:
+        "Task description:\n让 workspace settings 支持自定义四类 prompt，并提供可视化 preview。",
       workingDirectory: "/Users/you/projects/workhorse",
       baseRef: "origin/main",
       branchName: "task/custom-workspace-prompts"
@@ -389,6 +405,9 @@ export function resolveTemplate(
 ): string {
   return template
     .replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => {
+      if (!Object.prototype.hasOwnProperty.call(variables, key)) {
+        return `{{${key}}}`;
+      }
       const value = variables[key];
       return value === undefined || value === null ? "" : String(value);
     })

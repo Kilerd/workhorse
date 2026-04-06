@@ -985,6 +985,9 @@ export class BoardService {
       {
         taskTitle: task.title,
         taskDescription: task.description.trim(),
+        taskDescriptionBlock: task.description.trim()
+          ? `Task description:\n${task.description.trim()}`
+          : "",
         workingDirectory: workspace.rootPath,
         baseRef: task.worktree.baseRef,
         branchName: task.worktree.branchName
