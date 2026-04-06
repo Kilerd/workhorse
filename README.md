@@ -47,11 +47,18 @@ Then open:
 
 Development mode uses a single entrypoint. `npm run dev` regenerates the API client, starts the contracts watcher, and runs the server with embedded Vite middleware, so the UI and API are both available on the same port.
 
-To run the production build locally:
+To do a production-style launch from source:
 
 ```bash
-npm run build
 npm run start
+```
+
+`npm run start` already runs the full build before launching the server.
+
+If you already have fresh build artifacts and only want to relaunch the built server without another rebuild:
+
+```bash
+npm run start --workspace @workhorse/server
 ```
 
 ## First Run Walkthrough
@@ -188,6 +195,8 @@ gh auth login
 Without `gh`, Workhorse cannot poll pull requests or publish review results back to GitHub.
 
 ### Running the built server returns `FRONTEND_NOT_BUILT`
+
+This usually happens when you start the built server directly, for example with `npm run start --workspace @workhorse/server` or `node packages/server/dist/index.js`, before the web assets have been generated.
 
 Build the web assets first:
 
