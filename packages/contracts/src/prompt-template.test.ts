@@ -32,11 +32,27 @@ describe("resolveTemplate", () => {
 });
 
 describe("previewTemplate", () => {
-  it("renders the default plan template with its sample variables", () => {
+  it("renders the default plan template with task and workspace context", () => {
     const preview = previewTemplate("plan");
 
     expect(preview).toContain("Task: 自定义工作区提示词设置");
+    expect(preview).toContain(
+      "Task description:\n让 workspace settings 支持自定义四类 prompt，并提供可视化 preview。"
+    );
     expect(preview).toContain("Working directory: /Users/you/projects/workhorse");
     expect(preview).toContain("Base ref: origin/main");
+    expect(preview).toContain("Task branch: task/custom-workspace-prompts");
+  });
+
+  it("keeps review metadata separated by blank lines in the default review preview", () => {
+    const preview = previewTemplate("review");
+
+    expect(preview).toContain(
+      [
+        "GitHub PR: https://github.com/acme/workhorse/pull/42",
+        "",
+        "PR title: feat: add workspace prompt templates"
+      ].join("\n")
+    );
   });
 });

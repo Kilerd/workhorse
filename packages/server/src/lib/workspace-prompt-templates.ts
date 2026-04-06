@@ -15,7 +15,7 @@ export function resolveWorkspacePromptTemplates(
       continue;
     }
 
-    const normalized = value.replace(/\r\n/g, "\n");
+    const normalized = value.replace(/\r\n?/g, "\n");
     if (!normalized.trim()) {
       continue;
     }

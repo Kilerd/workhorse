@@ -3,15 +3,15 @@ import { describe, expect, it } from "vitest";
 import { resolveWorkspacePromptTemplates } from "./workspace-prompt-templates.js";
 
 describe("resolveWorkspacePromptTemplates", () => {
-  it("normalizes CRLF line endings in stored prompt templates", () => {
+  it("normalizes CRLF and bare CR line endings in stored prompt templates", () => {
     expect(
       resolveWorkspacePromptTemplates({
         promptTemplates: {
-          coding: "Task: Example\r\n\r\nFollow the plan.\r\n"
+          coding: "Task: Example\rSecond line\r\n\r\nFollow the plan.\r"
         }
       })
     ).toEqual({
-      coding: "Task: Example\n\nFollow the plan.\n"
+      coding: "Task: Example\nSecond line\n\nFollow the plan.\n"
     });
   });
 
