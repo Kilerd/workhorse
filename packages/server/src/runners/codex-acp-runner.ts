@@ -758,37 +758,27 @@ export class CodexAcpRunner implements RunnerAdapter {
   private buildPrompt(context: RunnerStartContext, config: CodexRunnerConfig): string {
     const description = context.task.description.trim();
     const plan = context.task.plan?.trim();
-    const sections = [
-      `Task: ${context.task.title}`
-    ];
-
-    if (description) {
-      sections.push(`Task description:\n${description}`);
-    }
-
-    if (plan) {
-      sections.push(`Implementation plan:\n${plan}`);
-    }
-
-    sections.push(
-      resolveTemplate(
-        resolveWorkspacePromptTemplate("coding", context.workspace.promptTemplates),
-        {
-          taskPrompt: config.prompt.trim(),
-          taskTitle: context.task.title,
-          taskDescription: description,
-          taskPlan: plan ?? "",
-          workingDirectory: context.workspace.rootPath,
-          baseRef: context.task.worktree.baseRef,
-          branchName: context.task.worktree.branchName,
-          gitRequirements: context.workspace.isGitRepo
-            ? buildGitRequirementsPrompt(context)
-            : ""
-        }
-      )
+    return resolveTemplate(
+      resolveWorkspacePromptTemplate("coding", context.workspace.promptTemplates),
+      {
+        taskPrompt: config.prompt.trim(),
+        taskTitle: context.task.title,
+        taskDescription: description,
+        taskDescriptionBlock: description
+          ? `Task description:\n${description}`
+          : "",
+        taskPlan: plan ?? "",
+        taskPlanBlock: plan
+          ? `Implementation plan:\n${plan}`
+          : "",
+        workingDirectory: context.workspace.rootPath,
+        baseRef: context.task.worktree.baseRef,
+        branchName: context.task.worktree.branchName,
+        gitRequirements: context.workspace.isGitRepo
+          ? buildGitRequirementsPrompt(context)
+          : ""
+      }
     );
-
-    return sections.filter(Boolean).join("\n\n");
   }
 
   private buildFreshThreadFollowUpPrompt(

@@ -98,7 +98,7 @@ export class AiReviewService {
       await this.deps.startTask(refreshedTask.id, {
         allowedColumns: ["running"],
         targetColumn: "running",
-        runnerConfigOverride: this.buildManualReviewRunnerConfig(refreshedTask),
+        runnerConfigOverride: this.buildManualReviewRunnerConfig(refreshedTask, workspace),
         runMetadata: {
           ...this.buildManualReviewRunMetadata(refreshedTask),
           trigger: "auto_ai_review"
@@ -244,10 +244,7 @@ export class AiReviewService {
     }
   }
 
-  public buildManualReviewRunnerConfig(task: Task): RunnerConfig {
-    const workspace = this.deps.store
-      .listWorkspaces()
-      .find((entry) => entry.id === task.workspaceId);
+  public buildManualReviewRunnerConfig(task: Task, workspace?: Workspace): RunnerConfig {
     const language = this.deps.getSettings().language.trim() || "English";
     const pullRequest = task.pullRequest;
     const changedFiles = (pullRequest?.files ?? [])

@@ -145,6 +145,37 @@ describe("CodexAcpRunner prompt", () => {
     expect(prompt).not.toContain("Git requirements:");
   });
 
+  it("does not duplicate task context when a custom coding template renders it explicitly", () => {
+    const runner = new CodexAcpRunner() as any;
+    const prompt = runner.buildPrompt(
+      createCodexContext({
+        task: {
+          ...createCodexContext().task,
+          description: "Need to update the onboarding flow and keep tests green.",
+          plan: "1. Update the flow\n2. Keep tests green"
+        },
+        workspace: {
+          ...createCodexContext().workspace,
+          promptTemplates: {
+            coding: [
+              "Task: {{taskTitle}}",
+              "{{taskDescriptionBlock}}",
+              "{{taskPlanBlock}}",
+              "{{taskPrompt}}"
+            ].join("\n\n")
+          }
+        }
+      }),
+      {
+        prompt: "Implement the feature"
+      }
+    );
+
+    expect(prompt.match(/Task: Implement feature/g)).toHaveLength(1);
+    expect(prompt.match(/Task description:/g)).toHaveLength(1);
+    expect(prompt.match(/Implementation plan:/g)).toHaveLength(1);
+  });
+
   it("starts persistent threads so they can be resumed later", () => {
     const runner = new CodexAcpRunner() as any;
 

@@ -57,6 +57,12 @@ const DEFAULT_PLAN_TEMPLATE = [
 ].join("\n");
 
 const DEFAULT_CODING_TEMPLATE = [
+  "Task: {{taskTitle}}",
+  "",
+  "{{taskDescriptionBlock}}",
+  "",
+  "{{taskPlanBlock}}",
+  "",
   "{{taskPrompt}}",
   "",
   "{{gitRequirements}}"
@@ -163,9 +169,19 @@ export const WORKSPACE_PROMPT_TEMPLATE_DEFINITIONS = {
         description: "Current task description."
       },
       {
+        key: "taskDescriptionBlock",
+        token: "{{taskDescriptionBlock}}",
+        description: "Preformatted task description block."
+      },
+      {
         key: "taskPlan",
         token: "{{taskPlan}}",
         description: "Saved implementation plan for the task."
+      },
+      {
+        key: "taskPlanBlock",
+        token: "{{taskPlanBlock}}",
+        description: "Preformatted implementation plan block."
       },
       {
         key: "workingDirectory",
@@ -193,7 +209,15 @@ export const WORKSPACE_PROMPT_TEMPLATE_DEFINITIONS = {
       taskPrompt: "请完成用户请求的任务。",
       taskTitle: "自定义工作区提示词设置",
       taskDescription: "让 workspace settings 支持自定义四类 prompt，并提供可视化 preview。",
+      taskDescriptionBlock:
+        "Task description:\n让 workspace settings 支持自定义四类 prompt，并提供可视化 preview。",
       taskPlan: ["1. Add prompt template contracts", "2. Wire server builders", "3. Build settings UI preview"].join("\n"),
+      taskPlanBlock: [
+        "Implementation plan:",
+        "1. Add prompt template contracts",
+        "2. Wire server builders",
+        "3. Build settings UI preview"
+      ].join("\n"),
       workingDirectory: "/Users/you/projects/workhorse",
       baseRef: "origin/main",
       branchName: "task/custom-workspace-prompts",

@@ -76,12 +76,23 @@ function createService(overrides?: {
   workspace?: Workspace;
 }) {
   const workspace = overrides?.workspace ?? createWorkspace();
-  const startTask =
-    overrides?.startTask ??
-    vi.fn().mockResolvedValue({
-      task: createTask(),
-      run: createReviewRun()
-    });
+  const startTask = (overrides?.startTask ??
+    vi
+      .fn<
+        (
+          taskId: string,
+          options: Record<string, unknown>
+        ) => Promise<{ task: Task; run: Run }>
+      >()
+      .mockResolvedValue({
+        task: createTask(),
+        run: createReviewRun()
+      })) as ReturnType<typeof vi.fn<
+    (
+      taskId: string,
+      options: Record<string, unknown>
+    ) => Promise<{ task: Task; run: Run }>
+  >>;
 
   return {
     service: new AiReviewService({
@@ -136,7 +147,7 @@ describe("AiReviewService", () => {
     } satisfies Workspace;
     const { service } = createService({ workspace });
 
-    const config = service.buildManualReviewRunnerConfig(task);
+    const config = service.buildManualReviewRunnerConfig(task, workspace);
     if (config.type !== "claude") {
       throw new Error("Expected Claude config");
     }

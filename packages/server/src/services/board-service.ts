@@ -756,7 +756,10 @@ export class BoardService {
     const refreshedTask = await this.refreshTaskPullRequestSnapshotForReview(task, workspace);
     return this.runLifecycle.startTask(refreshedTask.id, {
       allowedColumns: ["review"],
-      runnerConfigOverride: this.aiReview.buildManualReviewRunnerConfig(refreshedTask),
+      runnerConfigOverride: this.aiReview.buildManualReviewRunnerConfig(
+        refreshedTask,
+        workspace
+      ),
       runMetadata: this.aiReview.buildManualReviewRunMetadata(refreshedTask)
     });
   }
