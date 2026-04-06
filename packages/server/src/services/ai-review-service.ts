@@ -6,6 +6,10 @@ import type {
   Task,
   Workspace
 } from "@workhorse/contracts";
+import {
+  resolveTemplate,
+  resolveWorkspacePromptTemplate
+} from "@workhorse/contracts";
 
 import type { GitHubPullRequestProvider, GitHubPullRequestReviewAction } from "../lib/github.js";
 import { createRunLogEntry } from "../lib/run-log.js";
@@ -13,6 +17,14 @@ import { stripStructuredReviewBlocks } from "../lib/review-parser.js";
 import type { StateStore } from "../persistence/state-store.js";
 import type { EventBus } from "../ws/event-bus.js";
 import type { GitWorktreeService } from "./git-worktree-service.js";
+
+function formatOptionalLine(
+  value: string | undefined,
+  format: (resolvedValue: string) => string
+): string {
+  const resolvedValue = value?.trim();
+  return resolvedValue ? format(resolvedValue) : "";
+}
 
 interface StartTaskOptions {
   allowedColumns?: Task["column"][];
@@ -86,7 +98,7 @@ export class AiReviewService {
       await this.deps.startTask(refreshedTask.id, {
         allowedColumns: ["running"],
         targetColumn: "running",
-        runnerConfigOverride: this.buildManualReviewRunnerConfig(refreshedTask),
+        runnerConfigOverride: this.buildManualReviewRunnerConfig(refreshedTask, workspace),
         runMetadata: {
           ...this.buildManualReviewRunMetadata(refreshedTask),
           trigger: "auto_ai_review"
@@ -99,10 +111,21 @@ export class AiReviewService {
 
   public async triggerReworkFromReview(task: Task, reviewRun: Run): Promise<void> {
     try {
+      const workspace = this.deps.store
+        .listWorkspaces()
+        .find((entry) => entry.id === task.workspaceId);
       const summary = reviewRun.metadata?.reviewSummary?.trim();
-      const reworkPrompt = summary
-        ? `The AI reviewer requested changes. Address the following feedback:\n\n${summary}`
-        : "The AI reviewer requested changes. Review the latest review log and address the issues found.";
+      const reworkPrompt = resolveTemplate(
+        resolveWorkspacePromptTemplate("reviewFollowUp", workspace?.promptTemplates),
+        {
+          taskTitle: task.title,
+          reviewSummary: summary ?? "",
+          reviewRunId: reviewRun.id,
+          reviewFollowUpInstruction: summary
+            ? `Address the following feedback:\n\n${summary}`
+            : "Review the latest review log and address the issues found."
+        }
+      );
       await this.deps.startTask(task.id, {
         allowedColumns: ["running"],
         initialInputText: reworkPrompt,
@@ -221,7 +244,7 @@ export class AiReviewService {
     }
   }
 
-  public buildManualReviewRunnerConfig(task: Task): RunnerConfig {
+  public buildManualReviewRunnerConfig(task: Task, workspace?: Workspace): RunnerConfig {
     const language = this.deps.getSettings().language.trim() || "English";
     const pullRequest = task.pullRequest;
     const changedFiles = (pullRequest?.files ?? [])
@@ -234,42 +257,58 @@ export class AiReviewService {
         return `- ${file.path}${stats}`;
       });
 
+    const description = task.description.trim();
+    const prompt = resolveTemplate(
+      resolveWorkspacePromptTemplate("review", workspace?.promptTemplates),
+      {
+        taskTitle: task.title,
+        taskDescription: description,
+        taskDescriptionBlock: description
+          ? `Task description:\n${description}`
+          : "",
+        baseRef: task.worktree.baseRef,
+        branchName: task.worktree.branchName,
+        pullRequestUrl: task.pullRequestUrl ?? "",
+        pullRequestUrlLine: formatOptionalLine(task.pullRequestUrl, (value) => `GitHub PR: ${value}`),
+        pullRequestTitle: pullRequest?.title ?? "",
+        pullRequestTitleLine: formatOptionalLine(pullRequest?.title, (value) => `PR title: ${value}`),
+        pullRequestReviewDecision: pullRequest?.reviewDecision ?? "",
+        pullRequestReviewDecisionLine: formatOptionalLine(
+          pullRequest?.reviewDecision,
+          (value) => `Current GitHub review decision: ${value}`
+        ),
+        pullRequestStatusRollup: pullRequest?.statusCheckRollupState ?? "",
+        pullRequestStatusRollupLine: formatOptionalLine(
+          pullRequest?.statusCheckRollupState,
+          (value) => `Current PR status rollup: ${value}`
+        ),
+        pullRequestMergeState: pullRequest?.mergeStateStatus ?? "",
+        pullRequestMergeStateLine: formatOptionalLine(
+          pullRequest?.mergeStateStatus,
+          (value) => `Merge state: ${value}`
+        ),
+        unresolvedConversationCount:
+          pullRequest?.unresolvedConversationCount !== undefined
+            ? String(pullRequest.unresolvedConversationCount)
+            : "",
+        unresolvedConversationCountLine:
+          pullRequest?.unresolvedConversationCount !== undefined
+            ? `Unresolved review conversations: ${pullRequest.unresolvedConversationCount}`
+            : "",
+        changedFiles: changedFiles.join("\n"),
+        changedFilesBlock:
+          changedFiles.length > 0
+            ? ["Changed files snapshot:", ...changedFiles].join("\n")
+            : "",
+        language
+      }
+    );
+
     return {
       type: "claude",
       agent: "code-reviewer",
       permissionMode: "plan",
-      prompt: [
-        "You are the reviewer agent for this engineering task.",
-        `Review task "${task.title}" for concrete correctness issues, regressions, risky edge cases, and missing test coverage.`,
-        task.description.trim() ? `Task description:\n${task.description.trim()}` : undefined,
-        "This is a read-only review. Do not edit files, write code, create commits, or change git state.",
-        `Review the current branch against \`${task.worktree.baseRef}\` from worktree branch \`${task.worktree.branchName}\`.`,
-        task.pullRequestUrl ? `GitHub PR: ${task.pullRequestUrl}` : undefined,
-        pullRequest?.title ? `PR title: ${pullRequest.title}` : undefined,
-        pullRequest?.reviewDecision
-          ? `Current GitHub review decision: ${pullRequest.reviewDecision}`
-          : undefined,
-        pullRequest?.statusCheckRollupState
-          ? `Current PR status rollup: ${pullRequest.statusCheckRollupState}`
-          : undefined,
-        pullRequest?.mergeStateStatus
-          ? `Merge state: ${pullRequest.mergeStateStatus}`
-          : undefined,
-        pullRequest?.unresolvedConversationCount !== undefined
-          ? `Unresolved review conversations: ${pullRequest.unresolvedConversationCount}`
-          : undefined,
-        changedFiles.length > 0
-          ? ["Changed files snapshot:", ...changedFiles].join("\n")
-          : undefined,
-        "Only call out issues when you can tie them to a concrete risk in the current diff or surrounding code.",
-        "Prefer a short list of the most important findings over exhaustive nitpicks.",
-        `Write the human-readable review in ${language} unless code, identifiers, or error messages are clearer in English.`,
-        'End your response with a fenced ```json block containing exactly {"verdict":"approve"|"comment"|"request_changes","summary":"..."} .',
-        'Use "request_changes" when you have any concrete warnings or suggested fixes — even if they are not strictly blocking, the author should address them before merging. Use "comment" only when you have minor stylistic notes or open questions with no clear fix. Use "approve" only when you found no issues worth flagging.',
-        "Keep the JSON summary concise and actionable."
-      ]
-        .filter((line): line is string => Boolean(line))
-        .join("\n\n")
+      prompt
     };
   }
 

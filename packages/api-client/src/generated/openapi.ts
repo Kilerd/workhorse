@@ -382,6 +382,7 @@ export interface components {
             rootPath: string;
             isGitRepo: boolean;
             codexSettings: components["schemas"]["WorkspaceCodexSettings"];
+            promptTemplates?: components["schemas"]["WorkspacePromptTemplates"];
             createdAt: string;
             updatedAt: string;
         };
@@ -391,6 +392,12 @@ export interface components {
         };
         CodexApprovalPolicy: "untrusted" | "on-failure" | "on-request" | "never";
         CodexSandboxMode: "read-only" | "workspace-write" | "danger-full-access";
+        WorkspacePromptTemplates: {
+            plan?: string;
+            coding?: string;
+            review?: string;
+            reviewFollowUp?: string;
+        };
         WorkspaceGitRef: {
             name: string;
             kind: components["schemas"]["WorkspaceGitRefKind"];
@@ -444,7 +451,7 @@ export interface components {
             prompt: string;
             agent?: string;
             model?: string;
-            permissionMode?: "plan" | "default" | "acceptEdits" | "bypassPermissions" | "dontAsk";
+            permissionMode?: "plan" | "acceptEdits" | "bypassPermissions" | "default" | "dontAsk";
         };
         CodexRunnerConfig: {
             /**
@@ -517,6 +524,7 @@ export interface components {
             name: string;
             rootPath: string;
             codexSettings?: components["schemas"]["WorkspaceCodexSettings"];
+            promptTemplates?: components["schemas"]["WorkspacePromptTemplates"];
         };
         ListWorkspaceGitRefsParams: {
             workspaceId: string;
@@ -530,6 +538,7 @@ export interface components {
         UpdateWorkspaceBody: {
             name?: string;
             codexSettings?: components["schemas"]["WorkspaceCodexSettings"];
+            promptTemplates?: components["schemas"]["WorkspacePromptTemplates"];
         };
         UpdateWorkspaceParams: {
             workspaceId: string;
@@ -801,7 +810,7 @@ export interface components {
             metadata?: components["schemas"]["Recordstringstring"];
         };
         RunLogStream: "stdout" | "stderr" | "system";
-        RunLogKind: "text" | "status" | "plan" | "system" | "user" | "agent" | "tool_call" | "tool_output";
+        RunLogKind: "system" | "text" | "user" | "agent" | "tool_call" | "tool_output" | "plan" | "status";
         HealthResponse: {
             /** @enum {unknown} */
             ok: true;

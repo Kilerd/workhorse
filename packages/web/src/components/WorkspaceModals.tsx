@@ -4,16 +4,27 @@ import type {
   ClaudePermissionMode,
   GlobalSettings,
   Workspace,
-  WorkspaceCodexSettings
+  WorkspaceCodexSettings,
+  WorkspacePromptTemplateId,
+  WorkspacePromptTemplates
 } from "@workhorse/contracts";
 import {
+  DEFAULT_WORKSPACE_PROMPT_TEMPLATES,
   DEFAULT_GLOBAL_LANGUAGE,
-  DEFAULT_OPENROUTER_BASE_URL
+  DEFAULT_OPENROUTER_BASE_URL,
+  previewTemplate,
+  WORKSPACE_PROMPT_TEMPLATE_DEFINITIONS,
+  WORKSPACE_PROMPT_TEMPLATE_IDS
 } from "@workhorse/contracts";
 
 import { api } from "@/lib/api";
 import { formatTaskBranchPreview } from "@/lib/format";
 import { BOARD_COLUMNS, type TaskFormValues } from "@/lib/task-view";
+import {
+  createWorkspacePromptTemplateState,
+  EMPTY_WORKSPACE_PROMPT_TEMPLATES,
+  serializeWorkspacePromptTemplates
+} from "@/lib/workspace-prompt-templates";
 import { resolveTaskWorkspaceId } from "@/lib/workspace-selection";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -38,6 +49,7 @@ const modalBackdropClass =
 const modalCardClass =
   "grid w-[min(92vw,640px)] gap-4 rounded-none border border-border bg-[var(--panel)] p-4 shadow-[var(--shadow)]";
 const modalWideClass = "w-[min(92vw,820px)]";
+const modalWorkspaceSettingsWideClass = "w-[min(96vw,1160px)]";
 const modalTitleClass = "text-base font-semibold";
 const modalGridClass = "grid grid-cols-2 gap-4 max-[1040px]:grid-cols-1";
 const modalLabelClass = "grid gap-2";
@@ -50,6 +62,25 @@ const span2Class = "col-span-2 max-[1040px]:col-span-1";
 const fieldHintClass = "m-0 text-[0.75rem] text-[var(--muted)]";
 const fieldErrorClass = "m-0 text-[0.75rem] text-[var(--danger)]";
 const mutedTextClass = "text-[var(--muted)]";
+
+type WorkspaceSettingsTabId = "general" | WorkspacePromptTemplateId;
+
+const WORKSPACE_SETTINGS_TABS: Array<{
+  description: string;
+  id: WorkspaceSettingsTabId;
+  label: string;
+}> = [
+  {
+    id: "general",
+    label: "General",
+    description: "Name, sandbox, and workspace-level runtime defaults."
+  },
+  ...WORKSPACE_PROMPT_TEMPLATE_IDS.map((templateId) => ({
+    id: templateId,
+    label: WORKSPACE_PROMPT_TEMPLATE_DEFINITIONS[templateId].label,
+    description: WORKSPACE_PROMPT_TEMPLATE_DEFINITIONS[templateId].description
+  }))
+];
 
 const APPROVAL_POLICY_OPTIONS: Array<{
   value: WorkspaceCodexSettings["approvalPolicy"];
@@ -143,7 +174,11 @@ interface WorkspaceSettingsModalProps {
   workspace: Workspace | null;
   taskCount: number;
   onClose(): void;
-  onSubmit(values: { name: string; codexSettings: WorkspaceCodexSettings }): void;
+  onSubmit(values: {
+    name: string;
+    codexSettings: WorkspaceCodexSettings;
+    promptTemplates?: WorkspacePromptTemplates;
+  }): void;
 }
 
 interface GlobalSettingsModalProps {
@@ -181,7 +216,6 @@ function useCloseOnEscape(open: boolean, onClose: () => void) {
     };
   }, [open, onClose]);
 }
-
 
 function describeApprovalPolicy(
   value: WorkspaceCodexSettings["approvalPolicy"]
@@ -353,6 +387,11 @@ export function WorkspaceSettingsModal({
     useState<WorkspaceCodexSettings["approvalPolicy"]>("on-request");
   const [sandboxMode, setSandboxMode] =
     useState<WorkspaceCodexSettings["sandboxMode"]>("workspace-write");
+  const [activeTab, setActiveTab] = useState<WorkspaceSettingsTabId>("general");
+  const [promptTemplates, setPromptTemplates] = useState(
+    EMPTY_WORKSPACE_PROMPT_TEMPLATES
+  );
+  const [showPromptPreview, setShowPromptPreview] = useState(true);
 
   useCloseOnEscape(open, onClose);
 
@@ -361,12 +400,18 @@ export function WorkspaceSettingsModal({
       setName("");
       setApprovalPolicy("on-request");
       setSandboxMode("workspace-write");
+      setPromptTemplates(EMPTY_WORKSPACE_PROMPT_TEMPLATES);
+      setActiveTab("general");
+      setShowPromptPreview(true);
       return;
     }
 
     setName(workspace.name);
     setApprovalPolicy(workspace.codexSettings.approvalPolicy);
     setSandboxMode(workspace.codexSettings.sandboxMode);
+    setPromptTemplates(createWorkspacePromptTemplateState(workspace.promptTemplates));
+    setActiveTab("general");
+    setShowPromptPreview(true);
   }, [open, workspace]);
 
   if (!open || !workspace) {
@@ -374,11 +419,13 @@ export function WorkspaceSettingsModal({
   }
 
   const canSubmit = Boolean(name.trim());
+  const activePromptTemplateId =
+    activeTab === "general" ? WORKSPACE_PROMPT_TEMPLATE_IDS[0] : activeTab;
 
   return (
     <div className={modalBackdropClass} role="presentation" onClick={onClose}>
       <form
-        className={cn(modalCardClass, modalWideClass)}
+        className={cn(modalCardClass, modalWorkspaceSettingsWideClass)}
         onSubmit={(event) => {
           event.preventDefault();
           onSubmit({
@@ -386,76 +433,137 @@ export function WorkspaceSettingsModal({
             codexSettings: {
               approvalPolicy,
               sandboxMode
-            }
+            },
+            promptTemplates: serializeWorkspacePromptTemplates(promptTemplates)
           });
         }}
         onClick={(event) => event.stopPropagation()}
       >
         <h2 className={modalTitleClass}>Workspace settings</h2>
-        <div className={modalGridClass}>
-          <label className={modalLabelClass}>
-            <span className={modalLabelTextClass}>Name</span>
-            <Input value={name} onChange={(event) => setName(event.target.value)} />
-          </label>
-          <div className={modalNoteClass}>
-            <span className={modalLabelTextClass}>Root path</span>
-            <p>
-              <code>{workspace.rootPath}</code>
-            </p>
+        <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+          <div className="grid content-start gap-1 rounded-none border border-border bg-[var(--panel-muted)] p-1">
+            {WORKSPACE_SETTINGS_TABS.map((tab) => {
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  className={cn(
+                    "grid gap-1 rounded-none border px-3 py-2 text-left transition-colors",
+                    isActive
+                      ? "border-[var(--border-strong)] bg-[var(--accent-soft)] text-foreground"
+                      : "border-transparent text-[var(--muted)] hover:border-border hover:bg-[var(--surface-faint)] hover:text-foreground"
+                  )}
+                  onClick={() => setActiveTab(tab.id)}
+                >
+                  <span className="text-[0.78rem] font-medium">{tab.label}</span>
+                  <span className="text-[0.68rem] leading-[1.45]">{tab.description}</span>
+                </button>
+              );
+            })}
           </div>
-          <label className={modalLabelClass}>
-            <span className={modalLabelTextClass}>Approval policy</span>
-            <NativeSelect
-              value={approvalPolicy}
-              onChange={(event) =>
-                setApprovalPolicy(
-                  event.target.value as WorkspaceCodexSettings["approvalPolicy"]
-                )
-              }
-            >
-              {APPROVAL_POLICY_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </NativeSelect>
-          </label>
-          <div className={modalNoteClass}>
-            <span className={modalLabelTextClass}>Approval behavior</span>
-            <p>{describeApprovalPolicy(approvalPolicy)}</p>
-          </div>
-          <label className={modalLabelClass}>
-            <span className={modalLabelTextClass}>Sandbox</span>
-            <NativeSelect
-              value={sandboxMode}
-              onChange={(event) =>
-                setSandboxMode(event.target.value as WorkspaceCodexSettings["sandboxMode"])
-              }
-            >
-              {SANDBOX_MODE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </NativeSelect>
-          </label>
-          <div className={modalNoteClass}>
-            <span className={modalLabelTextClass}>Sandbox access</span>
-            <p>{describeSandboxMode(sandboxMode)}</p>
-          </div>
-          <div className={cn(modalNoteClass, span2Class)}>
-            <span className={modalLabelTextClass}>Applies to future Codex runs</span>
-            <p>
-              Codex tasks in this workspace will use <code>{approvalPolicy}</code> and{" "}
-              <code>{sandboxMode}</code>. Shell tasks are unchanged.
-            </p>
-          </div>
-          <div className={cn(modalNoteClass, span2Class)}>
-            <span className={modalLabelTextClass}>Workspace context</span>
-            <p>
-              {workspace.isGitRepo ? "Git repository" : "Non-Git directory"} with {taskCount}{" "}
-              {taskCount === 1 ? "task" : "tasks"}.
-            </p>
+          <div className="min-w-0 rounded-none border border-border bg-[var(--surface-faint)] p-4">
+            {activeTab === "general" ? (
+              <div className={modalGridClass}>
+                <label className={modalLabelClass}>
+                  <span className={modalLabelTextClass}>Name</span>
+                  <Input
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                  />
+                </label>
+                <div className={modalNoteClass}>
+                  <span className={modalLabelTextClass}>Root path</span>
+                  <p>
+                    <code>{workspace.rootPath}</code>
+                  </p>
+                </div>
+                <label className={modalLabelClass}>
+                  <span className={modalLabelTextClass}>Approval policy</span>
+                  <NativeSelect
+                    value={approvalPolicy}
+                    onChange={(event) =>
+                      setApprovalPolicy(
+                        event.target.value as WorkspaceCodexSettings["approvalPolicy"]
+                      )
+                    }
+                  >
+                    {APPROVAL_POLICY_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </label>
+                <div className={modalNoteClass}>
+                  <span className={modalLabelTextClass}>Approval behavior</span>
+                  <p>{describeApprovalPolicy(approvalPolicy)}</p>
+                </div>
+                <label className={modalLabelClass}>
+                  <span className={modalLabelTextClass}>Sandbox</span>
+                  <NativeSelect
+                    value={sandboxMode}
+                    onChange={(event) =>
+                      setSandboxMode(
+                        event.target.value as WorkspaceCodexSettings["sandboxMode"]
+                      )
+                    }
+                  >
+                    {SANDBOX_MODE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </label>
+                <div className={modalNoteClass}>
+                  <span className={modalLabelTextClass}>Sandbox access</span>
+                  <p>{describeSandboxMode(sandboxMode)}</p>
+                </div>
+                <div className={cn(modalNoteClass, span2Class)}>
+                  <span className={modalLabelTextClass}>Applies to future runs</span>
+                  <p>
+                    Codex tasks in this workspace will use <code>{approvalPolicy}</code>{" "}
+                    approval with <code>{sandboxMode}</code> sandboxing. Prompt tabs
+                    below control plan generation, coding, review, and review callback
+                    follow-up instructions.
+                  </p>
+                </div>
+                <div className={cn(modalNoteClass, span2Class)}>
+                  <span className={modalLabelTextClass}>Workspace context</span>
+                  <p>
+                    {workspace.isGitRepo ? "Git repository" : "Non-Git directory"} with{" "}
+                    {taskCount} {taskCount === 1 ? "task" : "tasks"}.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <WorkspacePromptTemplateEditor
+                templateId={activePromptTemplateId}
+                value={promptTemplates[activePromptTemplateId]}
+                showPreview={showPromptPreview}
+                onChange={(value) =>
+                  setPromptTemplates((current) => ({
+                    ...current,
+                    [activePromptTemplateId]: value
+                  }))
+                }
+                onLoadDefault={() =>
+                  setPromptTemplates((current) => ({
+                    ...current,
+                    [activePromptTemplateId]:
+                      DEFAULT_WORKSPACE_PROMPT_TEMPLATES[activePromptTemplateId]
+                  }))
+                }
+                onUseFallback={() =>
+                  setPromptTemplates((current) => ({
+                    ...current,
+                    [activePromptTemplateId]: ""
+                  }))
+                }
+                onTogglePreview={() => setShowPromptPreview((current) => !current)}
+              />
+            )}
           </div>
         </div>
         <div className={modalActionsClass}>
@@ -467,6 +575,117 @@ export function WorkspaceSettingsModal({
           </Button>
         </div>
       </form>
+    </div>
+  );
+}
+
+function WorkspacePromptTemplateEditor({
+  templateId,
+  value,
+  showPreview,
+  onChange,
+  onLoadDefault,
+  onUseFallback,
+  onTogglePreview
+}: {
+  templateId: WorkspacePromptTemplateId;
+  value: string;
+  showPreview: boolean;
+  onChange(value: string): void;
+  onLoadDefault(): void;
+  onUseFallback(): void;
+  onTogglePreview(): void;
+}) {
+  const definition = WORKSPACE_PROMPT_TEMPLATE_DEFINITIONS[templateId];
+  const usingCustomTemplate = Boolean(value.trim());
+
+  return (
+    <div className="grid gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="grid gap-1">
+          <h3 className="m-0 text-sm font-semibold">{definition.label}</h3>
+          <p className={fieldHintClass}>{definition.description}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="secondary" onClick={onLoadDefault}>
+            Load built-in
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={!usingCustomTemplate}
+            onClick={onUseFallback}
+          >
+            Use fallback
+          </Button>
+          <Button type="button" variant="secondary" onClick={onTogglePreview}>
+            {showPreview ? "Hide preview" : "Show preview"}
+          </Button>
+        </div>
+      </div>
+      <div className={modalNoteClass}>
+        <span className={modalLabelTextClass}>Current mode</span>
+        <p>
+          {usingCustomTemplate
+            ? "Editing a workspace-specific template."
+            : "Using the built-in template. Leave the editor blank to keep the fallback."}
+        </p>
+      </div>
+      <div
+        className={cn(
+          "grid gap-4",
+          showPreview && "xl:grid-cols-[minmax(0,1.2fr)_minmax(300px,0.8fr)]"
+        )}
+      >
+        <label className={modalLabelClass}>
+          <span className={modalLabelTextClass}>Template</span>
+          <Textarea
+            rows={18}
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            placeholder={definition.defaultTemplate}
+            className="font-mono text-[0.72rem] leading-[1.65]"
+          />
+          <p className={fieldHintClass}>
+            The preview always renders the effective prompt, so an empty editor still
+            shows the built-in template.
+          </p>
+        </label>
+        {showPreview ? (
+          <div className={modalNoteClass}>
+            <span className={modalLabelTextClass}>Rendered preview</span>
+            <p>
+              Sample values are used for variables like <code>{"{{taskTitle}}"}</code>{" "}
+              and <code>{"{{branchName}}"}</code>.
+            </p>
+            <pre className="overflow-auto whitespace-pre-wrap break-words font-mono text-[0.67rem] leading-[1.7] text-foreground">
+              {previewTemplate(templateId, value)}
+            </pre>
+          </div>
+        ) : null}
+      </div>
+      <div className={modalNoteClass}>
+        <span className={modalLabelTextClass}>Variables</span>
+        <p>
+          Use placeholders directly in the template. They resolve at runtime and in the
+          preview panel.
+        </p>
+        <div className="grid gap-2 md:grid-cols-2">
+          {definition.variables.map((variable) => (
+            <div
+              key={variable.key}
+              className="grid gap-1 rounded-none border border-border bg-[var(--surface-faint)] p-2"
+            >
+              <code className="font-mono text-[0.68rem] text-[var(--accent-strong)]">
+                {variable.token}
+              </code>
+              <p className="m-0 text-[0.74rem] leading-[1.45] text-[var(--muted)]">
+                {variable.description}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

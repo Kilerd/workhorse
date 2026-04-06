@@ -18,8 +18,9 @@ import {
 import { resolveWorkspaceCodexSettings } from "../lib/codex-settings.js";
 import { resolveGlobalSettings } from "../lib/global-settings.js";
 import { createTaskWorktree } from "../lib/task-worktree.js";
+import { resolveWorkspacePromptTemplates } from "../lib/workspace-prompt-templates.js";
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 function migrateState(state: AppState): AppState {
   const settings = resolveGlobalSettings(state.settings);
@@ -27,7 +28,8 @@ function migrateState(state: AppState): AppState {
     (workspace) =>
       ({
         ...workspace,
-        codexSettings: resolveWorkspaceCodexSettings(workspace)
+        codexSettings: resolveWorkspaceCodexSettings(workspace),
+        promptTemplates: resolveWorkspacePromptTemplates(workspace)
       }) satisfies Workspace
   );
   const workspaceById = new Map(workspaces.map((workspace) => [workspace.id, workspace]));

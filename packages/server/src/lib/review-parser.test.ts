@@ -4,7 +4,7 @@ import {
   extractReviewResult,
   isStructuredReviewPayload,
   stripStructuredReviewBlocks
-} from "./review-parser";
+} from "./review-parser.js";
 
 describe("isStructuredReviewPayload", () => {
   it("returns true for valid review payloads", () => {

@@ -1237,6 +1237,9 @@
           "codexSettings": {
             "$ref": "#/components/schemas/WorkspaceCodexSettings"
           },
+          "promptTemplates": {
+            "$ref": "#/components/schemas/WorkspacePromptTemplates"
+          },
           "createdAt": {
             "type": "string"
           },
@@ -1311,6 +1314,24 @@
             ]
           }
         ]
+      },
+      "WorkspacePromptTemplates": {
+        "type": "object",
+        "properties": {
+          "plan": {
+            "type": "string"
+          },
+          "coding": {
+            "type": "string"
+          },
+          "review": {
+            "type": "string"
+          },
+          "reviewFollowUp": {
+            "type": "string"
+          }
+        },
+        "required": []
       },
       "WorkspaceGitRef": {
         "type": "object",
@@ -1580,17 +1601,17 @@
               },
               {
                 "enum": [
-                  "default"
-                ]
-              },
-              {
-                "enum": [
                   "acceptEdits"
                 ]
               },
               {
                 "enum": [
                   "bypassPermissions"
+                ]
+              },
+              {
+                "enum": [
+                  "default"
                 ]
               },
               {
@@ -1875,6 +1896,9 @@
           },
           "codexSettings": {
             "$ref": "#/components/schemas/WorkspaceCodexSettings"
+          },
+          "promptTemplates": {
+            "$ref": "#/components/schemas/WorkspacePromptTemplates"
           }
         },
         "required": [
@@ -1923,6 +1947,9 @@
           },
           "codexSettings": {
             "$ref": "#/components/schemas/WorkspaceCodexSettings"
+          },
+          "promptTemplates": {
+            "$ref": "#/components/schemas/WorkspacePromptTemplates"
           }
         },
         "required": []
@@ -3022,22 +3049,12 @@
         "oneOf": [
           {
             "enum": [
-              "text"
-            ]
-          },
-          {
-            "enum": [
-              "status"
-            ]
-          },
-          {
-            "enum": [
-              "plan"
-            ]
-          },
-          {
-            "enum": [
               "system"
+            ]
+          },
+          {
+            "enum": [
+              "text"
             ]
           },
           {
@@ -3058,6 +3075,16 @@
           {
             "enum": [
               "tool_output"
+            ]
+          },
+          {
+            "enum": [
+              "plan"
+            ]
+          },
+          {
+            "enum": [
+              "status"
             ]
           }
         ]

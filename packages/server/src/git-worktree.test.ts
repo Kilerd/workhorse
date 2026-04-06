@@ -345,7 +345,7 @@ describe("git worktree lifecycle", () => {
     await store.load();
     const snapshot = store.snapshot();
 
-    expect(snapshot.schemaVersion).toBe(4);
+    expect(snapshot.schemaVersion).toBe(5);
     expect(snapshot.settings).toEqual({
       language: "中文",
       openRouter: {
