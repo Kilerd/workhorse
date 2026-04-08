@@ -29,6 +29,7 @@ import { isBoardVisibleColumn, type DisplayTaskColumn } from "@/lib/task-view";
 import { queryClient } from "@/lib/query";
 import { applyTheme, getPreferredTheme, type ThemeMode } from "@/lib/theme";
 import { Button } from "@/components/ui/button";
+import { prepareLiveLogEntries } from "@/components/live-log-entries";
 
 export default function App() {
   return <ReactAppShell />;
@@ -93,6 +94,18 @@ function ReactAppShell() {
           queryClient.invalidateQueries({ queryKey: ["health"] });
           break;
         case "run.finished":
+          if (board.viewedRunId === event.run.id) {
+            queryClient.setQueryData<RunLogEntry[]>(["run-log", event.run.id], (current) => {
+              const liveEntries = board.liveLogByRunId[event.run.id] ?? [];
+              if (liveEntries.length === 0) {
+                return current;
+              }
+
+              return prepareLiveLogEntries([...(current ?? []), ...liveEntries]);
+            });
+          }
+          board.clearLiveOutput(event.run.id);
+          queryClient.invalidateQueries({ queryKey: ["run-log", event.run.id] });
           queryClient.invalidateQueries({ queryKey: ["tasks"] });
           queryClient.invalidateQueries({ queryKey: ["runs"] });
           queryClient.invalidateQueries({ queryKey: ["health"] });
