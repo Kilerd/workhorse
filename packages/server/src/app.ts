@@ -7,6 +7,7 @@ import {
   validateCreateWorkspaceBody,
   validateDeleteTaskParams,
   validateDeleteWorkspaceParams,
+  validateGetTaskDependenciesParams,
   validateListWorkspaceGitRefsParams,
   validateListRunsParams,
   validateListTasksQuery,
@@ -14,6 +15,8 @@ import {
   validatePlanFeedbackParams,
   validatePlanTaskParams,
   validateRequestTaskReviewParams,
+  validateSetTaskDependenciesBody,
+  validateSetTaskDependenciesParams,
   validateTaskDiffParams,
   validateRunLogParams,
   validateStartTaskBody,
@@ -341,6 +344,39 @@ export function createApp(
     );
     const items = await service.getRunLog(params.runId);
     return c.json(ok({ items }));
+  });
+
+  app.put("/api/tasks/:taskId/dependencies", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateSetTaskDependenciesParams,
+      "Invalid task params"
+    );
+    const body = validateOrThrow(
+      await c.req.json(),
+      validateSetTaskDependenciesBody,
+      "Invalid dependencies payload"
+    );
+    const task = await service.setTaskDependencies(params.taskId, body.dependencies);
+    return c.json(ok({ task }));
+  });
+
+  app.get("/api/tasks/:taskId/dependencies", (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateGetTaskDependenciesParams,
+      "Invalid task params"
+    );
+    const task = service.getTask(params.taskId);
+    return c.json(ok({ task }));
+  });
+
+  app.get("/api/scheduler/status", (c) => {
+    return c.json(ok(service.getSchedulerStatus()));
+  });
+
+  app.post("/api/scheduler/evaluate", (c) => {
+    return c.json(ok(service.evaluateScheduler()));
   });
 
   return app;

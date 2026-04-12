@@ -49,6 +49,7 @@ import { ClaudeCliRunner } from "../runners/claude-cli-runner.js";
 import type { RunnerAdapter } from "../runners/types.js";
 import { ShellRunner } from "../runners/shell-runner.js";
 import { EventBus } from "../ws/event-bus.js";
+import { DependencyGraph } from "./dependency-graph.js";
 import { GitWorktreeService } from "./git-worktree-service.js";
 import {
   OpenRouterTaskIdentityGenerator,
@@ -398,6 +399,10 @@ export class BoardService {
     return { id: workspaceId };
   }
 
+  public getTask(taskId: string): Task {
+    return this.requireTask(taskId);
+  }
+
   public listTasks(query: ListTasksQuery): Task[] {
     return this.store
       .listTasks()
@@ -645,9 +650,92 @@ export class BoardService {
     taskId: string,
     input: StartTaskBody = {}
   ): Promise<{ task: Task; run: Run }> {
+    const task = this.requireTask(taskId);
+    if (task.dependencies.length > 0) {
+      const allTasks = this.store.listTasks();
+      const doneTasks = new Set(
+        allTasks.filter((t) => t.column === "done").map((t) => t.id)
+      );
+      const graph = DependencyGraph.fromTasks(allTasks);
+      if (!graph.canStart(task, doneTasks)) {
+        throw new AppError(
+          409,
+          "DEPENDENCIES_NOT_MET",
+          "Task dependencies have not been completed yet"
+        );
+      }
+    }
     return this.runLifecycle.startTask(taskId, {
       targetOrder: input.order
     });
+  }
+
+  public async setTaskDependencies(
+    taskId: string,
+    dependencies: string[]
+  ): Promise<Task> {
+    const allTasks = this.store.listTasks();
+    const task = this.requireTask(taskId, allTasks);
+
+    // Validate all dependency IDs exist and are in the same workspace
+    for (const depId of dependencies) {
+      const dep = allTasks.find((t) => t.id === depId);
+      if (!dep) {
+        throw new AppError(
+          400,
+          "DEPENDENCY_NOT_FOUND",
+          `Dependency task not found: ${depId}`
+        );
+      }
+      if (dep.workspaceId !== task.workspaceId) {
+        throw new AppError(
+          400,
+          "DEPENDENCY_CROSS_WORKSPACE",
+          `Dependency task ${depId} belongs to a different workspace`
+        );
+      }
+    }
+
+    // Temporarily build a hypothetical graph with new deps to check for cycles
+    const hypotheticalTasks = allTasks.map((t) =>
+      t.id === taskId ? { ...t, dependencies } : t
+    );
+    const graph = DependencyGraph.fromTasks(hypotheticalTasks);
+    const cycle = graph.detectCycle();
+    if (cycle !== null) {
+      throw new AppError(
+        400,
+        "DEPENDENCY_CYCLE",
+        `Circular dependency detected: ${cycle.join(" → ")}`
+      );
+    }
+
+    task.dependencies = dependencies;
+    task.updatedAt = new Date().toISOString();
+
+    this.store.setTasks(allTasks);
+    await this.store.save();
+    this.events.publish({
+      type: "task.updated",
+      action: "updated",
+      taskId: task.id,
+      task
+    });
+    return task;
+  }
+
+  public getSchedulerStatus(): { running: number; queued: number; blocked: number } {
+    const allTasks = this.store.listTasks();
+    return {
+      running: allTasks.filter((t) => t.column === "running").length,
+      queued: allTasks.filter((t) => t.column === "todo").length,
+      blocked: allTasks.filter((t) => t.column === "blocked").length
+    };
+  }
+
+  public evaluateScheduler(): { started: string[]; blocked: string[] } {
+    // Stub: real implementation will come after TaskScheduler (PR2) is merged
+    return { started: [], blocked: [] };
   }
 
   public async pollGitReviewTasksForBaseUpdates(): Promise<GitReviewMonitorResult> {

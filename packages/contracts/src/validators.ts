@@ -10,6 +10,7 @@ import type {
   DeleteTaskResponse,
   DeleteWorkspaceParams,
   DeleteWorkspaceResponse,
+  GetTaskDependenciesParams,
   HealthResponse,
   PickWorkspaceRootResponse,
   ListWorkspaceGitRefsParams,
@@ -24,6 +25,11 @@ import type {
   PlanTaskResponse,
   RequestTaskReviewParams,
   RequestTaskReviewResponse,
+  SchedulerEvaluateResponse,
+  SchedulerStatusResponse,
+  SetTaskDependenciesBody,
+  SetTaskDependenciesParams,
+  TaskDependenciesResponse,
   TaskDiffParams,
   TaskDiffResponse,
   RunLogParams,
@@ -97,6 +103,12 @@ export const validateCleanupTaskWorktreeParams =
 export const validateTaskDiffParams = typia.createValidate<TaskDiffParams>();
 export const validateListRunsParams = typia.createValidate<ListRunsParams>();
 export const validateRunLogParams = typia.createValidate<RunLogParams>();
+export const validateSetTaskDependenciesParams =
+  typia.createValidate<SetTaskDependenciesParams>();
+export const validateSetTaskDependenciesBody =
+  typia.createValidate<SetTaskDependenciesBody>();
+export const validateGetTaskDependenciesParams =
+  typia.createValidate<GetTaskDependenciesParams>();
 
 export const schemaRegistry = {
   ApiError: () => typia.json.schema<ApiError>(),
@@ -153,5 +165,11 @@ export const schemaRegistry = {
   TaskDiffResponse: () => typia.json.schema<TaskDiffResponse>(),
   RunsResponse: () => typia.json.schema<RunsResponse>(),
   RunLogResponse: () => typia.json.schema<RunLogResponse>(),
-  HealthResponse: () => typia.json.schema<HealthResponse>()
+  HealthResponse: () => typia.json.schema<HealthResponse>(),
+  SetTaskDependenciesParams: () => typia.json.schema<SetTaskDependenciesParams>(),
+  SetTaskDependenciesBody: () => typia.json.schema<SetTaskDependenciesBody>(),
+  GetTaskDependenciesParams: () => typia.json.schema<GetTaskDependenciesParams>(),
+  TaskDependenciesResponse: () => typia.json.schema<TaskDependenciesResponse>(),
+  SchedulerStatusResponse: () => typia.json.schema<SchedulerStatusResponse>(),
+  SchedulerEvaluateResponse: () => typia.json.schema<SchedulerEvaluateResponse>()
 };
