@@ -39,10 +39,30 @@ export interface RuntimeReviewMonitorPolledEvent {
   polledAt: string;
 }
 
+export interface TaskBlockedEvent {
+  type: "task.blocked";
+  taskId: string;
+  blockedBy: string[];
+}
+
+export interface TaskUnblockedEvent {
+  type: "task.unblocked";
+  taskId: string;
+}
+
+export interface SchedulerEvaluatedEvent {
+  type: "scheduler.evaluated";
+  started: string[];
+  blocked: string[];
+}
+
 export type ServerEvent =
   | WorkspaceUpdatedEvent
   | TaskUpdatedEvent
   | RunStartedEvent
   | RunOutputEvent
   | RunFinishedEvent
-  | RuntimeReviewMonitorPolledEvent;
+  | RuntimeReviewMonitorPolledEvent
+  | TaskBlockedEvent
+  | TaskUnblockedEvent
+  | SchedulerEvaluatedEvent;

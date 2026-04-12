@@ -298,6 +298,33 @@ export interface HealthData {
   codexQuota: HealthCodexQuotaData | null;
 }
 
+export interface SetTaskDependenciesParams {
+  taskId: string;
+}
+
+export interface SetTaskDependenciesBody {
+  dependencies: string[];
+}
+
+export interface GetTaskDependenciesParams {
+  taskId: string;
+}
+
+export interface TaskDependenciesData {
+  task: Task;
+}
+
+export interface SchedulerStatusData {
+  running: number;
+  queued: number;
+  blocked: number;
+}
+
+export interface SchedulerEvaluateData {
+  started: string[];
+  blocked: string[];
+}
+
 export type SettingsResponse = ApiSuccess<SettingsData>;
 export type WorkspacesResponse = ApiSuccess<ListWorkspacesData>;
 export type WorkspaceResponse = ApiSuccess<WorkspaceData>;
@@ -320,8 +347,11 @@ export type TaskDiffResponse = ApiSuccess<TaskDiffData>;
 export type RunsResponse = ApiSuccess<ListRunsData>;
 export type RunLogResponse = ApiSuccess<RunLogData>;
 export type HealthResponse = ApiSuccess<HealthData>;
+export type TaskDependenciesResponse = ApiSuccess<TaskDependenciesData>;
+export type SchedulerStatusResponse = ApiSuccess<SchedulerStatusData>;
+export type SchedulerEvaluateResponse = ApiSuccess<SchedulerEvaluateData>;
 
-export type HttpMethod = "get" | "post" | "patch" | "delete";
+export type HttpMethod = "get" | "post" | "put" | "patch" | "delete";
 
 export interface EndpointResponseSpec {
   status: number;
@@ -395,7 +425,13 @@ export type SchemaName =
   | "TaskDiffResponse"
   | "RunsResponse"
   | "RunLogResponse"
-  | "HealthResponse";
+  | "HealthResponse"
+  | "SetTaskDependenciesParams"
+  | "SetTaskDependenciesBody"
+  | "GetTaskDependenciesParams"
+  | "TaskDependenciesResponse"
+  | "SchedulerStatusResponse"
+  | "SchedulerEvaluateResponse";
 
 export const endpointRegistry: EndpointSpec[] = [
   {
@@ -931,6 +967,80 @@ export const endpointRegistry: EndpointSpec[] = [
         status: 404,
         description: "Run not found",
         schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "setTaskDependencies",
+    method: "put",
+    path: "/api/tasks/{taskId}/dependencies",
+    summary: "Set task dependency list",
+    tag: "Tasks",
+    paramsSchema: "SetTaskDependenciesParams",
+    bodySchema: "SetTaskDependenciesBody",
+    responses: [
+      {
+        status: 200,
+        description: "Updated task",
+        schema: "TaskDependenciesResponse"
+      },
+      {
+        status: 400,
+        description: "Validation error or cycle detected",
+        schema: "ApiError"
+      },
+      {
+        status: 404,
+        description: "Task not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "getTaskDependencies",
+    method: "get",
+    path: "/api/tasks/{taskId}/dependencies",
+    summary: "Get task dependencies",
+    tag: "Tasks",
+    paramsSchema: "GetTaskDependenciesParams",
+    responses: [
+      {
+        status: 200,
+        description: "Task with dependencies",
+        schema: "TaskDependenciesResponse"
+      },
+      {
+        status: 404,
+        description: "Task not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "getSchedulerStatus",
+    method: "get",
+    path: "/api/scheduler/status",
+    summary: "Get task scheduler status",
+    tag: "Scheduler",
+    responses: [
+      {
+        status: 200,
+        description: "Scheduler status snapshot",
+        schema: "SchedulerStatusResponse"
+      }
+    ]
+  },
+  {
+    operationId: "evaluateScheduler",
+    method: "post",
+    path: "/api/scheduler/evaluate",
+    summary: "Manually trigger scheduler evaluation",
+    tag: "Scheduler",
+    responses: [
+      {
+        status: 200,
+        description: "Evaluation result",
+        schema: "SchedulerEvaluateResponse"
       }
     ]
   }

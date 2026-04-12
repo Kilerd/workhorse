@@ -49,6 +49,7 @@ import { ClaudeCliRunner } from "../runners/claude-cli-runner.js";
 import type { RunnerAdapter } from "../runners/types.js";
 import { ShellRunner } from "../runners/shell-runner.js";
 import { EventBus } from "../ws/event-bus.js";
+import { DependencyGraph } from "./dependency-graph.js";
 import { GitWorktreeService } from "./git-worktree-service.js";
 import {
   OpenRouterTaskIdentityGenerator,
@@ -398,6 +399,10 @@ export class BoardService {
     return { id: workspaceId };
   }
 
+  public getTask(taskId: string): Task {
+    return this.requireTask(taskId);
+  }
+
   public listTasks(query: ListTasksQuery): Task[] {
     return this.store
       .listTasks()
@@ -648,6 +653,90 @@ export class BoardService {
     return this.runLifecycle.startTask(taskId, {
       targetOrder: input.order
     });
+  }
+
+  public async setTaskDependencies(
+    taskId: string,
+    dependencies: string[]
+  ): Promise<Task> {
+    const allTasks = this.store.listTasks();
+    const task = this.requireTask(taskId, allTasks);
+
+    // Validate all dependency IDs exist and are in the same workspace
+    for (const depId of dependencies) {
+      if (depId === taskId) {
+        throw new AppError(400, "SELF_DEPENDENCY", "A task cannot depend on itself");
+      }
+      const dep = allTasks.find((t) => t.id === depId);
+      if (!dep) {
+        throw new AppError(
+          404,
+          "DEPENDENCY_NOT_FOUND",
+          `Dependency task not found: ${depId}`
+        );
+      }
+      if (dep.workspaceId !== task.workspaceId) {
+        throw new AppError(
+          409,
+          "DEPENDENCY_CROSS_WORKSPACE",
+          `Dependency task ${depId} belongs to a different workspace`
+        );
+      }
+    }
+
+    // Build hypothetical graph with new deps to check for cycles
+    const hypotheticalTasks = allTasks.map((t) =>
+      t.id === taskId ? { ...t, dependencies } : t
+    );
+    const graph = DependencyGraph.fromTasks(hypotheticalTasks);
+    const cycle = graph.detectCycle();
+    if (cycle !== null) {
+      throw new AppError(
+        422,
+        "DEPENDENCY_CYCLE",
+        `Circular dependency detected: ${cycle.join(" → ")}`
+      );
+    }
+
+    const updatedTask = await this.store.updateTask(
+      taskId,
+      (t) => ({ ...t, dependencies, updatedAt: new Date().toISOString() })
+    );
+    this.events.publish({
+      type: "task.updated",
+      action: "updated",
+      taskId: updatedTask.id,
+      task: updatedTask
+    });
+    return updatedTask;
+  }
+
+  public getSchedulerStatus(): { running: number; queued: number; blocked: number } {
+    const counts = { running: 0, queued: 0, blocked: 0 };
+    for (const t of this.store.listTasks()) {
+      if (t.column === "running") counts.running++;
+      else if (t.column === "todo") counts.queued++;
+      else if (t.column === "blocked") counts.blocked++;
+    }
+    return counts;
+  }
+
+  public async evaluateScheduler(): Promise<{ started: string[]; blocked: string[] }> {
+    const beforeTodo = new Set(
+      this.store.listTasks().filter((t) => t.column === "todo").map((t) => t.id)
+    );
+    const beforeBlocked = new Set(
+      this.store.listTasks().filter((t) => t.column === "blocked").map((t) => t.id)
+    );
+    await this.scheduler.evaluate();
+    const afterTasks = this.store.listTasks();
+    const started = afterTasks
+      .filter((t) => t.column === "running" && beforeTodo.has(t.id))
+      .map((t) => t.id);
+    const blocked = afterTasks
+      .filter((t) => t.column === "blocked" && !beforeBlocked.has(t.id))
+      .map((t) => t.id);
+    return { started, blocked };
   }
 
   public async pollGitReviewTasksForBaseUpdates(): Promise<GitReviewMonitorResult> {
