@@ -68,6 +68,8 @@ import {
   type WorkspaceRootPicker
 } from "./workspace-root-picker.js";
 import { RunLifecycleService } from "./run-lifecycle-service.js";
+import { DependencyGraph } from "./dependency-graph.js";
+import { TaskScheduler } from "./task-scheduler.js";
 
 interface BoardServiceDependencies {
   gitWorktrees?: GitWorktreeService;
@@ -109,6 +111,8 @@ export class BoardService {
 
   private readonly runLifecycle: RunLifecycleService;
 
+  private readonly scheduler: TaskScheduler;
+
   private readonly prMonitor: PrMonitorService;
 
   private readonly aiReview: AiReviewService;
@@ -138,7 +142,11 @@ export class BoardService {
       events: this.events,
       gitWorktrees: this.gitWorktrees,
       githubPullRequests: this.githubPullRequests,
-      startTask: (taskId, opts) => this.runLifecycle.startTask(taskId, opts),
+      startTask: (taskId, opts) =>
+        this.runLifecycle.startTask(taskId, {
+          ...opts,
+          skipDependencyCheck: true
+        }),
       appendAndPublishRunOutput: (taskId, runId, entry) => this.runLifecycle.appendAndPublishRunOutput(taskId, runId, entry),
       updateRunMetadata: (runId, metadata) => this.runLifecycle.updateRunMetadata(runId, metadata),
       refreshPullRequestSnapshot: (task, workspace) => this.refreshTaskPullRequestSnapshotForReview(task, workspace),
@@ -155,14 +163,38 @@ export class BoardService {
       requireTask: (taskId, source) => this.requireTask(taskId, source),
       requireWorkspace: (workspaceId) => this.requireWorkspace(workspaceId),
       requireRun: (runId, source) => this.requireRun(runId, source),
-      topOrder: (column, excludingId) => this.topOrder(column, excludingId)
+      topOrder: (column, excludingId) => this.topOrder(column, excludingId),
+      canTaskStart: (task, source) => this.canTaskStart(task, source),
+      evaluateScheduler: () => this.scheduler.evaluate()
     });
+    this.scheduler = new TaskScheduler(
+      {
+        maxConcurrent: 3,
+        maxPerRunner: {
+          codex: 1
+        }
+      },
+      {
+        store: this.store,
+        events: this.events,
+        lifecycle: {
+          startTask: (taskId, options) => this.runLifecycle.startTask(taskId, options),
+          isActive: (taskId) => this.runLifecycle.isActive(taskId),
+          activeCount: () => this.runLifecycle.activeCount(),
+          activeCountByRunner: (type) => this.runLifecycle.activeCountByRunner(type)
+        }
+      }
+    );
     this.prMonitor = new PrMonitorService({
       store: this.store,
       events: this.events,
       gitWorktrees: this.gitWorktrees,
       githubPullRequests: this.githubPullRequests,
-      startTask: (taskId, opts) => this.runLifecycle.startTask(taskId, opts),
+      startTask: (taskId, opts) =>
+        this.runLifecycle.startTask(taskId, {
+          ...opts,
+          skipDependencyCheck: true
+        }),
       updateTask: (taskId, input) => this.updateTask(taskId, input),
       syncPullRequestSnapshot: (taskId, next) =>
         this.syncTaskPullRequestSnapshot(taskId, next),
@@ -196,6 +228,14 @@ export class BoardService {
       "RUN_NOT_FOUND",
       "Run not found"
     );
+  }
+
+  private canTaskStart(task: Task, source?: Task[]): boolean {
+    const tasks = source ?? this.store.listTasks();
+    const doneTasks = new Set(
+      tasks.filter((entry) => entry.column === "done").map((entry) => entry.id)
+    );
+    return DependencyGraph.fromTasks(tasks).canStart(task, doneTasks);
   }
 
   public async initialize(): Promise<void> {
@@ -564,6 +604,12 @@ export class BoardService {
       taskId: task.id,
       task
     });
+    if (
+      previousColumn !== nextColumn &&
+      (nextColumn === "todo" || nextColumn === "done")
+    ) {
+      await this.scheduler.evaluate();
+    }
     return task;
   }
 
@@ -674,7 +720,8 @@ export class BoardService {
         permissionMode: "plan"
       },
       runMetadata: { trigger: "plan_generation" },
-      targetColumn: "backlog"
+      targetColumn: "backlog",
+      skipDependencyCheck: true
     });
   }
 
@@ -716,7 +763,8 @@ export class BoardService {
         trigger: "plan_generation",
         resumeSessionId: sessionId
       },
-      targetColumn: "backlog"
+      targetColumn: "backlog",
+      skipDependencyCheck: true
     });
   }
 
@@ -762,7 +810,8 @@ export class BoardService {
         refreshedTask,
         workspace
       ),
-      runMetadata: this.aiReview.buildManualReviewRunMetadata(refreshedTask)
+      runMetadata: this.aiReview.buildManualReviewRunMetadata(refreshedTask),
+      skipDependencyCheck: true
     });
   }
 

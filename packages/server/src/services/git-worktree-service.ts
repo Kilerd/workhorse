@@ -314,7 +314,10 @@ export class GitWorktreeService {
       await this.runGit(workspace.rootPath, addArgs);
     } catch (error) {
       const message = normalizeMessage(error as GitCommandError);
-      if (message.includes("already checked out")) {
+      if (
+        message.includes("already checked out") ||
+        message.includes("already used by worktree")
+      ) {
         throw new AppError(
           409,
           "TASK_WORKTREE_BRANCH_IN_USE",
