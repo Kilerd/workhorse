@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Run, RunLogEntry, Workspace } from "@workhorse/contracts";
 
@@ -657,6 +657,21 @@ function DependencyPicker({
   allTasks: DisplayTask[];
   onSetDependencies(ids: string[]): void;
 }) {
+  const [localDeps, setLocalDeps] = useState<string[]>(task.dependencies);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Sync local state when server state updates (after successful mutation)
+  useEffect(() => {
+    setLocalDeps(task.dependencies);
+  }, [task.dependencies]);
+
+  // Clear timer on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
   const candidates = allTasks.filter(
     (t) => t.id !== task.id && t.workspaceId === task.workspaceId && t.column !== "archived"
   );
@@ -669,7 +684,7 @@ function DependencyPicker({
     <SidebarSection title="Dependencies">
       <div className="grid gap-1">
         {candidates.map((candidate) => {
-          const checked = task.dependencies.includes(candidate.id);
+          const checked = localDeps.includes(candidate.id);
           return (
             <label
               key={candidate.id}
@@ -681,9 +696,11 @@ function DependencyPicker({
                 checked={checked}
                 onChange={() => {
                   const next = checked
-                    ? task.dependencies.filter((id) => id !== candidate.id)
-                    : [...task.dependencies, candidate.id];
-                  onSetDependencies(next);
+                    ? localDeps.filter((id) => id !== candidate.id)
+                    : [...localDeps, candidate.id];
+                  setLocalDeps(next);
+                  if (timerRef.current) clearTimeout(timerRef.current);
+                  timerRef.current = setTimeout(() => onSetDependencies(next), 300);
                 }}
               />
               <span className="min-w-0 break-words text-[0.76rem] leading-[1.4] text-[var(--muted)]">

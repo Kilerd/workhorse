@@ -805,6 +805,7 @@ export function GlobalSettingsModal({
             <Input
               type="number"
               min={1}
+              max={20}
               value={maxConcurrent}
               onChange={(event) => setMaxConcurrent(event.target.value)}
               placeholder="3"

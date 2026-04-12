@@ -154,11 +154,18 @@ function shouldShowColumnBadge(column: DisplayTaskColumn, task?: DisplayTask) {
   return true;
 }
 
-function getBlockedByTitles(task: DisplayTask, allTasks: DisplayTask[]): string[] {
+function getBlockedByEntries(
+  task: DisplayTask,
+  allTasks: DisplayTask[]
+): { id: string; title: string }[] {
   const taskMap = new Map(allTasks.map((t) => [t.id, t]));
   return task.dependencies
-    .map((depId) => taskMap.get(depId)?.title)
-    .filter((title): title is string => title !== undefined);
+    .map((depId) => {
+      const dep = taskMap.get(depId);
+      if (!dep || dep.column === "done") return null;
+      return { id: depId, title: dep.title };
+    })
+    .filter((entry): entry is { id: string; title: string } => entry !== null);
 }
 
 function getTaskCardToneClass(column: DisplayTaskColumn) {
@@ -268,8 +275,8 @@ export function Board({
                   const showColumnBadge = shouldShowColumnBadge(task.column, task);
                   const showCardActions = shouldShowCardActions(task.column, isActive);
                   const showBlockedBy = shouldShowBlockedBy(task.column);
-                  const blockedByTitles = showBlockedBy
-                    ? getBlockedByTitles(task, allTasks)
+                  const blockedByEntries = showBlockedBy
+                    ? getBlockedByEntries(task, allTasks)
                     : [];
 
                   return (
@@ -307,11 +314,11 @@ export function Board({
                             </p>
                           ) : null}
 
-                          {showBlockedBy && blockedByTitles.length > 0 ? (
+                          {showBlockedBy && blockedByEntries.length > 0 ? (
                             <div className="mt-2 flex flex-wrap gap-1">
-                              {blockedByTitles.map((title) => (
+                              {blockedByEntries.map(({ id, title }) => (
                                 <span
-                                  key={title}
+                                  key={id}
                                   className="inline-flex items-center rounded-none border border-[rgba(192,132,252,0.28)] bg-[rgba(192,132,252,0.1)] px-1.5 py-0.5 font-mono text-[0.58rem] text-[var(--accent)]"
                                 >
                                   blocked by: {title}
