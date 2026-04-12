@@ -30,6 +30,7 @@ export interface ActiveRun {
   control: RunnerControl;
   stopRequested: boolean;
   runId: string;
+  runnerType: Task["runnerType"];
   queue(work: () => Promise<void>): Promise<void>;
 }
 
@@ -40,6 +41,7 @@ export interface StartTaskOptions {
   initialInputText?: string;
   targetOrder?: number;
   targetColumn?: Task["column"];
+  skipDependencyCheck?: boolean;
 }
 
 export interface RunLifecycleDependencies {
@@ -53,6 +55,8 @@ export interface RunLifecycleDependencies {
   requireWorkspace(workspaceId: string): Workspace;
   requireRun(runId: string, source?: Run[]): Run;
   topOrder(column: Task["column"], excludingTaskId?: string): number;
+  canTaskStart(task: Task, source?: Task[]): boolean;
+  evaluateScheduler(): Promise<void>;
 }
 
 export class RunLifecycleService {
@@ -66,6 +70,15 @@ export class RunLifecycleService {
 
   public getActiveRunId(taskId: string): string | undefined {
     return this.activeRuns.get(taskId)?.runId;
+  }
+
+  public activeCount(): number {
+    return this.activeRuns.size;
+  }
+
+  public activeCountByRunner(type: Task["runnerType"]): number {
+    return [...this.activeRuns.values()].filter((entry) => entry.runnerType === type)
+      .length;
   }
 
   public async recoverOrphanedRuns(): Promise<void> {
@@ -92,6 +105,13 @@ export class RunLifecycleService {
     const tasks = this.deps.store.listTasks();
     const task = this.deps.requireTask(taskId, tasks);
     this.ensureStartableTask(task, options.allowedColumns);
+    if (!options.skipDependencyCheck && !this.deps.canTaskStart(task, tasks)) {
+      throw new AppError(
+        409,
+        "DEPENDENCIES_NOT_MET",
+        "Task dependencies are not satisfied"
+      );
+    }
     const workspace = this.deps.requireWorkspace(task.workspaceId);
     let executionWorkspace = workspace;
 
@@ -238,6 +258,7 @@ export class RunLifecycleService {
         control,
         stopRequested: false,
         runId: run.id,
+        runnerType: executionTask.runnerType,
         queue: queueOutput
       });
 
@@ -282,6 +303,7 @@ export class RunLifecycleService {
         run,
         task: tasks[taskIndex]
       });
+      await this.deps.evaluateScheduler();
       throw error;
     }
   }
@@ -547,12 +569,14 @@ export class RunLifecycleService {
     });
 
     if (shouldAutoReview) {
-      void this.deps.aiReview.triggerAiReview(taskEntry).catch(() => {});
+      await this.deps.aiReview.triggerAiReview(taskEntry);
     }
 
     if (shouldRework) {
-      void this.deps.aiReview.triggerReworkFromReview(taskEntry, runEntry).catch(() => {});
+      await this.deps.aiReview.triggerReworkFromReview(taskEntry, runEntry);
     }
+
+    await this.deps.evaluateScheduler();
 
     return {
       run: runEntry,

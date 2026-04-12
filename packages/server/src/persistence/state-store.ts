@@ -16,6 +16,7 @@ import {
   serializeRunLogEntry
 } from "../lib/run-log.js";
 import { resolveWorkspaceCodexSettings } from "../lib/codex-settings.js";
+import { AppError } from "../lib/errors.js";
 import { resolveGlobalSettings } from "../lib/global-settings.js";
 import { createTaskWorktree } from "../lib/task-worktree.js";
 import { resolveWorkspacePromptTemplates } from "../lib/workspace-prompt-templates.js";
@@ -75,6 +76,8 @@ export class StateStore {
     tasks: [],
     runs: []
   };
+
+  private writeBarrier: Promise<void> = Promise.resolve();
 
   public constructor(dataDir: string) {
     this.dataDir = dataDir;
@@ -177,8 +180,52 @@ export class StateStore {
   }
 
   public async save(): Promise<void> {
+    await this.withWriteLock(() => this.persistState(this.state));
+  }
+
+  public async updateState<T>(updater: (state: AppState) => T): Promise<T> {
+    return this.withWriteLock(async () => {
+      const nextState = structuredClone(this.state) as AppState;
+      const result = updater(nextState);
+      await this.persistState(nextState);
+      this.state = nextState;
+      return result;
+    });
+  }
+
+  public async updateTask(
+    taskId: string,
+    updater: (task: Task) => Task
+  ): Promise<Task> {
+    return this.updateState((state) => {
+      const taskIndex = state.tasks.findIndex((task) => task.id === taskId);
+      if (taskIndex === -1) {
+        throw new AppError(404, "TASK_NOT_FOUND", "Task not found");
+      }
+
+      state.tasks[taskIndex] = updater(state.tasks[taskIndex]!);
+      return state.tasks[taskIndex];
+    });
+  }
+
+  private async withWriteLock<T>(work: () => Promise<T>): Promise<T> {
+    const previous = this.writeBarrier;
+    let release: (() => void) | undefined;
+    this.writeBarrier = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    await previous;
+    try {
+      return await work();
+    } finally {
+      release?.();
+    }
+  }
+
+  private async persistState(state: AppState): Promise<void> {
     const tempPath = `${this.stateFile}.tmp`;
-    await writeFile(tempPath, `${JSON.stringify(this.state, null, 2)}\n`, "utf8");
+    await writeFile(tempPath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
     await rename(tempPath, this.stateFile);
   }
 }

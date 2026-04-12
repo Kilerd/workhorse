@@ -44,6 +44,32 @@ class MockClaudeRunner implements RunnerAdapter {
   }
 }
 
+class HoldingRunner implements RunnerAdapter {
+  public constructor(public readonly type: "claude" | "codex" | "shell") {}
+
+  public async start(
+    _context: RunnerStartContext,
+    hooks: RunnerLifecycleHooks
+  ): Promise<RunnerControl> {
+    let stopped = false;
+
+    return {
+      command: `${this.type} (holding mock)`,
+      async stop() {
+        if (stopped) {
+          return;
+        }
+
+        stopped = true;
+        await hooks.onExit({
+          status: "canceled",
+          exitCode: 0
+        });
+      }
+    };
+  }
+}
+
 function createCodexAppServerStub(
   quota: HealthCodexQuotaData | null = null,
   overrides: {
@@ -82,6 +108,7 @@ async function createRuntime(options?: {
   codexAppServer?: CodexAppServer;
   taskIdentityGenerator?: TaskIdentityGenerator;
   workspaceRootPicker?: WorkspaceRootPicker;
+  runners?: Record<string, RunnerAdapter>;
 }) {
   const dataDir = await mkdtemp(join(tmpdir(), "workhorse-test-"));
   const workspaceDir = join(dataDir, "workspace");
@@ -92,11 +119,13 @@ async function createRuntime(options?: {
     codexAppServer: codexServer,
     taskIdentityGenerator: options?.taskIdentityGenerator,
     workspaceRootPicker: options?.workspaceRootPicker,
-    runners: {
-      claude: new MockClaudeRunner(),
-      shell: new ShellRunner(),
-      codex: new CodexAcpRunner(codexServer)
-    }
+    runners:
+      options?.runners ??
+      {
+        claude: new MockClaudeRunner(),
+        shell: new ShellRunner(),
+        codex: new CodexAcpRunner(codexServer)
+      }
   });
   await service.initialize();
 
@@ -186,6 +215,45 @@ async function waitForRunToFinish(
   }
 
   throw new Error(`Timed out waiting for run ${taskId} to finish`);
+}
+
+async function waitForTaskColumn(
+  service: BoardService,
+  taskId: string,
+  column: string,
+  timeoutMs = 5_000
+) {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const task = service.listTasks({}).find((entry) => entry.id === taskId);
+    if (task?.column === column) {
+      return task;
+    }
+    await sleep(25);
+  }
+
+  throw new Error(`Timed out waiting for task ${taskId} to reach ${column}`);
+}
+
+async function setTaskDependencies(
+  service: BoardService,
+  taskId: string,
+  dependencies: string[]
+) {
+  const store = (service as any).store as StateStore;
+  store.setTasks(
+    service.snapshot().tasks.map((task) =>
+      task.id === taskId
+        ? {
+            ...task,
+            dependencies,
+            updatedAt: new Date().toISOString()
+          }
+        : task
+    )
+  );
+  await store.save();
 }
 
 describe("workhorse runtime", () => {
@@ -1310,6 +1378,139 @@ describe("workhorse runtime", () => {
       code: "TASK_NOT_STARTABLE",
       message: "Tasks in done cannot be started"
     });
+  });
+
+  it("rejects starting a task whose dependencies are not done", async () => {
+    const { service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+    const dependency = await createShellTask(service, workspace.id);
+    const task = await createShellTask(
+      service,
+      workspace.id,
+      "node -e \"setInterval(() => {}, 50)\""
+    );
+
+    await setTaskDependencies(service, task.id, [dependency.id]);
+
+    await expect(service.startTask(task.id)).rejects.toMatchObject({
+      status: 409,
+      code: "DEPENDENCIES_NOT_MET",
+      message: "Task dependencies are not satisfied"
+    });
+  });
+
+  it("moves todo tasks with unmet dependencies into blocked", async () => {
+    const { service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+    const dependency = await createShellTask(service, workspace.id);
+    const task = await createShellTask(service, workspace.id);
+
+    await setTaskDependencies(service, task.id, [dependency.id]);
+    await service.updateTask(task.id, {
+      column: "todo"
+    });
+
+    const updatedTask = service.listTasks({}).find((entry) => entry.id === task.id);
+    expect(updatedTask?.column).toBe("blocked");
+  });
+
+  it("unblocks and starts dependent todo tasks when a dependency moves to done", async () => {
+    const { service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+    const dependency = await createShellTask(service, workspace.id);
+    const task = await createShellTask(
+      service,
+      workspace.id,
+      "node -e \"setInterval(() => {}, 50)\""
+    );
+
+    await setTaskDependencies(service, task.id, [dependency.id]);
+    await service.updateTask(task.id, {
+      column: "todo"
+    });
+    expect(service.listTasks({}).find((entry) => entry.id === task.id)?.column).toBe(
+      "blocked"
+    );
+
+    await service.updateTask(dependency.id, {
+      column: "done"
+    });
+    await waitForTaskColumn(service, task.id, "running");
+
+    await service.stopTask(task.id);
+    await waitForRunToFinish(service, task.id);
+  });
+
+  it("limits scheduler launches to one active codex task by default", async () => {
+    const codexRunner = new HoldingRunner("codex");
+    const { service, workspaceDir } = await createRuntime({
+      runners: {
+        claude: new MockClaudeRunner(),
+        shell: new ShellRunner(),
+        codex: codexRunner
+      }
+    });
+    const workspace = await createWorkspace(service, workspaceDir);
+    const first = await createCodexTask(service, workspace.id);
+    const second = await createCodexTask(service, workspace.id);
+
+    await service.updateTask(first.id, {
+      column: "todo"
+    });
+    await waitForTaskColumn(service, first.id, "running");
+
+    await service.updateTask(second.id, {
+      column: "todo"
+    });
+
+    expect(service.listTasks({}).find((entry) => entry.id === second.id)?.column).toBe(
+      "todo"
+    );
+
+    await service.stopTask(first.id);
+    await waitForRunToFinish(service, first.id);
+  });
+
+  it("starts newly unblocked tasks in priority order", async () => {
+    const shellRunner = new HoldingRunner("shell");
+    const { service, workspaceDir } = await createRuntime({
+      runners: {
+        claude: new MockClaudeRunner(),
+        shell: shellRunner,
+        codex: new HoldingRunner("codex")
+      }
+    });
+    const workspace = await createWorkspace(service, workspaceDir);
+    const dependency = await createShellTask(service, workspace.id);
+    const highPriority = await createShellTask(service, workspace.id);
+    const lowPriority = await createShellTask(service, workspace.id);
+
+    await setTaskDependencies(service, highPriority.id, [dependency.id]);
+    await setTaskDependencies(service, lowPriority.id, [dependency.id]);
+
+    await service.updateTask(highPriority.id, {
+      column: "todo"
+    });
+    await service.updateTask(lowPriority.id, {
+      column: "todo"
+    });
+
+    await service.updateTask(dependency.id, {
+      column: "done"
+    });
+    await waitForTaskColumn(service, highPriority.id, "running");
+    await waitForTaskColumn(service, lowPriority.id, "running");
+
+    const runningTasks = service.listTasks({}).filter((task) => task.column === "running");
+    expect(runningTasks.map((task) => task.id)).toEqual([
+      highPriority.id,
+      lowPriority.id
+    ]);
+
+    await service.stopTask(highPriority.id);
+    await service.stopTask(lowPriority.id);
+    await waitForRunToFinish(service, highPriority.id);
+    await waitForRunToFinish(service, lowPriority.id);
   });
 
   it("starts tasks from the API without a request body", async () => {
