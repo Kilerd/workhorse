@@ -31,7 +31,9 @@ export class TaskScheduler {
 
   public evaluate(): Promise<void> {
     const next = this.evaluationChain.then(() => this.evaluateUnsafe());
-    this.evaluationChain = next.catch(() => {});
+    this.evaluationChain = next.catch((error) => {
+      console.error("TaskScheduler.evaluate failed", error);
+    });
     return next;
   }
 
@@ -106,11 +108,19 @@ export class TaskScheduler {
       activeByRunner.set(task.runnerType, runnerActive + 1);
     }
 
-    for (const task of startQueue.reverse()) {
+    const runningTasks = tasks
+      .filter((task) => task.column === "running")
+      .sort((left, right) => left.order - right.order);
+    let nextRunningOrder =
+      (runningTasks[0]?.order ?? 1_024) - startQueue.length * 1_024;
+
+    for (const task of startQueue) {
       try {
         await this.deps.lifecycle.startTask(task.id, {
-          allowedColumns: ["todo"]
+          allowedColumns: ["todo"],
+          targetOrder: nextRunningOrder
         });
+        nextRunningOrder += 1_024;
       } catch {
         // A failed task launch should not block other ready tasks in the queue.
       }

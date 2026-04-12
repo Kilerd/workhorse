@@ -180,13 +180,15 @@ export class StateStore {
   }
 
   public async save(): Promise<void> {
-    await this.withWriteLock(() => this.persistUnsafe());
+    await this.withWriteLock(() => this.persistState(this.state));
   }
 
   public async updateState<T>(updater: (state: AppState) => T): Promise<T> {
     return this.withWriteLock(async () => {
-      const result = updater(this.state);
-      await this.persistUnsafe();
+      const nextState = structuredClone(this.state) as AppState;
+      const result = updater(nextState);
+      await this.persistState(nextState);
+      this.state = nextState;
       return result;
     });
   }
@@ -221,9 +223,9 @@ export class StateStore {
     }
   }
 
-  private async persistUnsafe(): Promise<void> {
+  private async persistState(state: AppState): Promise<void> {
     const tempPath = `${this.stateFile}.tmp`;
-    await writeFile(tempPath, `${JSON.stringify(this.state, null, 2)}\n`, "utf8");
+    await writeFile(tempPath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
     await rename(tempPath, this.stateFile);
   }
 }

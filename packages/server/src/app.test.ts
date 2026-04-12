@@ -1471,6 +1471,48 @@ describe("workhorse runtime", () => {
     await waitForRunToFinish(service, first.id);
   });
 
+  it("starts newly unblocked tasks in priority order", async () => {
+    const shellRunner = new HoldingRunner("shell");
+    const { service, workspaceDir } = await createRuntime({
+      runners: {
+        claude: new MockClaudeRunner(),
+        shell: shellRunner,
+        codex: new HoldingRunner("codex")
+      }
+    });
+    const workspace = await createWorkspace(service, workspaceDir);
+    const dependency = await createShellTask(service, workspace.id);
+    const highPriority = await createShellTask(service, workspace.id);
+    const lowPriority = await createShellTask(service, workspace.id);
+
+    await setTaskDependencies(service, highPriority.id, [dependency.id]);
+    await setTaskDependencies(service, lowPriority.id, [dependency.id]);
+
+    await service.updateTask(highPriority.id, {
+      column: "todo"
+    });
+    await service.updateTask(lowPriority.id, {
+      column: "todo"
+    });
+
+    await service.updateTask(dependency.id, {
+      column: "done"
+    });
+    await waitForTaskColumn(service, highPriority.id, "running");
+    await waitForTaskColumn(service, lowPriority.id, "running");
+
+    const runningTasks = service.listTasks({}).filter((task) => task.column === "running");
+    expect(runningTasks.map((task) => task.id)).toEqual([
+      highPriority.id,
+      lowPriority.id
+    ]);
+
+    await service.stopTask(highPriority.id);
+    await service.stopTask(lowPriority.id);
+    await waitForRunToFinish(service, highPriority.id);
+    await waitForRunToFinish(service, lowPriority.id);
+  });
+
   it("starts tasks from the API without a request body", async () => {
     const { app, service, workspaceDir } = await createRuntime();
     const workspace = await createWorkspace(service, workspaceDir);

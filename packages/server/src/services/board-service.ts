@@ -68,7 +68,6 @@ import {
   type WorkspaceRootPicker
 } from "./workspace-root-picker.js";
 import { RunLifecycleService } from "./run-lifecycle-service.js";
-import { DependencyGraph } from "./dependency-graph.js";
 import { TaskScheduler } from "./task-scheduler.js";
 
 interface BoardServiceDependencies {
@@ -231,11 +230,7 @@ export class BoardService {
   }
 
   private canTaskStart(task: Task, source?: Task[]): boolean {
-    const tasks = source ?? this.store.listTasks();
-    const doneTasks = new Set(
-      tasks.filter((entry) => entry.column === "done").map((entry) => entry.id)
-    );
-    return DependencyGraph.fromTasks(tasks).canStart(task, doneTasks);
+    return this.scheduler.canStart(task, source ?? this.store.listTasks());
   }
 
   public async initialize(): Promise<void> {
