@@ -11,6 +11,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ThemeToggle } from "./ThemeToggle";
 
+interface SchedulerStatus {
+  running: number;
+  queued: number;
+  blocked: number;
+}
+
 interface Props {
   selectedWorkspaceName: string;
   searchQuery: string;
@@ -26,6 +32,7 @@ interface Props {
   gitStatus: WorkspaceGitStatusData | null;
   onPull(): void;
   isPulling: boolean;
+  schedulerStatus?: SchedulerStatus | null;
 }
 
 function formatRuntimeStatus(runtimeStatus: string) {
@@ -123,7 +130,8 @@ export function TopBar({
   codexQuota,
   gitStatus,
   onPull,
-  isPulling
+  isPulling,
+  schedulerStatus
 }: Props) {
   const metaChipClass =
     "inline-flex min-h-5 items-center gap-2 whitespace-nowrap rounded-none border border-border bg-[var(--panel)] px-2 text-[0.64rem] uppercase tracking-[0.08em] text-[var(--muted)]";
@@ -199,6 +207,11 @@ export function TopBar({
             <span className={metaChipClass}>Codex quota unavailable</span>
           ) : null}
           <span className={metaChipClass}>{formatCount(boardCount, "task")}</span>
+          {schedulerStatus ? (
+            <span className={metaChipClass}>
+              Running: {schedulerStatus.running} | Queued: {schedulerStatus.queued} | Blocked: {schedulerStatus.blocked}
+            </span>
+          ) : null}
           <span className={metaChipClass}>Updated {formatRelativeTime(lastSyncedAt)}</span>
           {gitStatus ? (
             <>

@@ -168,12 +168,12 @@ export class BoardService {
       evaluateScheduler: () => this.scheduler.evaluate()
     });
     this.scheduler = new TaskScheduler(
-      {
-        maxConcurrent: 3,
+      () => ({
+        maxConcurrent: this.store.getSettings().scheduler?.maxConcurrent ?? 3,
         maxPerRunner: {
           codex: 1
         }
-      },
+      }),
       {
         store: this.store,
         events: this.events,

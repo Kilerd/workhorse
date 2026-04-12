@@ -67,6 +67,7 @@ describe("useLiveLog helpers", () => {
           baseRef: "main",
           status: "ready"
         },
+        dependencies: [],
         createdAt: "2026-04-08T00:00:00.000Z",
         updatedAt: "2026-04-08T00:01:00.000Z"
       }

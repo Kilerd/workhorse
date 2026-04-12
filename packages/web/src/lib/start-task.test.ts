@@ -25,6 +25,7 @@ function createTask(overrides: Partial<Task>): Task {
     lastRunId: overrides.lastRunId,
     pullRequestUrl: overrides.pullRequestUrl,
     pullRequest: overrides.pullRequest,
+    dependencies: overrides.dependencies ?? [],
     createdAt: overrides.createdAt ?? "2026-04-02T00:00:00.000Z",
     updatedAt: overrides.updatedAt ?? "2026-04-02T00:00:00.000Z"
   };

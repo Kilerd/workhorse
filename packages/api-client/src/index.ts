@@ -235,7 +235,23 @@ export function createApiClient(baseUrl: string) {
     listRuns: async (taskId: string): Promise<ListRunsData> =>
       unwrap((await listRuns({ taskId })).data),
     getRunLog: async (runId: string): Promise<RunLogData> =>
-      unwrap((await getRunLog({ runId })).data)
+      unwrap((await getRunLog({ runId })).data),
+    setTaskDependencies: async (
+      taskId: string,
+      dependencies: string[]
+    ): Promise<{ task: import("@workhorse/contracts").Task }> =>
+      unwrap(
+        await requestJson(
+          `/api/tasks/${encodeURIComponent(taskId)}/dependencies`,
+          { method: "PUT", body: JSON.stringify({ dependencies }) }
+        )
+      ),
+    getSchedulerStatus: async (): Promise<{
+      running: number;
+      queued: number;
+      blocked: number;
+    }> =>
+      unwrap(await requestJson("/api/scheduler/status"))
   };
 }
 

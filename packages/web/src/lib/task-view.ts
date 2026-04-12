@@ -28,6 +28,7 @@ export const BOARD_COLUMNS: Array<{
 }> = [
   { id: "backlog", title: "Backlog", tone: "tone-backlog" },
   { id: "todo", title: "Todo", tone: "tone-todo" },
+  { id: "blocked", title: "Blocked", tone: "tone-blocked" },
   { id: "running", title: "Running", tone: "tone-running" },
   { id: "review", title: "Review", tone: "tone-review" },
   { id: "done", title: "Done", tone: "tone-done" }
@@ -60,6 +61,8 @@ export function getTaskActions(
         { id: "move-to-todo", label: "Move to Todo", shortLabel: "Todo", kind: "secondary" },
         { id: "mark-done", label: "Mark Done", shortLabel: "Done", kind: "primary" }
       ];
+    case "blocked":
+      return [];
     case "done":
       return [];
     case "archived":

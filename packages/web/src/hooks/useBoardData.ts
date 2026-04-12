@@ -396,6 +396,22 @@ export function useBoardData() {
     }
   });
 
+  const schedulerStatusQuery = useQuery({
+    queryKey: queryKey("schedulerStatus"),
+    queryFn: async () => api.getSchedulerStatus(),
+    refetchInterval: 15_000
+  });
+
+  const setTaskDependenciesMutation = useMutation({
+    mutationFn: async ({ taskId, dependencies }: { taskId: string; dependencies: string[] }) => {
+      const response = await api.setTaskDependencies(taskId, dependencies);
+      return response.task;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
+    }
+  });
+
   const startTask = useCallback(
     (taskId: string, body?: StartTaskBody) =>
       startTaskMutation.mutateAsync({ taskId, body }),
@@ -453,6 +469,8 @@ export function useBoardData() {
     archiveTask: (taskId: string) => changeColumnMutation.mutateAsync({ taskId, column: "archived" }),
     deleteWorkspace: deleteWorkspaceMutation.mutateAsync,
     deleteTask: deleteTaskMutation.mutateAsync,
+    schedulerStatus: schedulerStatusQuery.data ?? null,
+    setTaskDependencies: setTaskDependenciesMutation.mutateAsync,
     isBusy: [
       createWorkspaceMutation,
       updateSettingsMutation,
@@ -469,7 +487,8 @@ export function useBoardData() {
       changeColumnMutation,
       deleteWorkspaceMutation,
       deleteTaskMutation,
-      pullWorkspaceMutation
+      pullWorkspaceMutation,
+      setTaskDependenciesMutation
     ].some((m) => m.isPending)
   };
 }

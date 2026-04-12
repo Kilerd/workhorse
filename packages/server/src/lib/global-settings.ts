@@ -19,11 +19,13 @@ export function resolveGlobalSettings(
     | {
         language?: string | undefined;
         openRouter?: Partial<GlobalSettings["openRouter"]> | undefined;
+        scheduler?: { maxConcurrent?: number | undefined } | undefined;
       }
     | undefined
 ): GlobalSettings {
   const language = settings?.language?.trim();
   const baseUrl = settings?.openRouter?.baseUrl?.trim();
+  const maxConcurrent = settings?.scheduler?.maxConcurrent;
 
   return {
     language: language || DEFAULT_GLOBAL_SETTINGS.language,
@@ -31,7 +33,10 @@ export function resolveGlobalSettings(
       baseUrl: baseUrl || DEFAULT_GLOBAL_SETTINGS.openRouter.baseUrl,
       token: settings?.openRouter?.token?.trim() ?? "",
       model: settings?.openRouter?.model?.trim() ?? ""
-    }
+    },
+    ...(maxConcurrent !== undefined && maxConcurrent > 0
+      ? { scheduler: { maxConcurrent } }
+      : {})
   };
 }
 

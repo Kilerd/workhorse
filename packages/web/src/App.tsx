@@ -290,6 +290,7 @@ function ReactAppShell() {
           }}
           isPulling={board.isPulling}
           selectedWorkspaceName={selectedWorkspaceName}
+          schedulerStatus={board.schedulerStatus}
         />}
 
         <Routes>
@@ -299,6 +300,7 @@ function ReactAppShell() {
               <DragDropContext onDragEnd={handleDrop}>
                 <Board
                   tasks={boardTasks}
+                  allTasks={allTasks}
                   workspaces={workspaces}
                   reviewMonitor={reviewMonitor}
                   selectedTaskId={board.selectedTask?.id ?? null}
@@ -460,6 +462,7 @@ function TaskDetailsRoute({
       <TaskDetailsPanel
         className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
         task={task}
+        allTasks={allTasks}
         runs={runs}
         workspaces={workspaces}
         selectedRunId={board.selectedRunId}
@@ -482,6 +485,7 @@ function TaskDetailsRoute({
           await board.deleteTask(task.id);
           navigate("/");
         }}
+        onSetDependencies={(ids) => board.setTaskDependencies({ taskId: task.id, dependencies: ids })}
       />
     </section>
   );
