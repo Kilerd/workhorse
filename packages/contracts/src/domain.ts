@@ -1,6 +1,7 @@
 export type TaskColumn =
   | "backlog"
   | "todo"
+  | "blocked"
   | "running"
   | "review"
   | "done"
@@ -177,6 +178,8 @@ export interface Task {
   order: number;
   runnerType: RunnerType;
   runnerConfig: RunnerConfig;
+  /** Task IDs that must be "done" before this task can start */
+  dependencies: string[];
   plan?: string;
   worktree: TaskWorktree;
   lastRunId?: string;

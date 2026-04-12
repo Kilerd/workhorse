@@ -83,10 +83,11 @@ export type { GitReviewMonitorResult } from "./pr-monitor-service.js";
 const COLUMN_ORDER: Record<Task["column"], number> = {
   backlog: 0,
   todo: 1,
-  running: 2,
-  review: 3,
-  done: 4,
-  archived: 5
+  blocked: 2,
+  running: 3,
+  review: 4,
+  done: 5,
+  archived: 6
 };
 
 export class BoardService {
@@ -443,6 +444,7 @@ export class BoardService {
       order: input.order ?? this.nextOrder(column),
       runnerType: input.runnerType,
       runnerConfig: input.runnerConfig,
+      dependencies: [],
       worktree,
       createdAt: now,
       updatedAt: now

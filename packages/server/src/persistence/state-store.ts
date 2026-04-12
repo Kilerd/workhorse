@@ -20,7 +20,7 @@ import { resolveGlobalSettings } from "../lib/global-settings.js";
 import { createTaskWorktree } from "../lib/task-worktree.js";
 import { resolveWorkspacePromptTemplates } from "../lib/workspace-prompt-templates.js";
 
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 function migrateState(state: AppState): AppState {
   const settings = resolveGlobalSettings(state.settings);
@@ -34,17 +34,22 @@ function migrateState(state: AppState): AppState {
   );
   const workspaceById = new Map(workspaces.map((workspace) => [workspace.id, workspace]));
   const tasks = (Array.isArray(state.tasks) ? state.tasks : []).map((task) => {
-    if ("worktree" in task && task.worktree) {
-      return task as Task;
-    }
+    const withWorktree =
+      "worktree" in task && task.worktree
+        ? (task as Task)
+        : (() => {
+            const workspace = workspaceById.get(task.workspaceId);
+            return {
+              ...task,
+              worktree: createTaskWorktree(task.id, task.title, { workspace })
+            } as Task;
+          })();
 
-    const workspace = workspaceById.get(task.workspaceId);
-    return {
-      ...task,
-      worktree: createTaskWorktree(task.id, task.title, {
-        workspace
-      })
-    } satisfies Task;
+    // v6: backfill dependencies array
+    if (!Array.isArray(withWorktree.dependencies)) {
+      return { ...withWorktree, dependencies: [] } satisfies Task;
+    }
+    return withWorktree;
   });
 
   return {

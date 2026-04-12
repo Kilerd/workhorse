@@ -41,6 +41,7 @@ function createTask(): Task {
       type: "codex",
       prompt: "Implement the feature"
     },
+    dependencies: [],
     worktree: {
       baseRef: "origin/main",
       branchName: "task/task-1-implement-feature",
