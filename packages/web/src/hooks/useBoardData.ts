@@ -407,6 +407,23 @@ export function useBoardData() {
       const response = await api.setTaskDependencies(taskId, dependencies);
       return response.task;
     },
+    onMutate: async ({ taskId, dependencies }) => {
+      await queryClient.cancelQueries({ queryKey: queryKey("tasks") });
+      const previous = queryClient.getQueryData<Task[]>(queryKey("tasks"));
+      if (previous) {
+        queryClient.setQueryData<Task[]>(
+          queryKey("tasks"),
+          previous.map((task) => (task.id === taskId ? { ...task, dependencies } : task))
+        );
+      }
+      return { previous };
+    },
+    onError: async (_error, _variables, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queryKey("tasks"), context.previous);
+      }
+      await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
     }
