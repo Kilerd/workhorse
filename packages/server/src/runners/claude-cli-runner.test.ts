@@ -31,6 +31,7 @@ function createClaudeContext(
         agent: "code-reviewer",
         permissionMode: "default"
       },
+      dependencies: [],
       worktree: {
         baseRef: "origin/main",
         branchName: "task/task-claude-1-review-the-task",
