@@ -1911,3 +1911,175 @@ describe("workhorse runtime", () => {
     ]);
   });
 });
+
+describe("dependency management API", () => {
+  it("sets and reads task dependencies", async () => {
+    const { app, service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+
+    const taskA = await createShellTask(service, workspace.id);
+    const taskB = await createShellTask(service, workspace.id);
+
+    // Set A depends on B
+    const putRes = await app.request(`/api/tasks/${taskA.id}/dependencies`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ dependencies: [taskB.id] })
+    });
+    expect(putRes.status).toBe(200);
+    const putData = (await putRes.json()) as { ok: boolean; data: { task: { dependencies: string[] } } };
+    expect(putData.ok).toBe(true);
+    expect(putData.data.task.dependencies).toEqual([taskB.id]);
+
+    // Read dependencies
+    const getRes = await app.request(`/api/tasks/${taskA.id}/dependencies`);
+    expect(getRes.status).toBe(200);
+    const getData = (await getRes.json()) as { ok: boolean; data: { task: { dependencies: string[] } } };
+    expect(getData.data.task.dependencies).toEqual([taskB.id]);
+  });
+
+  it("rejects setting dependencies on a nonexistent task", async () => {
+    const { app, service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+    const taskA = await createShellTask(service, workspace.id);
+
+    const res = await app.request(`/api/tasks/${taskA.id}/dependencies`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ dependencies: ["nonexistent-id"] })
+    });
+    expect(res.status).toBe(404);
+    const data = (await res.json()) as { ok: boolean; error: { code: string } };
+    expect(data.error.code).toBe("DEPENDENCY_NOT_FOUND");
+  });
+
+  it("rejects cross-workspace dependencies", async () => {
+    const { app, service, workspaceDir } = await createRuntime();
+    const ws1 = await createWorkspace(service, workspaceDir, "Workspace 1");
+    const ws2 = await createWorkspace(service, workspaceDir, "Workspace 2");
+    const taskA = await createShellTask(service, ws1.id);
+    const taskB = await createShellTask(service, ws2.id);
+
+    const res = await app.request(`/api/tasks/${taskA.id}/dependencies`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ dependencies: [taskB.id] })
+    });
+    expect(res.status).toBe(409);
+    const data = (await res.json()) as { ok: boolean; error: { code: string } };
+    expect(data.error.code).toBe("DEPENDENCY_CROSS_WORKSPACE");
+  });
+
+  it("rejects self-dependencies", async () => {
+    const { app, service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+    const taskA = await createShellTask(service, workspace.id);
+
+    const res = await app.request(`/api/tasks/${taskA.id}/dependencies`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ dependencies: [taskA.id] })
+    });
+    expect(res.status).toBe(400);
+    const data = (await res.json()) as { ok: boolean; error: { code: string } };
+    expect(data.error.code).toBe("SELF_DEPENDENCY");
+  });
+
+  it("rejects circular dependencies (A → B → A)", async () => {
+    const { app, service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+    const taskA = await createShellTask(service, workspace.id);
+    const taskB = await createShellTask(service, workspace.id);
+
+    // A → B (OK)
+    await app.request(`/api/tasks/${taskA.id}/dependencies`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ dependencies: [taskB.id] })
+    });
+
+    // B → A (creates cycle)
+    const res = await app.request(`/api/tasks/${taskB.id}/dependencies`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ dependencies: [taskA.id] })
+    });
+    expect(res.status).toBe(422);
+    const data = (await res.json()) as { ok: boolean; error: { code: string } };
+    expect(data.error.code).toBe("DEPENDENCY_CYCLE");
+  });
+
+  it("blocks start when dependency is not done (409 DEPENDENCIES_NOT_MET)", async () => {
+    const { app, service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+    const taskA = await createShellTask(service, workspace.id);
+    const taskB = await createShellTask(service, workspace.id);
+
+    // A depends on B; B is not done — start from backlog to avoid scheduler interference
+    await service.setTaskDependencies(taskA.id, [taskB.id]);
+
+    const res = await app.request(`/api/tasks/${taskA.id}/start`, {
+      method: "POST"
+    });
+    expect(res.status).toBe(409);
+    const data = (await res.json()) as { ok: boolean; error: { code: string } };
+    expect(data.error.code).toBe("DEPENDENCIES_NOT_MET");
+  });
+
+  it("allows start when all dependencies are done", async () => {
+    const { app, service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+    const taskA = await createShellTask(service, workspace.id, "true");
+    const taskB = await createShellTask(service, workspace.id, "true");
+
+    // A depends on B; move B to done — keep A in backlog so scheduler doesn't auto-start it
+    await service.setTaskDependencies(taskA.id, [taskB.id]);
+    await service.updateTask(taskB.id, { column: "done" });
+
+    const res = await app.request(`/api/tasks/${taskA.id}/start`, {
+      method: "POST"
+    });
+    expect(res.status).toBe(200);
+  });
+});
+
+describe("scheduler API", () => {
+  it("returns scheduler status counts", async () => {
+    const { app, service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+
+    await createShellTask(service, workspace.id);  // backlog
+    await service.createTask({
+      title: "Todo task",
+      workspaceId: workspace.id,
+      column: "todo",
+      runnerType: "shell",
+      runnerConfig: { type: "shell", command: "true" }
+    });
+    await service.createTask({
+      title: "Blocked task",
+      workspaceId: workspace.id,
+      column: "blocked",
+      runnerType: "shell",
+      runnerConfig: { type: "shell", command: "true" }
+    });
+
+    const res = await app.request("/api/scheduler/status");
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { ok: boolean; data: { running: number; queued: number; blocked: number } };
+    expect(data.ok).toBe(true);
+    expect(data.data.running).toBe(0);
+    expect(data.data.queued).toBe(1);
+    expect(data.data.blocked).toBe(1);
+  });
+
+  it("returns scheduler evaluate result with no pending tasks", async () => {
+    const { app } = await createRuntime();
+    const res = await app.request("/api/scheduler/evaluate", { method: "POST" });
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { ok: boolean; data: { started: string[]; blocked: string[] } };
+    expect(data.ok).toBe(true);
+    expect(data.data.started).toEqual([]);
+    expect(data.data.blocked).toEqual([]);
+  });
+});

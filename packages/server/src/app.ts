@@ -375,8 +375,8 @@ export function createApp(
     return c.json(ok(service.getSchedulerStatus()));
   });
 
-  app.post("/api/scheduler/evaluate", (c) => {
-    return c.json(ok(service.evaluateScheduler()));
+  app.post("/api/scheduler/evaluate", async (c) => {
+    return c.json(ok(await service.evaluateScheduler()));
   });
 
   return app;
