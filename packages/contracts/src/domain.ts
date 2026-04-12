@@ -124,9 +124,15 @@ export interface OpenRouterSettings {
   model: string;
 }
 
+export interface SchedulerSettings {
+  maxConcurrent?: number;
+  maxPerRunner?: Partial<Record<RunnerType, number>>;
+}
+
 export interface GlobalSettings {
   language: string;
   openRouter: OpenRouterSettings;
+  scheduler?: SchedulerSettings;
 }
 
 export interface Workspace {

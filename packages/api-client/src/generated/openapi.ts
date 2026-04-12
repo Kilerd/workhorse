@@ -428,10 +428,11 @@ export interface components {
             continuationRunId?: string;
             pullRequestUrl?: string;
             pullRequest?: components["schemas"]["TaskPullRequest"];
+            dependencies: string[];
             createdAt: string;
             updatedAt: string;
         };
-        TaskColumn: "review" | "backlog" | "todo" | "running" | "done" | "archived";
+        TaskColumn: "review" | "backlog" | "todo" | "running" | "done" | "archived" | "blocked";
         RunnerType: "claude" | "codex" | "shell";
         RunnerConfig: components["schemas"]["ShellRunnerConfig"] | components["schemas"]["ClaudeRunnerConfig"] | components["schemas"]["CodexRunnerConfig"];
         ShellRunnerConfig: {
@@ -554,7 +555,7 @@ export interface components {
             description?: string;
             workspaceId: string;
             worktreeBaseRef?: string;
-            column?: "review" | "backlog" | "todo" | "running" | "done" | "archived";
+            column?: components["schemas"]["TaskColumn"];
             order?: number;
             runnerType: components["schemas"]["RunnerType"];
             runnerConfig: components["schemas"]["RunnerConfig"];
@@ -567,7 +568,7 @@ export interface components {
             description?: string;
             workspaceId?: string;
             worktreeBaseRef?: string;
-            column?: "review" | "backlog" | "todo" | "running" | "done" | "archived";
+            column?: components["schemas"]["TaskColumn"];
             order?: number;
             runnerType?: "claude" | "codex" | "shell";
             runnerConfig?: components["schemas"]["ShellRunnerConfig"] | components["schemas"]["ClaudeRunnerConfig"] | components["schemas"]["CodexRunnerConfig"];

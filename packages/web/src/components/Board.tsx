@@ -20,6 +20,7 @@ interface ReviewCountdown {
 
 interface Props {
   tasks: DisplayTask[];
+  allTasks: DisplayTask[];
   workspaces: Workspace[];
   reviewMonitor: ReviewMonitor;
   selectedTaskId: string | null;
@@ -46,6 +47,7 @@ function groupTasks(): Record<DisplayTaskColumn, DisplayTask[]> {
   return {
     backlog: [],
     todo: [],
+    blocked: [],
     running: [],
     review: [],
     done: [],
@@ -112,6 +114,13 @@ function getTaskRunBadge(task: DisplayTask) {
     };
   }
 
+  if (task.column === "blocked") {
+    return {
+      label: "BLOCKED",
+      className: "border-[rgba(192,132,252,0.28)] bg-[rgba(192,132,252,0.1)] text-[var(--accent)]"
+    };
+  }
+
   if (task.column === "done") {
     return {
       label: "DONE",
@@ -145,12 +154,21 @@ function shouldShowColumnBadge(column: DisplayTaskColumn, task?: DisplayTask) {
   return true;
 }
 
+function getBlockedByTitles(task: DisplayTask, allTasks: DisplayTask[]): string[] {
+  const taskMap = new Map(allTasks.map((t) => [t.id, t]));
+  return task.dependencies
+    .map((depId) => taskMap.get(depId)?.title)
+    .filter((title): title is string => title !== undefined);
+}
+
 function getTaskCardToneClass(column: DisplayTaskColumn) {
   switch (column) {
     case "backlog":
       return "border-[rgba(128,146,152,0.28)]";
     case "todo":
       return "border-[rgba(104,199,246,0.28)]";
+    case "blocked":
+      return "border-[rgba(192,132,252,0.3)]";
     case "running":
       return "border-[rgba(242,195,92,0.32)]";
     case "review":
@@ -174,8 +192,13 @@ function shouldShowCardActions(column: DisplayTaskColumn, isActive: boolean) {
   return false;
 }
 
+function shouldShowBlockedBy(column: DisplayTaskColumn) {
+  return column === "blocked";
+}
+
 export function Board({
   tasks,
+  allTasks,
   workspaces,
   reviewMonitor,
   selectedTaskId,
@@ -244,6 +267,10 @@ export function Board({
                   const taskRunBadge = getTaskRunBadge(task);
                   const showColumnBadge = shouldShowColumnBadge(task.column, task);
                   const showCardActions = shouldShowCardActions(task.column, isActive);
+                  const showBlockedBy = shouldShowBlockedBy(task.column);
+                  const blockedByTitles = showBlockedBy
+                    ? getBlockedByTitles(task, allTasks)
+                    : [];
 
                   return (
                     <Draggable draggableId={task.id} index={index} key={task.id}>
@@ -278,6 +305,19 @@ export function Board({
                             <p className="mt-2 m-0 overflow-hidden text-[0.7rem] leading-[1.55] text-[var(--muted)] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
                               {task.description}
                             </p>
+                          ) : null}
+
+                          {showBlockedBy && blockedByTitles.length > 0 ? (
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {blockedByTitles.map((title) => (
+                                <span
+                                  key={title}
+                                  className="inline-flex items-center rounded-none border border-[rgba(192,132,252,0.28)] bg-[rgba(192,132,252,0.1)] px-1.5 py-0.5 font-mono text-[0.58rem] text-[var(--accent)]"
+                                >
+                                  blocked by: {title}
+                                </span>
+                              ))}
+                            </div>
                           ) : null}
 
                           {task.pullRequestUrl && task.pullRequest ? (

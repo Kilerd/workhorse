@@ -701,6 +701,7 @@ export function GlobalSettingsModal({
   const [baseUrl, setBaseUrl] = useState(DEFAULT_GLOBAL_SETTINGS.openRouter.baseUrl);
   const [token, setToken] = useState("");
   const [model, setModel] = useState("");
+  const [maxConcurrent, setMaxConcurrent] = useState<string>("");
 
   useCloseOnEscape(open, onClose);
 
@@ -710,6 +711,7 @@ export function GlobalSettingsModal({
       setBaseUrl(DEFAULT_GLOBAL_SETTINGS.openRouter.baseUrl);
       setToken("");
       setModel("");
+      setMaxConcurrent("");
       return;
     }
 
@@ -717,6 +719,11 @@ export function GlobalSettingsModal({
     setBaseUrl(resolvedSettings.openRouter.baseUrl);
     setToken(resolvedSettings.openRouter.token);
     setModel(resolvedSettings.openRouter.model);
+    setMaxConcurrent(
+      resolvedSettings.scheduler?.maxConcurrent !== undefined
+        ? String(resolvedSettings.scheduler.maxConcurrent)
+        : ""
+    );
   }, [open, resolvedSettings]);
 
   if (!open) {
@@ -729,13 +736,17 @@ export function GlobalSettingsModal({
         className={cn(modalCardClass, modalWideClass)}
         onSubmit={(event) => {
           event.preventDefault();
+          const parsedMaxConcurrent = parseInt(maxConcurrent, 10);
           onSubmit({
             language,
             openRouter: {
               baseUrl,
               token,
               model
-            }
+            },
+            ...(Number.isFinite(parsedMaxConcurrent) && parsedMaxConcurrent > 0
+              ? { scheduler: { maxConcurrent: parsedMaxConcurrent } }
+              : {})
           });
         }}
         onClick={(event) => event.stopPropagation()}
@@ -787,6 +798,22 @@ export function GlobalSettingsModal({
             <p>
               Workhorse uses this OpenRouter config to generate a simple task title and
               worktree name when the title is left empty.
+            </p>
+          </div>
+          <label className={modalLabelClass}>
+            <span className={modalLabelTextClass}>Max concurrent tasks</span>
+            <Input
+              type="number"
+              min={1}
+              value={maxConcurrent}
+              onChange={(event) => setMaxConcurrent(event.target.value)}
+              placeholder="3"
+            />
+          </label>
+          <div className={modalNoteClass}>
+            <span className={modalLabelTextClass}>Scheduler concurrency</span>
+            <p>
+              Maximum number of tasks the scheduler will run at the same time. Leave blank to use the default (3).
             </p>
           </div>
         </div>

@@ -25,7 +25,7 @@ export class TaskScheduler {
   private evaluationChain = Promise.resolve();
 
   constructor(
-    private readonly config: SchedulerConfig,
+    private readonly getConfig: () => SchedulerConfig,
     private readonly deps: TaskSchedulerDependencies
   ) {}
 
@@ -53,6 +53,7 @@ export class TaskScheduler {
   }
 
   private async evaluateUnsafe(): Promise<void> {
+    const config = this.getConfig();
     const changedTaskIds = await this.syncBlockedColumns();
     if (changedTaskIds.length > 0) {
       const latestTasks = this.deps.store.listTasks();
@@ -81,7 +82,7 @@ export class TaskScheduler {
       return;
     }
 
-    let remainingCapacity = this.config.maxConcurrent - this.activeCount();
+    let remainingCapacity = config.maxConcurrent - this.activeCount();
     if (remainingCapacity <= 0) {
       return;
     }
@@ -97,7 +98,7 @@ export class TaskScheduler {
         break;
       }
 
-      const runnerLimit = this.config.maxPerRunner?.[task.runnerType];
+      const runnerLimit = config.maxPerRunner?.[task.runnerType];
       const runnerActive = activeByRunner.get(task.runnerType) ?? 0;
       if (runnerLimit !== undefined && runnerActive >= runnerLimit) {
         continue;

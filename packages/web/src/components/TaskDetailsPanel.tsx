@@ -13,6 +13,7 @@ import { TaskActionBar } from "./TaskActionBar";
 interface Props {
   className?: string;
   task: DisplayTask | null;
+  allTasks: DisplayTask[];
   runs: Run[];
   workspaces: Workspace[];
   selectedRunId: string | null;
@@ -32,6 +33,7 @@ interface Props {
   onArchive(): void;
   onCleanupWorktree(): void;
   onDelete(): void;
+  onSetDependencies(ids: string[]): void;
 }
 
 // --- Style constants ---
@@ -247,6 +249,7 @@ function TrashIcon() {
 export function TaskDetailsPanel({
   className,
   task,
+  allTasks,
   runs,
   workspaces,
   selectedRunId,
@@ -265,7 +268,8 @@ export function TaskDetailsPanel({
   onMarkDone,
   onArchive,
   onCleanupWorktree,
-  onDelete
+  onDelete,
+  onSetDependencies
 }: Props) {
   const activeRun = useMemo(
     () => runs.find((run) => run.status === "running") ?? null,
@@ -434,6 +438,13 @@ export function TaskDetailsPanel({
               {task.description || "No description provided."}
             </p>
           </SidebarSection>
+
+          {/* Dependencies */}
+          <DependencyPicker
+            task={task}
+            allTasks={allTasks}
+            onSetDependencies={onSetDependencies}
+          />
 
           {/* Worktree */}
           {showWorktree ? (
@@ -636,6 +647,55 @@ export function TaskDetailsPanel({
 }
 
 // --- Sidebar sub-components ---
+
+function DependencyPicker({
+  task,
+  allTasks,
+  onSetDependencies
+}: {
+  task: DisplayTask;
+  allTasks: DisplayTask[];
+  onSetDependencies(ids: string[]): void;
+}) {
+  const candidates = allTasks.filter(
+    (t) => t.id !== task.id && t.workspaceId === task.workspaceId && t.column !== "archived"
+  );
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  return (
+    <SidebarSection title="Dependencies">
+      <div className="grid gap-1">
+        {candidates.map((candidate) => {
+          const checked = task.dependencies.includes(candidate.id);
+          return (
+            <label
+              key={candidate.id}
+              className="flex cursor-pointer items-start gap-2 rounded-none py-0.5 hover:text-foreground"
+            >
+              <input
+                type="checkbox"
+                className="mt-[3px] shrink-0 accent-[var(--accent)]"
+                checked={checked}
+                onChange={() => {
+                  const next = checked
+                    ? task.dependencies.filter((id) => id !== candidate.id)
+                    : [...task.dependencies, candidate.id];
+                  onSetDependencies(next);
+                }}
+              />
+              <span className="min-w-0 break-words text-[0.76rem] leading-[1.4] text-[var(--muted)]">
+                {candidate.title}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+    </SidebarSection>
+  );
+}
 
 function SidebarSection({
   title,

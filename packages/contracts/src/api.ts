@@ -48,6 +48,9 @@ export interface UpdateSettingsBody {
     token: string;
     model: string;
   };
+  scheduler?: {
+    maxConcurrent?: number;
+  };
 }
 
 export interface ListWorkspacesData {
