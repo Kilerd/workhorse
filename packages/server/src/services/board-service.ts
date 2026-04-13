@@ -559,6 +559,9 @@ export class BoardService {
     if (run.status !== "succeeded" && run.status !== "failed") {
       return;
     }
+    if (task.cancelledAt) {
+      return;
+    }
 
     const team = this.getTeam(task.teamId!);
     const agent = this.resolveAssignedTeamAgent(team, task);
