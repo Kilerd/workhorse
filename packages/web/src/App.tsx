@@ -14,6 +14,7 @@ import type { RunLogEntry, ServerEvent, Workspace } from "@workhorse/contracts";
 import { Board } from "@/components/Board";
 import { Sidebar } from "@/components/Sidebar";
 import { TaskDetailsPanel } from "@/components/TaskDetailsPanel";
+import { TeamManagementModal } from "@/components/TeamManagementModal";
 import {
   GlobalSettingsModal,
   TaskModal,
@@ -30,6 +31,7 @@ import { queryClient } from "@/lib/query";
 import { applyTheme, getPreferredTheme, type ThemeMode } from "@/lib/theme";
 import { Button } from "@/components/ui/button";
 import { prepareLiveLogEntries } from "@/components/live-log-entries";
+import { teamQueryKeys, useTeam, useTeamMessages } from "@/hooks/useTeams";
 
 export default function App() {
   return <ReactAppShell />;
@@ -45,7 +47,7 @@ function ReactAppShell() {
   >();
   const [searchQuery, setSearchQuery] = useState("");
   const [theme, setTheme] = useState<ThemeMode>(() => getPreferredTheme());
-  const { selectedWorkspaceTasks, displayedTasks, workspacesQuery } = board;
+  const { selectedWorkspaceTasks, displayedTasks, workspacesQuery, teams } = board;
 
   useEffect(() => {
     applyTheme(theme);
@@ -113,6 +115,23 @@ function ReactAppShell() {
         case "runtime.review-monitor.polled":
           setReviewMonitorLastPolledAt(event.polledAt);
           break;
+        case "team.updated":
+          queryClient.invalidateQueries({ queryKey: teamQueryKeys.lists() });
+          queryClient.invalidateQueries({
+            queryKey: teamQueryKeys.detail(event.teamId)
+          });
+          break;
+        case "team.agent.message":
+          queryClient.invalidateQueries({
+            queryKey: teamQueryKeys.messages(event.teamId, event.parentTaskId)
+          });
+          break;
+        case "team.task.created":
+          queryClient.invalidateQueries({ queryKey: ["tasks"] });
+          queryClient.invalidateQueries({
+            queryKey: teamQueryKeys.messages(event.teamId, event.parentTaskId)
+          });
+          break;
         default:
           break;
       }
@@ -128,6 +147,9 @@ function ReactAppShell() {
   const workspaceNames = useMemo(() => {
     return new Map(workspaces.map((workspace) => [workspace.id, workspace.name]));
   }, [workspaces]);
+  const teamNames = useMemo(() => {
+    return new Map(teams.map((team) => [team.id, team.name]));
+  }, [teams]);
   const visibleBoardTasks = useMemo(
     () => tasks.filter((task) => isBoardVisibleColumn(task.column)),
     [tasks]
@@ -141,12 +163,13 @@ function ReactAppShell() {
 
     return visibleBoardTasks.filter((task) => {
       const workspaceName = workspaceNames.get(task.workspaceId) ?? "";
-      return [task.title, task.description, workspaceName, task.runnerType, task.column]
+      const teamName = task.teamId ? teamNames.get(task.teamId) ?? "" : "";
+      return [task.title, task.description, workspaceName, teamName, task.runnerType, task.column]
         .join(" ")
         .toLowerCase()
         .includes(query);
     });
-  }, [searchQuery, visibleBoardTasks, workspaceNames]);
+  }, [searchQuery, teamNames, visibleBoardTasks, workspaceNames]);
 
   const selectedWorkspaceName = useMemo(() => {
     if (board.selectedWorkspaceId === "all") {
@@ -247,11 +270,13 @@ function ReactAppShell() {
       <Sidebar
         workspaces={workspaces}
         allTasks={allTasks}
+        teamCount={teams.length}
         selectedWorkspaceId={board.selectedWorkspaceId}
         collapsed={board.sidebarCollapsed}
         onToggleCollapse={board.toggleSidebarCollapsed}
         onSelectWorkspace={board.setWorkspaceSelection}
         onAddWorkspace={() => board.setWorkspaceModalOpen(true)}
+        onOpenTeams={() => board.setTeamModalOpen(true)}
         onOpenWorkspaceSettings={() => board.setWorkspaceSettingsModalOpen(true)}
         onOpenGlobalSettings={() => board.setGlobalSettingsModalOpen(true)}
       />
@@ -301,6 +326,7 @@ function ReactAppShell() {
                 <Board
                   tasks={boardTasks}
                   allTasks={allTasks}
+                  teams={teams}
                   workspaces={workspaces}
                   reviewMonitor={reviewMonitor}
                   selectedTaskId={board.selectedTask?.id ?? null}
@@ -368,6 +394,7 @@ function ReactAppShell() {
       <TaskModal
         open={board.taskModalOpen}
         workspaces={workspaces}
+        teams={teams}
         selectedWorkspaceId={board.selectedWorkspaceId}
         settings={board.settingsQuery.data ?? null}
         submitting={board.isCreatingTask}
@@ -375,6 +402,34 @@ function ReactAppShell() {
         onSubmit={(values) => {
           return board.createTask(values).then(() => undefined);
         }}
+      />
+
+      <TeamManagementModal
+        open={board.teamModalOpen}
+        teams={teams}
+        workspaces={workspaces}
+        selectedWorkspaceId={board.selectedWorkspaceId}
+        loading={board.teamsQuery.isLoading}
+        error={
+          board.teamsQuery.error instanceof Error
+            ? board.teamsQuery.error.message
+            : null
+        }
+        submitting={board.isSavingTeam}
+        onClose={() => board.setTeamModalOpen(false)}
+        onCreateTeam={(values) => board.createTeam(values)}
+        onUpdateTeam={(teamId, values) =>
+          board.updateTeamData({
+            teamId,
+            body: {
+              name: values.name,
+              description: values.description,
+              prStrategy: values.prStrategy,
+              agents: values.agents
+            }
+          })
+        }
+        onDeleteTeam={(teamId) => board.deleteTeam(teamId)}
       />
     </div>
   );
@@ -403,6 +458,11 @@ function TaskDetailsRoute({
   }, [board.selectedTask?.id, board.setTaskSelection, taskId]);
 
   const task = taskId ? allTasks.find((entry) => entry.id === taskId) ?? null : null;
+  const team = useTeam(task?.teamId ?? null);
+  const teamMessages = useTeamMessages(
+    task?.teamId ?? null,
+    task ? task.parentTaskId ?? task.id : undefined
+  );
   const isSelectedTaskActive = task ? board.selectedTask?.id === task.id : false;
   const runs = isSelectedTaskActive ? board.selectedTaskRunsQuery.data ?? [] : [];
   const activeRunId = isSelectedTaskActive ? board.activeRunId : null;
@@ -465,6 +525,12 @@ function TaskDetailsRoute({
         allTasks={allTasks}
         runs={runs}
         workspaces={workspaces}
+        team={team.data ?? null}
+        teamMessages={teamMessages.data ?? []}
+        teamMessagesLoading={teamMessages.isLoading}
+        teamMessagesError={
+          teamMessages.error instanceof Error ? teamMessages.error.message : null
+        }
         selectedRunId={board.selectedRunId}
         runLogLoading={runLogQuery.isLoading}
         onBack={() => navigate("/")}

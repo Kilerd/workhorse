@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Draggable, Droppable } from "@hello-pangea/dnd";
-import type { Workspace } from "@workhorse/contracts";
+import type { AgentTeam, Workspace } from "@workhorse/contracts";
 
 import { formatRelativeTime, titleCase } from "@/lib/format";
 import { BOARD_COLUMNS, type DisplayTask, type DisplayTaskColumn } from "@/lib/task-view";
@@ -21,6 +21,7 @@ interface ReviewCountdown {
 interface Props {
   tasks: DisplayTask[];
   allTasks: DisplayTask[];
+  teams: AgentTeam[];
   workspaces: Workspace[];
   reviewMonitor: ReviewMonitor;
   selectedTaskId: string | null;
@@ -203,9 +204,17 @@ function shouldShowBlockedBy(column: DisplayTaskColumn) {
   return column === "blocked";
 }
 
+function resolveTeamAgentName(team: AgentTeam | null, teamAgentId?: string) {
+  if (!team || !teamAgentId) {
+    return null;
+  }
+  return team.agents.find((agent) => agent.id === teamAgentId)?.agentName ?? null;
+}
+
 export function Board({
   tasks,
   allTasks,
+  teams,
   workspaces,
   reviewMonitor,
   selectedTaskId,
@@ -224,6 +233,28 @@ export function Board({
     return acc;
   }, groupTasks());
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const teamMap = useMemo(
+    () => new Map<string, AgentTeam>(teams.map((team) => [team.id, team])),
+    [teams]
+  );
+  const childTaskMap = useMemo(() => {
+    const map = new Map<string, DisplayTask[]>();
+    for (const task of allTasks) {
+      if (!task.parentTaskId) {
+        continue;
+      }
+      const siblings = map.get(task.parentTaskId);
+      if (siblings) {
+        siblings.push(task);
+      } else {
+        map.set(task.parentTaskId, [task]);
+      }
+    }
+    for (const siblings of map.values()) {
+      siblings.sort((left, right) => left.order - right.order);
+    }
+    return map;
+  }, [allTasks]);
   const showReviewMonitor = tasks.some(
     (task) => task.column === "review" && Boolean(task.pullRequestUrl)
   );
@@ -267,6 +298,12 @@ export function Board({
                   const isActive = task.id === selectedTaskId;
                   const workspace = workspaces.find((entry) => entry.id === task.workspaceId);
                   const workspaceName = workspace?.name ?? "Unknown";
+                  const team = task.teamId ? teamMap.get(task.teamId) ?? null : null;
+                  const teamAgentName = resolveTeamAgentName(team, task.teamAgentId);
+                  const childTasks =
+                    task.teamId && !task.parentTaskId
+                      ? childTaskMap.get(task.id) ?? []
+                      : [];
                   const reviewCountdown =
                     task.column === "review" && task.pullRequestUrl
                       ? getReviewCountdown(reviewMonitor, nowMs)
@@ -312,6 +349,63 @@ export function Board({
                             <p className="mt-2 m-0 overflow-hidden text-[0.7rem] leading-[1.55] text-[var(--muted)] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
                               {task.description}
                             </p>
+                          ) : null}
+
+                          {team ? (
+                            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                              <span className="inline-flex min-h-5 items-center rounded-none border border-[rgba(73,214,196,0.26)] bg-[rgba(73,214,196,0.1)] px-1.5 font-mono text-[0.56rem] uppercase tracking-[0.1em] text-[var(--accent-strong)]">
+                                Team · {team.agents.length} agents
+                              </span>
+                              {task.parentTaskId ? (
+                                <span className="inline-flex min-h-5 items-center rounded-none border border-[rgba(104,199,246,0.24)] bg-[rgba(104,199,246,0.1)] px-1.5 font-mono text-[0.56rem] uppercase tracking-[0.1em] text-[var(--info)]">
+                                  Subtask{teamAgentName ? ` · ${teamAgentName}` : ""}
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : null}
+
+                          {!task.parentTaskId && childTasks.length > 0 ? (
+                            <div className="mt-3 grid gap-2 border-t border-border pt-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-mono text-[0.58rem] uppercase tracking-[0.12em] text-[var(--accent)]">
+                                  Team subtasks
+                                </span>
+                                <span className="text-[0.68rem] text-[var(--muted)]">
+                                  {childTasks.length} total
+                                </span>
+                              </div>
+                              {(isActive ? childTasks : childTasks.slice(0, 3)).map((childTask) => {
+                                const childAgentName = resolveTeamAgentName(team, childTask.teamAgentId);
+                                return (
+                                  <button
+                                    key={childTask.id}
+                                    type="button"
+                                    className="grid gap-1 rounded-none border border-border bg-[var(--surface-soft)] px-2.5 py-2 text-left transition-colors hover:bg-[var(--surface-hover)]"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      onTaskOpen(childTask.id);
+                                    }}
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="text-[0.72rem] font-medium leading-[1.35]">
+                                        {childTask.title}
+                                      </span>
+                                      <span className="font-mono text-[0.58rem] uppercase tracking-[0.08em] text-[var(--muted)]">
+                                        {titleCase(childTask.column)}
+                                      </span>
+                                    </div>
+                                    <span className="text-[0.66rem] text-[var(--muted)]">
+                                      {childAgentName ?? "Unassigned agent"}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                              {!isActive && childTasks.length > 3 ? (
+                                <span className="text-[0.68rem] text-[var(--muted)]">
+                                  +{childTasks.length - 3} more subtasks
+                                </span>
+                              ) : null}
+                            </div>
                           ) : null}
 
                           {showBlockedBy && blockedByEntries.length > 0 ? (

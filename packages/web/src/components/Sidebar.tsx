@@ -7,11 +7,13 @@ import { cn } from "@/lib/utils";
 interface Props {
   workspaces: Workspace[];
   allTasks: DisplayTask[];
+  teamCount: number;
   selectedWorkspaceId: string | "all";
   collapsed: boolean;
   onToggleCollapse(): void;
   onSelectWorkspace(id: string | "all"): void;
   onAddWorkspace(): void;
+  onOpenTeams(): void;
   onOpenWorkspaceSettings(): void;
   onOpenGlobalSettings(): void;
 }
@@ -46,11 +48,13 @@ function shortenPath(rootPath: string): string {
 export function Sidebar({
   workspaces,
   allTasks,
+  teamCount,
   selectedWorkspaceId,
   collapsed,
   onToggleCollapse,
   onSelectWorkspace,
   onAddWorkspace,
+  onOpenTeams,
   onOpenWorkspaceSettings,
   onOpenGlobalSettings
 }: Props) {
@@ -166,6 +170,19 @@ export function Sidebar({
         >
           <span className="text-[0.85rem]">+</span>
           <span>Add Workspace</span>
+        </button>
+        <button
+          type="button"
+          onClick={onOpenTeams}
+          className="flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-[0.75rem] text-[var(--muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-foreground"
+        >
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" className="shrink-0 opacity-60">
+            <path d="M5.5 7a2 2 0 1 0-1.999-2A2 2 0 0 0 5.5 7Zm5 1.5a1.75 1.75 0 1 0-1.749-1.75A1.75 1.75 0 0 0 10.5 8.5ZM3 12.75C3 11.231 4.481 10 6.5 10s3.5 1.231 3.5 2.75V13H3Zm7.5.25v-.25c0-.783-.24-1.516-.685-2.113.21-.09.442-.137.685-.137 1.38 0 2.5.895 2.5 2V13h-2.5Z" />
+          </svg>
+          <span className="flex-1 text-left">Manage Teams</span>
+          <span className="font-mono text-[0.62rem] uppercase tracking-[0.08em]">
+            {teamCount}
+          </span>
         </button>
         {selectedWorkspaceId !== "all" ? (
           <button

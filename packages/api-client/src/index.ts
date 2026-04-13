@@ -1,11 +1,17 @@
 import { Fetcher, type Middleware } from "openapi-typescript-fetch";
 
 import type {
+  AgentTeamData,
   CleanupTaskWorktreeData,
+  CreateTeamBody,
   CreateTaskBody,
   CreateWorkspaceBody,
   DeleteResult,
+  GetTeamParams,
   HealthData,
+  TeamMessagesData,
+  ListTeamMessagesQuery,
+  ListTeamsData,
   ListRunsData,
   ListTasksData,
   ListWorkspacesData,
@@ -23,6 +29,7 @@ import type {
   TaskDiffData,
   TaskInputBody,
   TaskInputData,
+  UpdateTeamBody,
   UpdateSettingsBody,
   UpdateTaskBody,
   UpdateWorkspaceBody,
@@ -77,6 +84,21 @@ export function createApiClient(baseUrl: string) {
   const deleteWorkspace = fetcher
     .path("/api/workspaces/{workspaceId}")
     .method("delete")
+    .create();
+  const listTeams = fetcher.path("/api/teams").method("get").create();
+  const createTeam = fetcher.path("/api/teams").method("post").create();
+  const getTeam = fetcher.path("/api/teams/{teamId}").method("get").create();
+  const updateTeam = fetcher
+    .path("/api/teams/{teamId}")
+    .method("patch")
+    .create();
+  const deleteTeam = fetcher
+    .path("/api/teams/{teamId}")
+    .method("delete")
+    .create();
+  const listTeamMessages = fetcher
+    .path("/api/teams/{teamId}/messages")
+    .method("get")
     .create();
 
   const listTasks = fetcher.path("/api/tasks").method("get").create();
@@ -192,6 +214,24 @@ export function createApiClient(baseUrl: string) {
       ),
     deleteWorkspace: async (workspaceId: string): Promise<DeleteResult> =>
       unwrap((await deleteWorkspace({ workspaceId })).data),
+    listTeams: async (workspaceId?: string): Promise<ListTeamsData> =>
+      unwrap((await listTeams(workspaceId ? { workspaceId } : {})).data),
+    createTeam: async (body: CreateTeamBody): Promise<AgentTeamData> =>
+      unwrap((await createTeam(body)).data),
+    getTeam: async (teamId: GetTeamParams["teamId"]): Promise<AgentTeamData> =>
+      unwrap((await getTeam({ teamId })).data),
+    updateTeam: async (
+      teamId: GetTeamParams["teamId"],
+      body: UpdateTeamBody
+    ): Promise<AgentTeamData> =>
+      unwrap((await updateTeam({ teamId, ...body })).data),
+    deleteTeam: async (teamId: GetTeamParams["teamId"]): Promise<DeleteResult> =>
+      unwrap((await deleteTeam({ teamId })).data),
+    listTeamMessages: async (
+      teamId: GetTeamParams["teamId"],
+      query: ListTeamMessagesQuery = {}
+    ): Promise<TeamMessagesData> =>
+      unwrap((await listTeamMessages({ teamId, ...query })).data),
     listTasks: async (workspaceId?: string): Promise<ListTasksData> =>
       unwrap((await listTasks(workspaceId ? { workspaceId } : {})).data),
     createTask: async (body: CreateTaskBody): Promise<TaskData> =>

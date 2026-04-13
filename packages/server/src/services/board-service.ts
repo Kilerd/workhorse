@@ -1139,6 +1139,21 @@ export class BoardService {
 
   public async createTask(input: CreateTaskBody): Promise<Task> {
     const workspace = this.requireWorkspace(input.workspaceId);
+    const team = input.teamId ? this.store.getTeam(input.teamId) : null;
+    if (input.teamId && !team) {
+      throw new AppError(
+        400,
+        "INVALID_TEAM",
+        "The specified team does not exist"
+      );
+    }
+    if (team && team.workspaceId !== workspace.id) {
+      throw new AppError(
+        400,
+        "INVALID_TEAM",
+        "Team must belong to the selected workspace"
+      );
+    }
 
     const description = input.description?.trim() ?? "";
     const providedTitle = input.title.trim();
@@ -1165,7 +1180,17 @@ export class BoardService {
     if (!title) {
       throw new AppError(400, "INVALID_TASK", "Task title is required");
     }
-    this.ensureRunnerConfig(input.runnerType, input.runnerConfig);
+    const coordinator = team?.agents.find((agent) => agent.role === "coordinator");
+    if (team && !coordinator) {
+      throw new AppError(
+        400,
+        "INVALID_TEAM",
+        "Team must have exactly 1 coordinator"
+      );
+    }
+    const runnerType = coordinator?.runnerConfig.type ?? input.runnerType;
+    const runnerConfig = coordinator?.runnerConfig ?? input.runnerConfig;
+    this.ensureRunnerConfig(runnerType, runnerConfig);
     const existingTasks = this.store.listTasks();
     const taskId = createId();
     const baseRef = workspace.isGitRepo
@@ -1202,10 +1227,11 @@ export class BoardService {
       workspaceId: workspace.id,
       column,
       order: input.order ?? this.nextOrder(column),
-      runnerType: input.runnerType,
-      runnerConfig: input.runnerConfig,
+      runnerType,
+      runnerConfig,
       dependencies: [],
       worktree,
+      teamId: team?.id,
       createdAt: now,
       updatedAt: now
     };

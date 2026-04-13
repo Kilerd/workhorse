@@ -1122,6 +1122,406 @@
           }
         ]
       }
+    },
+    "/api/tasks/{taskId}/dependencies": {
+      "put": {
+        "operationId": "setTaskDependencies",
+        "summary": "Set task dependency list",
+        "tags": [
+          "Tasks"
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated task",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskDependenciesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error or cycle detected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetTaskDependenciesBody"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "getTaskDependencies",
+        "summary": "Get task dependencies",
+        "tags": [
+          "Tasks"
+        ],
+        "responses": {
+          "200": {
+            "description": "Task with dependencies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskDependenciesResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/scheduler/status": {
+      "get": {
+        "operationId": "getSchedulerStatus",
+        "summary": "Get task scheduler status",
+        "tags": [
+          "Scheduler"
+        ],
+        "responses": {
+          "200": {
+            "description": "Scheduler status snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchedulerStatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/scheduler/evaluate": {
+      "post": {
+        "operationId": "evaluateScheduler",
+        "summary": "Manually trigger scheduler evaluation",
+        "tags": [
+          "Scheduler"
+        ],
+        "responses": {
+          "200": {
+            "description": "Evaluation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchedulerEvaluateResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/teams": {
+      "get": {
+        "operationId": "listTeams",
+        "summary": "List agent teams",
+        "tags": [
+          "Teams"
+        ],
+        "responses": {
+          "200": {
+            "description": "Team collection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamsResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "operationId": "createTeam",
+        "summary": "Create an agent team",
+        "tags": [
+          "Teams"
+        ],
+        "responses": {
+          "201": {
+            "description": "Created team",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTeamResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTeamBody"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/teams/{teamId}": {
+      "get": {
+        "operationId": "getTeam",
+        "summary": "Get an agent team",
+        "tags": [
+          "Teams"
+        ],
+        "responses": {
+          "200": {
+            "description": "Team details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTeamResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Team not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "teamId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "updateTeam",
+        "summary": "Update an agent team",
+        "tags": [
+          "Teams"
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated team",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTeamResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Team not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "teamId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTeamBody"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteTeam",
+        "summary": "Delete an agent team",
+        "tags": [
+          "Teams"
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted team id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteTeamResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Team not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "teamId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/teams/{teamId}/messages": {
+      "get": {
+        "operationId": "listTeamMessages",
+        "summary": "List messages for a team",
+        "tags": [
+          "Teams"
+        ],
+        "responses": {
+          "200": {
+            "description": "Team message collection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamMessagesResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Team not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "teamId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "parentTaskId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -1193,6 +1593,9 @@
           },
           "openRouter": {
             "$ref": "#/components/schemas/OpenRouterSettings"
+          },
+          "scheduler": {
+            "$ref": "#/components/schemas/SchedulerSettings"
           }
         },
         "required": [
@@ -1218,6 +1621,34 @@
           "token",
           "model"
         ]
+      },
+      "SchedulerSettings": {
+        "type": "object",
+        "properties": {
+          "maxConcurrent": {
+            "type": "number"
+          },
+          "maxPerRunner": {
+            "$ref": "#/components/schemas/PartialRecordRunnerTypenumber"
+          }
+        },
+        "required": []
+      },
+      "PartialRecordRunnerTypenumber": {
+        "type": "object",
+        "properties": {
+          "claude": {
+            "type": "number"
+          },
+          "codex": {
+            "type": "number"
+          },
+          "shell": {
+            "type": "number"
+          }
+        },
+        "required": [],
+        "description": "Make all properties in T optional"
       },
       "Workspace": {
         "type": "object",
@@ -1445,6 +1876,13 @@
           "runnerConfig": {
             "$ref": "#/components/schemas/RunnerConfig"
           },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Task IDs that must be \"done\" before this task can start"
+          },
           "plan": {
             "type": "string"
           },
@@ -1463,6 +1901,18 @@
           "pullRequest": {
             "$ref": "#/components/schemas/TaskPullRequest"
           },
+          "teamId": {
+            "type": "string",
+            "description": "When set, this task belongs to an agent team."
+          },
+          "parentTaskId": {
+            "type": "string",
+            "description": "When set, this task is a subtask created by a team coordinator."
+          },
+          "teamAgentId": {
+            "type": "string",
+            "description": "The TeamAgent.id responsible for this subtask."
+          },
           "createdAt": {
             "type": "string"
           },
@@ -1479,6 +1929,7 @@
           "order",
           "runnerType",
           "runnerConfig",
+          "dependencies",
           "worktree",
           "createdAt",
           "updatedAt"
@@ -1486,11 +1937,6 @@
       },
       "TaskColumn": {
         "oneOf": [
-          {
-            "enum": [
-              "review"
-            ]
-          },
           {
             "enum": [
               "backlog"
@@ -1503,7 +1949,17 @@
           },
           {
             "enum": [
+              "blocked"
+            ]
+          },
+          {
+            "enum": [
               "running"
+            ]
+          },
+          {
+            "enum": [
+              "review"
             ]
           },
           {
@@ -1807,8 +2263,7 @@
           "status",
           "runnerType",
           "command",
-          "startedAt",
-          "logFile"
+          "startedAt"
         ]
       },
       "RunStatus": {
@@ -1878,6 +2333,15 @@
               "token",
               "model"
             ]
+          },
+          "scheduler": {
+            "type": "object",
+            "properties": {
+              "maxConcurrent": {
+                "type": "number"
+              }
+            },
+            "required": []
           }
         },
         "required": [
@@ -1997,16 +2461,14 @@
           "workspaceId": {
             "type": "string"
           },
+          "teamId": {
+            "type": "string"
+          },
           "worktreeBaseRef": {
             "type": "string"
           },
           "column": {
             "oneOf": [
-              {
-                "enum": [
-                  "review"
-                ]
-              },
               {
                 "enum": [
                   "backlog"
@@ -2019,7 +2481,17 @@
               },
               {
                 "enum": [
+                  "blocked"
+                ]
+              },
+              {
+                "enum": [
                   "running"
+                ]
+              },
+              {
+                "enum": [
+                  "review"
                 ]
               },
               {
@@ -2081,11 +2553,6 @@
             "oneOf": [
               {
                 "enum": [
-                  "review"
-                ]
-              },
-              {
-                "enum": [
                   "backlog"
                 ]
               },
@@ -2096,7 +2563,17 @@
               },
               {
                 "enum": [
+                  "blocked"
+                ]
+              },
+              {
+                "enum": [
                   "running"
+                ]
+              },
+              {
+                "enum": [
+                  "review"
                 ]
               },
               {
@@ -3049,11 +3526,6 @@
         "oneOf": [
           {
             "enum": [
-              "plan"
-            ]
-          },
-          {
-            "enum": [
               "system"
             ]
           },
@@ -3080,6 +3552,11 @@
           {
             "enum": [
               "tool_output"
+            ]
+          },
+          {
+            "enum": [
+              "plan"
             ]
           },
           {
@@ -3247,6 +3724,624 @@
         "required": [
           "usedPercent",
           "remainingPercent"
+        ]
+      },
+      "SetTaskDependenciesParams": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      },
+      "SetTaskDependenciesBody": {
+        "type": "object",
+        "properties": {
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "dependencies"
+        ]
+      },
+      "GetTaskDependenciesParams": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      },
+      "TaskDependenciesResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/TaskDependenciesData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "TaskDependenciesData": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "$ref": "#/components/schemas/Task"
+          }
+        },
+        "required": [
+          "task"
+        ]
+      },
+      "SchedulerStatusResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/SchedulerStatusData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "SchedulerStatusData": {
+        "type": "object",
+        "properties": {
+          "running": {
+            "type": "number"
+          },
+          "queued": {
+            "type": "number"
+          },
+          "blocked": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "running",
+          "queued",
+          "blocked"
+        ]
+      },
+      "SchedulerEvaluateResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/SchedulerEvaluateData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "SchedulerEvaluateData": {
+        "type": "object",
+        "properties": {
+          "started": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "blocked": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "started",
+          "blocked"
+        ]
+      },
+      "AgentTeam": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string"
+          },
+          "agents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TeamAgent"
+            }
+          },
+          "prStrategy": {
+            "$ref": "#/components/schemas/TeamPrStrategy",
+            "description": "Strategy for creating pull requests from subtask branches."
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "workspaceId",
+          "agents",
+          "prStrategy",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "TeamAgent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique agent identifier within the team (nanoid)."
+          },
+          "agentName": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/AgentRole"
+          },
+          "runnerConfig": {
+            "$ref": "#/components/schemas/RunnerConfig"
+          }
+        },
+        "required": [
+          "id",
+          "agentName",
+          "role",
+          "runnerConfig"
+        ]
+      },
+      "AgentRole": {
+        "oneOf": [
+          {
+            "enum": [
+              "coordinator"
+            ]
+          },
+          {
+            "enum": [
+              "worker"
+            ]
+          }
+        ]
+      },
+      "TeamPrStrategy": {
+        "oneOf": [
+          {
+            "enum": [
+              "independent"
+            ]
+          },
+          {
+            "enum": [
+              "stacked"
+            ]
+          },
+          {
+            "enum": [
+              "single"
+            ]
+          }
+        ]
+      },
+      "TeamMessage": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "teamId": {
+            "type": "string"
+          },
+          "parentTaskId": {
+            "type": "string",
+            "description": "Parent team task that owns this execution thread."
+          },
+          "taskId": {
+            "type": "string",
+            "description": "The task this message is associated with (subtask or parent task)."
+          },
+          "agentName": {
+            "type": "string",
+            "description": "Name of the agent or user that sent the message."
+          },
+          "senderType": {
+            "$ref": "#/components/schemas/TeamMessageSenderType",
+            "description": "Whether the message was sent by an agent, human, or the system."
+          },
+          "messageType": {
+            "$ref": "#/components/schemas/TeamMessageType",
+            "description": "Semantic message category for prompt injection and UI rendering."
+          },
+          "content": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "teamId",
+          "parentTaskId",
+          "agentName",
+          "senderType",
+          "messageType",
+          "content",
+          "createdAt"
+        ]
+      },
+      "TeamMessageSenderType": {
+        "oneOf": [
+          {
+            "enum": [
+              "system"
+            ]
+          },
+          {
+            "enum": [
+              "agent"
+            ]
+          },
+          {
+            "enum": [
+              "human"
+            ]
+          }
+        ]
+      },
+      "TeamMessageType": {
+        "oneOf": [
+          {
+            "enum": [
+              "status"
+            ]
+          },
+          {
+            "enum": [
+              "artifact"
+            ]
+          },
+          {
+            "enum": [
+              "context"
+            ]
+          },
+          {
+            "enum": [
+              "feedback"
+            ]
+          }
+        ]
+      },
+      "CreateTeamBody": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string"
+          },
+          "prStrategy": {
+            "oneOf": [
+              {
+                "enum": [
+                  "independent"
+                ]
+              },
+              {
+                "enum": [
+                  "stacked"
+                ]
+              },
+              {
+                "enum": [
+                  "single"
+                ]
+              }
+            ]
+          },
+          "agents": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "agentName": {
+                  "type": "string"
+                },
+                "role": {
+                  "$ref": "#/components/schemas/AgentRole"
+                },
+                "runnerConfig": {
+                  "$ref": "#/components/schemas/RunnerConfig"
+                }
+              },
+              "required": [
+                "id",
+                "agentName",
+                "role",
+                "runnerConfig"
+              ]
+            }
+          }
+        },
+        "required": [
+          "name",
+          "workspaceId",
+          "agents"
+        ]
+      },
+      "UpdateTeamParams": {
+        "type": "object",
+        "properties": {
+          "teamId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "teamId"
+        ]
+      },
+      "UpdateTeamBody": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "prStrategy": {
+            "oneOf": [
+              {
+                "enum": [
+                  "independent"
+                ]
+              },
+              {
+                "enum": [
+                  "stacked"
+                ]
+              },
+              {
+                "enum": [
+                  "single"
+                ]
+              }
+            ]
+          },
+          "agents": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "agentName": {
+                  "type": "string"
+                },
+                "role": {
+                  "$ref": "#/components/schemas/AgentRole"
+                },
+                "runnerConfig": {
+                  "$ref": "#/components/schemas/RunnerConfig"
+                }
+              },
+              "required": [
+                "id",
+                "agentName",
+                "role",
+                "runnerConfig"
+              ]
+            }
+          }
+        },
+        "required": []
+      },
+      "GetTeamParams": {
+        "type": "object",
+        "properties": {
+          "teamId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "teamId"
+        ]
+      },
+      "DeleteTeamParams": {
+        "type": "object",
+        "properties": {
+          "teamId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "teamId"
+        ]
+      },
+      "ListTeamMessagesParams": {
+        "type": "object",
+        "properties": {
+          "teamId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "teamId"
+        ]
+      },
+      "ListTeamMessagesQuery": {
+        "type": "object",
+        "properties": {
+          "parentTaskId": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "ListTeamsQuery": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "TeamsResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/ListTeamsData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "ListTeamsData": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentTeam"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "AgentTeamResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/AgentTeamData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "AgentTeamData": {
+        "type": "object",
+        "properties": {
+          "team": {
+            "$ref": "#/components/schemas/AgentTeam"
+          }
+        },
+        "required": [
+          "team"
+        ]
+      },
+      "DeleteTeamResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/DeleteResult"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "TeamMessagesResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/TeamMessagesData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "TeamMessagesData": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TeamMessage"
+            }
+          }
+        },
+        "required": [
+          "items"
         ]
       }
     }
