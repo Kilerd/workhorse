@@ -22,6 +22,10 @@ export function deriveTaskBranchName(taskId: string, title: string): string {
   return `task/${branchSegmentWithTaskId(taskId, title)}`;
 }
 
+export function deriveTeamSubtaskBranchName(teamId: string, taskId: string, title: string): string {
+  return `team/${teamId}/${taskId}-${slugifySegment(title, taskId)}`;
+}
+
 interface BranchSegmentOptions {
   preserveAutoTaskId?: boolean;
 }

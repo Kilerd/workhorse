@@ -42,7 +42,7 @@ import { resolveWorkspaceCodexSettings } from "../lib/codex-settings.js";
 import { createId } from "../lib/id.js";
 import { parseUnifiedDiff, type DiffFile } from "../lib/diff-parser.js";
 import { createRunLogEntry } from "../lib/run-log.js";
-import { createTaskWorktree } from "../lib/task-worktree.js";
+import { createTaskWorktree, deriveTeamSubtaskBranchName } from "../lib/task-worktree.js";
 import { resolveGlobalSettings } from "../lib/global-settings.js";
 import { resolveWorkspacePromptTemplates } from "../lib/workspace-prompt-templates.js";
 import { StateStore } from "../persistence/state-store.js";
@@ -86,6 +86,10 @@ import {
   truncateTeamMessagePayload,
   type TeamAgentContext
 } from "./team-coordinator-service.js";
+import {
+  buildSubtaskArtifactPayload,
+  buildSubtaskStatusPayload
+} from "./team-subtask-service.js";
 
 interface BoardServiceDependencies {
   gitWorktrees?: GitWorktreeService;
@@ -429,11 +433,16 @@ export class BoardService {
   }
 
   private async handleTeamRunFinished(task: Task, run: Run): Promise<void> {
-    if (!task.teamId || task.parentTaskId || run.status !== "succeeded") {
+    if (!task.teamId) {
       return;
     }
 
-    if (run.metadata?.trigger !== "team_coordinator") {
+    if (task.parentTaskId) {
+      await this.handleSubtaskRunFinished(task, run);
+      return;
+    }
+
+    if (run.status !== "succeeded" || run.metadata?.trigger !== "team_coordinator") {
       return;
     }
 
@@ -546,6 +555,247 @@ export class BoardService {
     }
   }
 
+  private async handleSubtaskRunFinished(task: Task, run: Run): Promise<void> {
+    if (run.status !== "succeeded" && run.status !== "failed") {
+      return;
+    }
+
+    const team = this.getTeam(task.teamId!);
+    const agent = this.resolveAssignedTeamAgent(team, task);
+    const now = new Date().toISOString();
+
+    // A-type: status message
+    const statusPayload = buildSubtaskStatusPayload(task, run);
+    this.store.appendTeamMessage({
+      id: createId(),
+      teamId: team.id,
+      parentTaskId: task.parentTaskId!,
+      taskId: task.id,
+      agentName: agent.agentName,
+      senderType: "agent",
+      messageType: "status",
+      content: statusPayload,
+      createdAt: now
+    });
+    this.events.publish(
+      buildTeamAgentMessageEvent({
+        teamId: team.id,
+        parentTaskId: task.parentTaskId!,
+        fromAgentId: agent.id,
+        messageType: "status",
+        payload: statusPayload
+      })
+    );
+
+    if (run.status === "succeeded") {
+      // B-type: artifact message — generated before auto-advancing to "done" so that
+      // the aggregation check (triggered by other subtasks) cannot fire before this
+      // artifact message is persisted. Best-effort: skip on git errors.
+      try {
+        const worktreePath = task.worktree.path;
+        const diff =
+          worktreePath && task.worktree.baseRef
+            ? await this.gitWorktrees.getWorktreeDiff(worktreePath, task.worktree.baseRef)
+            : "";
+        const artifactPayload = buildSubtaskArtifactPayload({
+          diff,
+          pullRequestUrl: task.pullRequestUrl
+        });
+        this.store.appendTeamMessage({
+          id: createId(),
+          teamId: team.id,
+          parentTaskId: task.parentTaskId!,
+          taskId: task.id,
+          agentName: agent.agentName,
+          senderType: "agent",
+          messageType: "artifact",
+          content: artifactPayload,
+          createdAt: now
+        });
+        this.events.publish(
+          buildTeamAgentMessageEvent({
+            teamId: team.id,
+            parentTaskId: task.parentTaskId!,
+            fromAgentId: agent.id,
+            messageType: "artifact",
+            payload: artifactPayload
+          })
+        );
+      } catch {
+        // Best-effort: git diff not critical for team coordination
+      }
+
+      // Move succeeded subtask to "done" after artifact is persisted —
+      // subtasks are owned by the coordinator and don't require a human review step.
+      const doneTask = await this.store.updateState((state) => {
+        const idx = state.tasks.findIndex((t) => t.id === task.id);
+        if (idx === -1) {
+          return null;
+        }
+        const entry = state.tasks[idx]!;
+        if (entry.column !== "review") {
+          return null;
+        }
+        entry.column = "done";
+        entry.order = this.nextOrderFromTasks("done", state.tasks);
+        entry.updatedAt = new Date().toISOString();
+        return { ...entry };
+      });
+
+      if (doneTask) {
+        this.events.publish({
+          type: "task.updated",
+          action: "updated",
+          taskId: doneTask.id,
+          task: doneTask
+        });
+      }
+    }
+
+    await this.checkAndHandleTeamCompletion(task.parentTaskId!, team.id);
+  }
+
+  private async checkAndHandleTeamCompletion(
+    parentTaskId: string,
+    teamId: string
+  ): Promise<void> {
+    type AggregationResult =
+      | { action: "all_done"; parent: Task; subtasks: Task[] }
+      | { action: "some_failed"; parent: Task; failedSubtasks: Task[] };
+
+    // Read subtask state and update the parent atomically in one updateState call
+    // to prevent TOCTOU races when multiple subtasks complete concurrently.
+    const result = await this.store.updateState(
+      (state): AggregationResult | null => {
+        const subtasks = state.tasks.filter(
+          (t) => t.parentTaskId === parentTaskId && t.teamId === teamId
+        );
+        if (subtasks.length === 0) {
+          return null;
+        }
+
+        // Subtasks in "done" = succeeded. Subtasks in "review" = failed (run failed, awaits human).
+        // Subtasks in todo/blocked/running = still in progress.
+        const stillInProgress = subtasks.some(
+          (t) => t.column === "todo" || t.column === "blocked" || t.column === "running"
+        );
+        if (stillInProgress) {
+          return null;
+        }
+
+        const parentIndex = state.tasks.findIndex((t) => t.id === parentTaskId);
+        if (parentIndex === -1) {
+          return null;
+        }
+        const parent = state.tasks[parentIndex]!;
+        // Idempotence guard: only act if parent is still running
+        if (parent.column !== "running") {
+          return null;
+        }
+
+        const failedSubtasks = subtasks.filter((t) => t.column === "review");
+        const now = new Date().toISOString();
+
+        if (failedSubtasks.length > 0) {
+          parent.column = "blocked";
+          parent.order = this.topOrderFromTasks("blocked", state.tasks, parent.id);
+          parent.updatedAt = now;
+          return {
+            action: "some_failed",
+            parent: { ...parent },
+            failedSubtasks: failedSubtasks.map((t) => ({ ...t }))
+          };
+        }
+
+        parent.column = "review";
+        parent.order = this.topOrderFromTasks("review", state.tasks, parent.id);
+        parent.updatedAt = now;
+        return {
+          action: "all_done",
+          parent: { ...parent },
+          subtasks: subtasks.map((t) => ({ ...t }))
+        };
+      }
+    );
+
+    if (!result) {
+      return;
+    }
+
+    const now = new Date().toISOString();
+
+    if (result.action === "all_done") {
+      const summaryLines = [
+        "All subtasks completed successfully:",
+        ...result.subtasks.map((t) => `- ${t.title}`)
+      ];
+      const payload = truncateTeamMessagePayload(summaryLines.join("\n"));
+      this.store.appendTeamMessage({
+        id: createId(),
+        teamId,
+        parentTaskId,
+        taskId: parentTaskId,
+        agentName: "system",
+        senderType: "system",
+        messageType: "status",
+        content: payload,
+        createdAt: now
+      });
+      this.events.publish({
+        type: "task.updated",
+        action: "updated",
+        taskId: result.parent.id,
+        task: result.parent
+      });
+      this.events.publish(
+        buildTeamAgentMessageEvent({
+          teamId,
+          parentTaskId,
+          fromAgentId: "system",
+          messageType: "status",
+          payload
+        })
+      );
+    } else {
+      const summaryLines = [
+        "Team execution failed. The following subtasks did not complete:",
+        ...result.failedSubtasks.map((t) => `- ${t.title}`)
+      ];
+      const payload = truncateTeamMessagePayload(summaryLines.join("\n"));
+      this.store.appendTeamMessage({
+        id: createId(),
+        teamId,
+        parentTaskId,
+        taskId: parentTaskId,
+        agentName: "system",
+        senderType: "system",
+        messageType: "status",
+        content: payload,
+        createdAt: now
+      });
+      this.events.publish({
+        type: "task.updated",
+        action: "updated",
+        taskId: result.parent.id,
+        task: result.parent
+      });
+      this.events.publish({
+        type: "task.blocked",
+        taskId: result.parent.id,
+        blockedBy: result.failedSubtasks.map((t) => t.id)
+      });
+      this.events.publish(
+        buildTeamAgentMessageEvent({
+          teamId,
+          parentTaskId,
+          fromAgentId: "system",
+          messageType: "status",
+          payload
+        })
+      );
+    }
+  }
+
   private async extractCoordinatorOutput(runId: string): Promise<string> {
     const entries = await this.store.readLogEntries(runId);
     const lastAgentEntry = [...entries].reverse().find((entry) => entry.kind === "agent");
@@ -634,7 +884,10 @@ export class BoardService {
           dependencies: dependencyIds,
           worktree: createTaskWorktree(taskId, draft.title, {
             workspace,
-            baseRef: workspace.isGitRepo ? parentTask.worktree.baseRef : undefined
+            baseRef: workspace.isGitRepo ? parentTask.worktree.baseRef : undefined,
+            branchName: workspace.isGitRepo
+              ? deriveTeamSubtaskBranchName(team.id, taskId, draft.title)
+              : undefined
           }),
           teamId: team.id,
           parentTaskId: parentTask.id,
