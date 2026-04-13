@@ -3,12 +3,14 @@ import { Fetcher, type Middleware } from "openapi-typescript-fetch";
 import type {
   AgentTeamData,
   CleanupTaskWorktreeData,
+  CoordinatorProposal,
   CreateTeamBody,
   CreateTaskBody,
   CreateWorkspaceBody,
   DeleteResult,
   GetTeamParams,
   HealthData,
+  ListProposalsQuery,
   TeamMessagesData,
   ListTeamMessagesQuery,
   ListTeamsData,
@@ -333,7 +335,47 @@ export function createApiClient(baseUrl: string) {
       queued: number;
       blocked: number;
     }> =>
-      unwrap(await requestJson("/api/scheduler/status"))
+      unwrap(await requestJson("/api/scheduler/status")),
+    listProposals: async (
+      teamId: string,
+      query: ListProposalsQuery = {}
+    ): Promise<{ items: CoordinatorProposal[] }> => {
+      const qs = query.parentTaskId
+        ? `?parentTaskId=${encodeURIComponent(query.parentTaskId)}`
+        : "";
+      return unwrap(
+        await requestJson(`/api/teams/${encodeURIComponent(teamId)}/proposals${qs}`)
+      );
+    },
+    getProposal: async (
+      teamId: string,
+      proposalId: string
+    ): Promise<{ proposal: CoordinatorProposal }> =>
+      unwrap(
+        await requestJson(
+          `/api/teams/${encodeURIComponent(teamId)}/proposals/${encodeURIComponent(proposalId)}`
+        )
+      ),
+    approveProposal: async (
+      teamId: string,
+      proposalId: string
+    ): Promise<{ proposal: CoordinatorProposal }> =>
+      unwrap(
+        await requestJson(
+          `/api/teams/${encodeURIComponent(teamId)}/proposals/${encodeURIComponent(proposalId)}/approve`,
+          { method: "POST" }
+        )
+      ),
+    rejectProposal: async (
+      teamId: string,
+      proposalId: string
+    ): Promise<{ proposal: CoordinatorProposal }> =>
+      unwrap(
+        await requestJson(
+          `/api/teams/${encodeURIComponent(teamId)}/proposals/${encodeURIComponent(proposalId)}/reject`,
+          { method: "POST" }
+        )
+      )
   };
 }
 

@@ -34,7 +34,9 @@ export function resolveGlobalSettings(
       token: settings?.openRouter?.token?.trim() ?? "",
       model: settings?.openRouter?.model?.trim() ?? ""
     },
-    ...(maxConcurrent !== undefined && maxConcurrent > 0
+    // maxConcurrent=0 is a valid value that disables automatic task scheduling;
+    // preserve it explicitly so tests and configs can pause the scheduler.
+    ...(maxConcurrent !== undefined && maxConcurrent >= 0
       ? { scheduler: { maxConcurrent } }
       : {})
   };

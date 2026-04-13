@@ -1,4 +1,4 @@
-import type { AgentTeam, Run, RunLogEntry, Task, Workspace } from "./domain.js";
+import type { AgentTeam, CoordinatorProposal, Run, RunLogEntry, Task, Workspace } from "./domain.js";
 
 export interface WorkspaceUpdatedEvent {
   type: "workspace.updated";
@@ -84,6 +84,20 @@ export interface TeamTaskCreatedEvent {
   }>;
 }
 
+export interface TeamProposalCreatedEvent {
+  type: "team.proposal.created";
+  teamId: string;
+  parentTaskId: string;
+  proposal: CoordinatorProposal;
+}
+
+export interface TeamProposalUpdatedEvent {
+  type: "team.proposal.updated";
+  teamId: string;
+  parentTaskId: string;
+  proposal: CoordinatorProposal;
+}
+
 export type ServerEvent =
   | WorkspaceUpdatedEvent
   | TaskUpdatedEvent
@@ -96,4 +110,6 @@ export type ServerEvent =
   | SchedulerEvaluatedEvent
   | TeamUpdatedEvent
   | TeamAgentMessageEvent
-  | TeamTaskCreatedEvent;
+  | TeamTaskCreatedEvent
+  | TeamProposalCreatedEvent
+  | TeamProposalUpdatedEvent;

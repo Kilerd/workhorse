@@ -101,6 +101,18 @@ export const teams = sqliteTable("teams", {
   updatedAt: text("updated_at").notNull()
 });
 
+export const coordinatorProposals = sqliteTable("coordinator_proposals", {
+  id: text("id").primaryKey(),
+  teamId: text("team_id")
+    .notNull()
+    .references(() => teams.id, { onDelete: "cascade" }),
+  parentTaskId: text("parent_task_id").notNull(),
+  status: text("status").notNull().default("pending"),
+  drafts: text("drafts").notNull(),
+  createdAt: text("created_at").notNull(),
+  decidedAt: text("decided_at")
+});
+
 export const teamMessages = sqliteTable("team_messages", {
   id: text("id").primaryKey(),
   teamId: text("team_id")

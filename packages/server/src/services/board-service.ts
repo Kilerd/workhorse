@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type {
   AgentTeam,
   AppState,
+  CoordinatorProposal,
   CreateTaskBody,
   CreateTeamBody,
   CreateWorkspaceBody,
@@ -12,6 +13,7 @@ import type {
   GlobalSettings,
   HealthCodexQuotaData,
   ListTasksQuery,
+  ListProposalsQuery,
   Run,
   RunnerConfig,
   StartTaskBody,
@@ -448,62 +450,40 @@ export class BoardService {
 
     try {
       const team = this.getTeam(task.teamId);
-      const coordinator = this.resolveCoordinatorAgent(team);
       const output = await this.extractCoordinatorOutput(run.id);
       const drafts = parseCoordinatorSubtasks(output);
-      const { parentTask, subtasks } = await this.createCoordinatorSubtasks(
-        task,
-        team,
-        drafts
-      );
 
-      const messageEvent = buildTeamAgentMessageEvent({
-        teamId: team.id,
-        parentTaskId: task.id,
-        fromAgentId: coordinator.id,
-        messageType: "context",
-        payload: this.buildCoordinatorSummary(subtasks, team)
-      });
-      this.store.appendTeamMessage({
+      // C1: cancel any existing pending proposal for this parent task so only
+      // the latest coordinator output is ever awaiting approval.
+      const existingPending = this.store
+        .listProposals(team.id, task.id)
+        .find((p) => p.status === "pending");
+      if (existingPending) {
+        this.store.updateProposalStatus(
+          existingPending.id,
+          "rejected",
+          new Date().toISOString()
+        );
+      }
+
+      const proposal: CoordinatorProposal = {
         id: createId(),
         teamId: team.id,
         parentTaskId: task.id,
-        taskId: task.id,
-        agentName: coordinator.agentName,
-        senderType: "agent",
-        messageType: messageEvent.messageType,
-        content: messageEvent.payload,
+        status: "pending",
+        drafts,
         createdAt: new Date().toISOString()
-      });
+      };
+      this.store.saveProposal(proposal);
 
+      // Parent task stays in "review" (already set by run-lifecycle-service).
+      // Publish the proposal event so the UI can prompt the user for approval.
       this.events.publish({
-        type: "task.updated",
-        action: "updated",
-        taskId: parentTask.id,
-        task: parentTask
+        type: "team.proposal.created",
+        teamId: team.id,
+        parentTaskId: task.id,
+        proposal
       });
-      for (const subtask of subtasks) {
-        this.events.publish({
-          type: "task.updated",
-          action: "created",
-          taskId: subtask.id,
-          task: subtask
-        });
-      }
-      this.events.publish(messageEvent);
-      this.events.publish(
-        buildTeamTaskCreatedEvent({
-          teamId: team.id,
-          parentTaskId: task.id,
-          subtasks: subtasks.map((subtask) => ({
-            taskId: subtask.id,
-            title: subtask.title,
-            agentName: this.resolveAssignedTeamAgent(team, subtask).agentName
-          }))
-        })
-      );
-
-      await this.scheduler.evaluate();
     } catch (error) {
       await this.restoreCoordinatorParentToReview(task.id);
       const message =
@@ -2267,6 +2247,130 @@ export class BoardService {
       return undefined;
     }
     return this.store.listRuns().find((run) => run.id === task.lastRunId)?.status;
+  }
+
+  // -------------------------------------------------------------------------
+  // Coordinator Proposals
+  // -------------------------------------------------------------------------
+
+  public listProposals(teamId: string, query: ListProposalsQuery): CoordinatorProposal[] {
+    this.getTeam(teamId);
+    return this.store.listProposals(teamId, query.parentTaskId);
+  }
+
+  public getProposal(teamId: string, proposalId: string): CoordinatorProposal {
+    this.getTeam(teamId);
+    const proposal = this.store.getProposal(proposalId);
+    if (!proposal || proposal.teamId !== teamId) {
+      throw new AppError(404, "PROPOSAL_NOT_FOUND", "Coordinator proposal not found");
+    }
+    return proposal;
+  }
+
+  public async approveProposal(teamId: string, proposalId: string): Promise<void> {
+    const proposal = this.getProposal(teamId, proposalId);
+
+    // C2: atomically claim the proposal before any async work to prevent
+    // concurrent approve calls from creating duplicate subtasks.
+    const now = new Date().toISOString();
+    const claimed = this.store.updateProposalStatusCAS(proposalId, "pending", "approved", now);
+    if (!claimed) {
+      throw new AppError(409, "PROPOSAL_ALREADY_DECIDED", "Proposal has already been approved or rejected");
+    }
+
+    // W3: use requireTask instead of a linear scan
+    const parentTask = this.requireTask(proposal.parentTaskId);
+
+    const team = this.getTeam(teamId);
+    let updatedParent: Task;
+    let subtasks: Task[];
+    try {
+      ({ parentTask: updatedParent, subtasks } = await this.createCoordinatorSubtasks(
+        parentTask,
+        team,
+        proposal.drafts
+      ));
+    } catch (error) {
+      // Roll back the CAS so the proposal can be re-approved after the error is resolved.
+      this.store.updateProposalStatus(proposalId, "pending", null);
+      throw error;
+    }
+
+    // Publish a coordinator context summary message to the team feed
+    const coordinator = this.resolveCoordinatorAgent(team);
+    const messageEvent = buildTeamAgentMessageEvent({
+      teamId: team.id,
+      parentTaskId: parentTask.id,
+      fromAgentId: coordinator.id,
+      messageType: "context",
+      payload: this.buildCoordinatorSummary(subtasks, team)
+    });
+    this.store.appendTeamMessage({
+      id: createId(),
+      teamId: team.id,
+      parentTaskId: parentTask.id,
+      taskId: parentTask.id,
+      agentName: coordinator.agentName,
+      senderType: "agent",
+      messageType: messageEvent.messageType,
+      content: messageEvent.payload,
+      createdAt: new Date().toISOString()
+    });
+
+    this.events.publish({
+      type: "task.updated",
+      action: "updated",
+      taskId: updatedParent.id,
+      task: updatedParent
+    });
+    for (const subtask of subtasks) {
+      this.events.publish({
+        type: "task.updated",
+        action: "created",
+        taskId: subtask.id,
+        task: subtask
+      });
+    }
+    this.events.publish(messageEvent);
+    this.events.publish(
+      buildTeamTaskCreatedEvent({
+        teamId: team.id,
+        parentTaskId: parentTask.id,
+        subtasks: subtasks.map((subtask) => ({
+          taskId: subtask.id,
+          title: subtask.title,
+          agentName: this.resolveAssignedTeamAgent(team, subtask).agentName
+        }))
+      })
+    );
+    // W1: notify the UI that the proposal status has changed
+    this.events.publish({
+      type: "team.proposal.updated",
+      teamId: team.id,
+      parentTaskId: parentTask.id,
+      proposal: claimed
+    });
+
+    await this.scheduler.evaluate();
+  }
+
+  public rejectProposal(teamId: string, proposalId: string): void {
+    const proposal = this.getProposal(teamId, proposalId);
+    if (proposal.status !== "pending") {
+      throw new AppError(409, "PROPOSAL_ALREADY_DECIDED", "Proposal has already been approved or rejected");
+    }
+    const now = new Date().toISOString();
+    const updated = this.store.updateProposalStatus(proposalId, "rejected", now);
+    // W1: notify the UI that the proposal status has changed
+    if (updated) {
+      this.events.publish({
+        type: "team.proposal.updated",
+        teamId: proposal.teamId,
+        parentTaskId: proposal.parentTaskId,
+        proposal: updated
+      });
+    }
+    // Parent task remains in "review" so the user can re-run the coordinator.
   }
 
   private nextOrder(column: Task["column"]): number {

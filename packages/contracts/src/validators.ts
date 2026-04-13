@@ -4,6 +4,7 @@ import type {
   AgentTeamResponse,
   ApproveTaskParams,
   ApiError,
+  ApproveProposalParams,
   CancelSubtaskParams,
   CreateTaskBody,
   CreateTeamBody,
@@ -16,9 +17,12 @@ import type {
   DeleteTeamResponse,
   DeleteWorkspaceParams,
   DeleteWorkspaceResponse,
+  GetProposalParams,
   GetTaskDependenciesParams,
   GetTeamParams,
   HealthResponse,
+  ListProposalsParams,
+  ListProposalsQuery,
   ListTeamMessagesQuery,
   ListTeamMessagesParams,
   ListTeamsQuery,
@@ -35,6 +39,7 @@ import type {
   PostTeamMessageParams,
   PlanTaskParams,
   PlanTaskResponse,
+  RejectProposalParams,
   RequestTaskReviewParams,
   RequestTaskReviewResponse,
   RejectTaskBody,
@@ -156,6 +161,17 @@ export const validatePostTeamMessageParams =
   typia.createValidate<PostTeamMessageParams>();
 export const validatePostTeamMessageBody =
   typia.createValidate<PostTeamMessageBody>();
+
+export const validateListProposalsParams =
+  typia.createValidate<ListProposalsParams>();
+export const validateListProposalsQuery =
+  typia.createValidate<ListProposalsQuery>();
+export const validateGetProposalParams =
+  typia.createValidate<GetProposalParams>();
+export const validateApproveProposalParams =
+  typia.createValidate<ApproveProposalParams>();
+export const validateRejectProposalParams =
+  typia.createValidate<RejectProposalParams>();
 
 export const schemaRegistry = {
   ApiError: () => typia.json.schema<ApiError>(),

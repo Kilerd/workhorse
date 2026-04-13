@@ -527,6 +527,11 @@ describe("team execution integration", () => {
 
     await service.startTask(parentTask.id);
     await waitForRunToFinish(service, parentTask.id);
+    const proposals = await waitFor(() => {
+      const items = service.listProposals(team.id, { parentTaskId: parentTask.id });
+      return items.length > 0 ? items : undefined;
+    });
+    await service.approveProposal(team.id, proposals[0]!.id);
     const subtask = await waitFor(() =>
       service.listTasks({}).find((task) => task.parentTaskId === parentTask.id)
     );
@@ -538,7 +543,7 @@ describe("team execution integration", () => {
     expect(reviewSubtask.lastRunStatus).toBe("succeeded");
     expect(reviewSubtask.rejected).toBe(false);
     expect(parent.column).toBe("running");
-  });
+  }, 15_000);
 
   it("auto-approves succeeded subtasks when autoApproveSubtasks is enabled", async () => {
     const coordinatorOutput = JSON.stringify([
@@ -578,6 +583,11 @@ describe("team execution integration", () => {
 
     await service.startTask(parentTask.id);
     await waitForRunToFinish(service, parentTask.id);
+    const proposals = await waitFor(() => {
+      const items = service.listProposals(team.id, { parentTaskId: parentTask.id });
+      return items.length > 0 ? items : undefined;
+    });
+    await service.approveProposal(team.id, proposals[0]!.id);
     const subtask = await waitFor(() =>
       service.listTasks({}).find((task) => task.parentTaskId === parentTask.id)
     );
@@ -588,7 +598,7 @@ describe("team execution integration", () => {
     expect(doneSubtask.lastRunStatus).toBe("succeeded");
     expect(doneSubtask.rejected).toBe(false);
     expect(parent.column).toBe("review");
-  });
+  }, 15_000);
 
   it("auto-rejects failed subtasks when autoApproveSubtasks is enabled", async () => {
     const coordinatorOutput = JSON.stringify([
@@ -628,6 +638,11 @@ describe("team execution integration", () => {
 
     await service.startTask(parentTask.id);
     await waitForRunToFinish(service, parentTask.id);
+    const proposals = await waitFor(() => {
+      const items = service.listProposals(team.id, { parentTaskId: parentTask.id });
+      return items.length > 0 ? items : undefined;
+    });
+    await service.approveProposal(team.id, proposals[0]!.id);
     const subtask = await waitFor(() =>
       service.listTasks({}).find((task) => task.parentTaskId === parentTask.id)
     );
@@ -638,7 +653,7 @@ describe("team execution integration", () => {
     expect(doneSubtask.lastRunStatus).toBe("failed");
     expect(doneSubtask.rejected).toBe(true);
     expect(parent.column).toBe("review");
-  });
+  }, 15_000);
 
   it("waits for human approve/reject decisions before aggregating the parent task", async () => {
     const coordinatorOutput = JSON.stringify([
@@ -686,6 +701,11 @@ describe("team execution integration", () => {
 
     await service.startTask(parentTask.id);
     await waitForRunToFinish(service, parentTask.id);
+    const proposals = await waitFor(() => {
+      const items = service.listProposals(team.id, { parentTaskId: parentTask.id });
+      return items.length > 0 ? items : undefined;
+    });
+    await service.approveProposal(team.id, proposals[0]!.id);
     const subtasks = await waitFor(() => {
       const items = service
         .listTasks({})
@@ -712,7 +732,7 @@ describe("team execution integration", () => {
     expect(parent.column).toBe("review");
     expect(messages.some((message) => message.content.includes("No longer needed"))).toBe(true);
     expect(messages.at(-1)?.content).toContain("All subtasks reached a final decision");
-  });
+  }, 15_000);
 
   it("retries review subtasks by moving them back to todo and rerunning them", async () => {
     const coordinatorOutput = JSON.stringify([
@@ -754,6 +774,11 @@ describe("team execution integration", () => {
 
     await service.startTask(parentTask.id);
     await waitForRunToFinish(service, parentTask.id);
+    const retryProposals = await waitFor(() => {
+      const items = service.listProposals(team.id, { parentTaskId: parentTask.id });
+      return items.length > 0 ? items : undefined;
+    });
+    await service.approveProposal(team.id, retryProposals[0]!.id);
     const subtask = await waitFor(() =>
       service.listTasks({}).find((task) => task.parentTaskId === parentTask.id)
     );
@@ -773,7 +798,7 @@ describe("team execution integration", () => {
     const messages = service.listTeamMessages(team.id, parentTask.id);
     expect(runs).toHaveLength(2);
     expect(messages.some((message) => message.content.includes("requested retry"))).toBe(true);
-  });
+  }, 15_000);
 
   it("leaves the parent task in review when coordinator output is invalid", async () => {
     const codexRunner = new ScriptedCodexRunner([

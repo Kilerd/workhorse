@@ -2,6 +2,7 @@ import { Hono } from "hono";
 
 import {
   buildOpenApiDocument,
+  validateApproveProposalParams,
   validateCleanupTaskWorktreeParams,
   validateCancelSubtaskParams,
   validateCreateTaskBody,
@@ -10,8 +11,11 @@ import {
   validateDeleteTaskParams,
   validateDeleteTeamParams,
   validateDeleteWorkspaceParams,
+  validateGetProposalParams,
   validateGetTaskDependenciesParams,
   validateGetTeamParams,
+  validateListProposalsParams,
+  validateListProposalsQuery,
   validateListTeamMessagesQuery,
   validateListTeamMessagesParams,
   validateListTeamsQuery,
@@ -26,6 +30,7 @@ import {
   validateApproveTaskParams,
   validateRejectTaskBody,
   validateRejectTaskParams,
+  validateRejectProposalParams,
   validateRequestTaskReviewParams,
   validateRetryTaskParams,
   validateSetTaskDependenciesBody,
@@ -531,6 +536,53 @@ export function createApp(
       body.content
     );
     return c.json(ok({ item }), 201);
+  });
+
+  app.get("/api/teams/:teamId/proposals", (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateListProposalsParams,
+      "Invalid team params"
+    );
+    const query = validateOrThrow(
+      Object.fromEntries(new URL(c.req.url).searchParams),
+      validateListProposalsQuery,
+      "Invalid proposals query"
+    );
+    const items = service.listProposals(params.teamId, query);
+    return c.json(ok({ items }));
+  });
+
+  app.get("/api/teams/:teamId/proposals/:proposalId", (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateGetProposalParams,
+      "Invalid proposal params"
+    );
+    const proposal = service.getProposal(params.teamId, params.proposalId);
+    return c.json(ok({ proposal }));
+  });
+
+  app.post("/api/teams/:teamId/proposals/:proposalId/approve", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateApproveProposalParams,
+      "Invalid proposal params"
+    );
+    await service.approveProposal(params.teamId, params.proposalId);
+    const proposal = service.getProposal(params.teamId, params.proposalId);
+    return c.json(ok({ proposal }));
+  });
+
+  app.post("/api/teams/:teamId/proposals/:proposalId/reject", (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateRejectProposalParams,
+      "Invalid proposal params"
+    );
+    service.rejectProposal(params.teamId, params.proposalId);
+    const proposal = service.getProposal(params.teamId, params.proposalId);
+    return c.json(ok({ proposal }));
   });
 
   return app;
