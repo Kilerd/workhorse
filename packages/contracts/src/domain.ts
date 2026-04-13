@@ -192,6 +192,10 @@ export interface Task {
   continuationRunId?: string;
   pullRequestUrl?: string;
   pullRequest?: TaskPullRequest;
+  /** When set, this task belongs to an agent team. */
+  teamId?: string;
+  /** When set, this task is a subtask created by a team coordinator. */
+  parentTaskId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -228,4 +232,37 @@ export interface AppState {
   workspaces: Workspace[];
   tasks: Task[];
   runs: Run[];
+}
+
+// === Agent Teams ===
+
+export type AgentRole = "coordinator" | "worker";
+
+export interface TeamAgent {
+  agentName: string;
+  role: AgentRole;
+  runnerConfig: RunnerConfig;
+}
+
+export type TeamMessageDirection = "in" | "out";
+
+export interface TeamMessage {
+  id: string;
+  teamId: string;
+  /** The task this message is associated with (subtask or parent task). */
+  taskId?: string;
+  agentName: string;
+  direction: TeamMessageDirection;
+  content: string;
+  createdAt: string;
+}
+
+export interface AgentTeam {
+  id: string;
+  name: string;
+  description: string;
+  workspaceId: string;
+  agents: TeamAgent[];
+  createdAt: string;
+  updatedAt: string;
 }

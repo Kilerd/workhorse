@@ -1,14 +1,17 @@
 import type {
+  AgentTeam,
+  AgentRole,
   AppState,
   GlobalSettings,
+  RunnerConfig,
+  RunnerType,
   WorkspaceCodexSettings,
   WorkspacePromptTemplates,
   Run,
   RunLogEntry,
-  RunnerConfig,
-  RunnerType,
   Task,
   TaskColumn,
+  TeamMessage,
   WorkspaceGitRef,
   Workspace
 } from "./domain.js";
@@ -354,6 +357,62 @@ export type TaskDependenciesResponse = ApiSuccess<TaskDependenciesData>;
 export type SchedulerStatusResponse = ApiSuccess<SchedulerStatusData>;
 export type SchedulerEvaluateResponse = ApiSuccess<SchedulerEvaluateData>;
 
+// === Agent Teams ===
+
+export interface CreateTeamBody {
+  name: string;
+  description?: string;
+  workspaceId: string;
+  agents: Array<{
+    agentName: string;
+    role: AgentRole;
+    runnerConfig: RunnerConfig;
+  }>;
+}
+
+export interface UpdateTeamParams {
+  teamId: string;
+}
+
+export interface UpdateTeamBody {
+  name?: string;
+  description?: string;
+  agents?: Array<{
+    agentName: string;
+    role: AgentRole;
+    runnerConfig: RunnerConfig;
+  }>;
+}
+
+export interface GetTeamParams {
+  teamId: string;
+}
+
+export interface DeleteTeamParams {
+  teamId: string;
+}
+
+export interface ListTeamMessagesParams {
+  teamId: string;
+}
+
+export interface ListTeamsData {
+  items: AgentTeam[];
+}
+
+export interface AgentTeamData {
+  team: AgentTeam;
+}
+
+export interface TeamMessagesData {
+  items: TeamMessage[];
+}
+
+export type TeamsResponse = ApiSuccess<ListTeamsData>;
+export type AgentTeamResponse = ApiSuccess<AgentTeamData>;
+export type DeleteTeamResponse = ApiSuccess<DeleteResult>;
+export type TeamMessagesResponse = ApiSuccess<TeamMessagesData>;
+
 export type HttpMethod = "get" | "post" | "put" | "patch" | "delete";
 
 export interface EndpointResponseSpec {
@@ -434,7 +493,17 @@ export type SchemaName =
   | "GetTaskDependenciesParams"
   | "TaskDependenciesResponse"
   | "SchedulerStatusResponse"
-  | "SchedulerEvaluateResponse";
+  | "SchedulerEvaluateResponse"
+  | "CreateTeamBody"
+  | "UpdateTeamParams"
+  | "UpdateTeamBody"
+  | "GetTeamParams"
+  | "DeleteTeamParams"
+  | "ListTeamMessagesParams"
+  | "TeamsResponse"
+  | "AgentTeamResponse"
+  | "DeleteTeamResponse"
+  | "TeamMessagesResponse";
 
 export const endpointRegistry: EndpointSpec[] = [
   {
@@ -1044,6 +1113,126 @@ export const endpointRegistry: EndpointSpec[] = [
         status: 200,
         description: "Evaluation result",
         schema: "SchedulerEvaluateResponse"
+      }
+    ]
+  },
+  {
+    operationId: "listTeams",
+    method: "get",
+    path: "/api/teams",
+    summary: "List agent teams",
+    tag: "Teams",
+    responses: [
+      {
+        status: 200,
+        description: "Team collection",
+        schema: "TeamsResponse"
+      }
+    ]
+  },
+  {
+    operationId: "createTeam",
+    method: "post",
+    path: "/api/teams",
+    summary: "Create an agent team",
+    tag: "Teams",
+    bodySchema: "CreateTeamBody",
+    responses: [
+      {
+        status: 201,
+        description: "Created team",
+        schema: "AgentTeamResponse"
+      },
+      {
+        status: 400,
+        description: "Validation error",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "getTeam",
+    method: "get",
+    path: "/api/teams/{teamId}",
+    summary: "Get an agent team",
+    tag: "Teams",
+    paramsSchema: "GetTeamParams",
+    responses: [
+      {
+        status: 200,
+        description: "Team details",
+        schema: "AgentTeamResponse"
+      },
+      {
+        status: 404,
+        description: "Team not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "updateTeam",
+    method: "patch",
+    path: "/api/teams/{teamId}",
+    summary: "Update an agent team",
+    tag: "Teams",
+    paramsSchema: "UpdateTeamParams",
+    bodySchema: "UpdateTeamBody",
+    responses: [
+      {
+        status: 200,
+        description: "Updated team",
+        schema: "AgentTeamResponse"
+      },
+      {
+        status: 400,
+        description: "Validation error",
+        schema: "ApiError"
+      },
+      {
+        status: 404,
+        description: "Team not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "deleteTeam",
+    method: "delete",
+    path: "/api/teams/{teamId}",
+    summary: "Delete an agent team",
+    tag: "Teams",
+    paramsSchema: "DeleteTeamParams",
+    responses: [
+      {
+        status: 200,
+        description: "Deleted team id",
+        schema: "DeleteTeamResponse"
+      },
+      {
+        status: 404,
+        description: "Team not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "listTeamMessages",
+    method: "get",
+    path: "/api/teams/{teamId}/messages",
+    summary: "List messages for a team",
+    tag: "Teams",
+    paramsSchema: "ListTeamMessagesParams",
+    responses: [
+      {
+        status: 200,
+        description: "Team message collection",
+        schema: "TeamMessagesResponse"
+      },
+      {
+        status: 404,
+        description: "Team not found",
+        schema: "ApiError"
       }
     ]
   }

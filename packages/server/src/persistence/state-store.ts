@@ -7,11 +7,13 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import { eq } from "drizzle-orm";
 
 import type {
+  AgentTeam,
   AppState,
   GlobalSettings,
   Run,
   RunLogEntry,
   Task,
+  TeamMessage,
   Workspace
 } from "@workhorse/contracts";
 
@@ -75,6 +77,8 @@ type WorkspaceRow = typeof schema.workspaces.$inferSelect;
 type TaskRow = typeof schema.tasks.$inferSelect;
 type RunRow = typeof schema.runs.$inferSelect;
 type RunLogEntryRow = typeof schema.runLogEntries.$inferSelect;
+type TeamRow = typeof schema.teams.$inferSelect;
+type TeamMessageRow = typeof schema.teamMessages.$inferSelect;
 
 function rowToWorkspace(row: WorkspaceRow): Workspace {
   return {
@@ -119,6 +123,8 @@ function rowToTask(row: TaskRow, depIds: string[]): Task {
     continuationRunId: row.continuationRunId ?? undefined,
     pullRequestUrl: row.pullRequestUrl ?? undefined,
     pullRequest: row.pullRequest ? JSON.parse(row.pullRequest) : undefined,
+    teamId: row.teamId ?? undefined,
+    parentTaskId: row.parentTaskId ?? undefined,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt
   };
@@ -140,8 +146,34 @@ function taskToRow(task: Task): typeof schema.tasks.$inferInsert {
     continuationRunId: task.continuationRunId ?? null,
     pullRequestUrl: task.pullRequestUrl ?? null,
     pullRequest: task.pullRequest != null ? JSON.stringify(task.pullRequest) : null,
+    teamId: task.teamId ?? null,
+    parentTaskId: task.parentTaskId ?? null,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt
+  };
+}
+
+function rowToTeam(row: TeamRow): AgentTeam {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    workspaceId: row.workspaceId,
+    agents: JSON.parse(row.agents),
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt
+  };
+}
+
+function rowToTeamMessage(row: TeamMessageRow): TeamMessage {
+  return {
+    id: row.id,
+    teamId: row.teamId,
+    taskId: row.taskId ?? undefined,
+    agentName: row.agentName,
+    direction: row.direction as TeamMessage["direction"],
+    content: row.content,
+    createdAt: row.createdAt
   };
 }
 
@@ -381,6 +413,96 @@ export class StateStore {
       .run();
   }
 
+  // -------------------------------------------------------------------------
+  // Team CRUD (go directly to SQLite, not buffered in AppState)
+  // -------------------------------------------------------------------------
+
+  public listTeams(): AgentTeam[] {
+    const rows = this.db.select().from(schema.teams).all();
+    return rows.map(rowToTeam);
+  }
+
+  public getTeam(teamId: string): AgentTeam | null {
+    const row = this.db
+      .select()
+      .from(schema.teams)
+      .where(eq(schema.teams.id, teamId))
+      .get();
+    return row ? rowToTeam(row) : null;
+  }
+
+  public createTeam(team: AgentTeam): AgentTeam {
+    this.db
+      .insert(schema.teams)
+      .values({
+        id: team.id,
+        name: team.name,
+        description: team.description,
+        workspaceId: team.workspaceId,
+        agents: JSON.stringify(team.agents),
+        createdAt: team.createdAt,
+        updatedAt: team.updatedAt
+      })
+      .run();
+    return team;
+  }
+
+  public updateTeam(teamId: string, updates: Partial<Pick<AgentTeam, "name" | "description" | "agents">>): AgentTeam | null {
+    const existing = this.getTeam(teamId);
+    if (!existing) {
+      return null;
+    }
+    const updated: AgentTeam = {
+      ...existing,
+      ...updates,
+      updatedAt: new Date().toISOString()
+    };
+    this.db
+      .update(schema.teams)
+      .set({
+        name: updated.name,
+        description: updated.description,
+        agents: JSON.stringify(updated.agents),
+        updatedAt: updated.updatedAt
+      })
+      .where(eq(schema.teams.id, teamId))
+      .run();
+    return updated;
+  }
+
+  public deleteTeam(teamId: string): boolean {
+    const result = this.db
+      .delete(schema.teams)
+      .where(eq(schema.teams.id, teamId))
+      .run();
+    return result.changes > 0;
+  }
+
+  public listTeamMessages(teamId: string): TeamMessage[] {
+    const rows = this.db
+      .select()
+      .from(schema.teamMessages)
+      .where(eq(schema.teamMessages.teamId, teamId))
+      .orderBy(schema.teamMessages.createdAt)
+      .all();
+    return rows.map(rowToTeamMessage);
+  }
+
+  public appendTeamMessage(message: TeamMessage): void {
+    this.db
+      .insert(schema.teamMessages)
+      .values({
+        id: message.id,
+        teamId: message.teamId,
+        taskId: message.taskId ?? null,
+        agentName: message.agentName,
+        direction: message.direction,
+        content: message.content,
+        createdAt: message.createdAt
+      })
+      .run();
+  }
+
   /** Closes the underlying SQLite connection. Call on server shutdown. */
   public close(): void {
     this.sqlite?.close();
@@ -470,7 +592,44 @@ export class StateStore {
       -- Composite index supports efficient ORDER BY timestamp queries per run
       CREATE INDEX IF NOT EXISTS idx_run_log_entries_run_id_ts
         ON run_log_entries (run_id, timestamp);
+
+      CREATE TABLE IF NOT EXISTS teams (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        workspace_id TEXT NOT NULL,
+        agents TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_teams_workspace_id ON teams (workspace_id);
+
+      CREATE TABLE IF NOT EXISTS team_messages (
+        id TEXT PRIMARY KEY,
+        team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        task_id TEXT,
+        agent_name TEXT NOT NULL,
+        direction TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_team_messages_team_id ON team_messages (team_id);
     `);
+
+    // Add team columns to tasks table. SQLite does not support IF NOT EXISTS
+    // on ALTER TABLE ADD COLUMN, so we use try/catch for idempotency.
+    for (const col of [
+      "ALTER TABLE tasks ADD COLUMN team_id TEXT",
+      "ALTER TABLE tasks ADD COLUMN parent_task_id TEXT"
+    ]) {
+      try {
+        this.sqlite.exec(col);
+      } catch {
+        // column already exists — safe to ignore
+      }
+    }
   }
 
   private readStateFromDb(): AppState {
@@ -561,8 +720,8 @@ export class StateStore {
         const row = taskToRow(task);
         this.sqlite
           .prepare(
-            `INSERT INTO tasks (id, title, description, workspace_id, column, task_order, runner_type, runner_config, plan, worktree, last_run_id, continuation_run_id, pull_request_url, pull_request, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            `INSERT INTO tasks (id, title, description, workspace_id, column, task_order, runner_type, runner_config, plan, worktree, last_run_id, continuation_run_id, pull_request_url, pull_request, team_id, parent_task_id, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
           )
           .run(
             row.id,
@@ -579,6 +738,8 @@ export class StateStore {
             row.continuationRunId ?? null,
             row.pullRequestUrl ?? null,
             row.pullRequest ?? null,
+            row.teamId ?? null,
+            row.parentTaskId ?? null,
             row.createdAt,
             row.updatedAt
           );

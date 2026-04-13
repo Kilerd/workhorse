@@ -4,10 +4,14 @@ import {
   buildOpenApiDocument,
   validateCleanupTaskWorktreeParams,
   validateCreateTaskBody,
+  validateCreateTeamBody,
   validateCreateWorkspaceBody,
   validateDeleteTaskParams,
+  validateDeleteTeamParams,
   validateDeleteWorkspaceParams,
   validateGetTaskDependenciesParams,
+  validateGetTeamParams,
+  validateListTeamMessagesParams,
   validateListWorkspaceGitRefsParams,
   validateListRunsParams,
   validateListTasksQuery,
@@ -27,6 +31,8 @@ import {
   validateUpdateSettingsBody,
   validateUpdateTaskBody,
   validateUpdateTaskParams,
+  validateUpdateTeamBody,
+  validateUpdateTeamParams,
   validateUpdateWorkspaceBody,
   validateUpdateWorkspaceParams,
   validateWorkspaceGitStatusParams,
@@ -377,6 +383,65 @@ export function createApp(
 
   app.post("/api/scheduler/evaluate", async (c) => {
     return c.json(ok(await service.evaluateScheduler()));
+  });
+
+  app.get("/api/teams", (c) =>
+    c.json(ok({ items: service.listTeams() }))
+  );
+
+  app.post("/api/teams", async (c) => {
+    const body = validateOrThrow(
+      await c.req.json(),
+      validateCreateTeamBody,
+      "Invalid team payload"
+    );
+    const team = service.createTeam(body);
+    return c.json(ok({ team }), 201);
+  });
+
+  app.get("/api/teams/:teamId", (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateGetTeamParams,
+      "Invalid team params"
+    );
+    const team = service.getTeam(params.teamId);
+    return c.json(ok({ team }));
+  });
+
+  app.patch("/api/teams/:teamId", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateUpdateTeamParams,
+      "Invalid team params"
+    );
+    const body = validateOrThrow(
+      await c.req.json(),
+      validateUpdateTeamBody,
+      "Invalid team payload"
+    );
+    const team = service.updateTeam(params.teamId, body);
+    return c.json(ok({ team }));
+  });
+
+  app.delete("/api/teams/:teamId", (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateDeleteTeamParams,
+      "Invalid team params"
+    );
+    const result = service.deleteTeam(params.teamId);
+    return c.json(ok(result));
+  });
+
+  app.get("/api/teams/:teamId/messages", (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateListTeamMessagesParams,
+      "Invalid team params"
+    );
+    const items = service.listTeamMessages(params.teamId);
+    return c.json(ok({ items }));
   });
 
   return app;

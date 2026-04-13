@@ -3,8 +3,10 @@ import { constants } from "node:fs";
 import { join } from "node:path";
 
 import type {
+  AgentTeam,
   AppState,
   CreateTaskBody,
+  CreateTeamBody,
   CreateWorkspaceBody,
   DeleteResult,
   GlobalSettings,
@@ -17,8 +19,10 @@ import type {
   Task,
   TaskPullRequest,
   TaskWorktree,
+  TeamMessage,
   UpdateSettingsBody,
   UpdateTaskBody,
+  UpdateTeamBody,
   UpdateWorkspaceBody,
   WorkspaceGitRef,
   Workspace
@@ -1129,6 +1133,67 @@ export class BoardService {
         branchName: task.worktree.branchName
       }
     );
+  }
+
+  // -------------------------------------------------------------------------
+  // Agent Teams
+  // -------------------------------------------------------------------------
+
+  public listTeams(): AgentTeam[] {
+    return this.store.listTeams();
+  }
+
+  public getTeam(teamId: string): AgentTeam {
+    const team = this.store.getTeam(teamId);
+    if (!team) {
+      throw new AppError(404, "TEAM_NOT_FOUND", "Team not found");
+    }
+    return team;
+  }
+
+  public createTeam(input: CreateTeamBody): AgentTeam {
+    const now = new Date().toISOString();
+    const team: AgentTeam = {
+      id: createId(),
+      name: input.name.trim(),
+      description: input.description?.trim() ?? "",
+      workspaceId: input.workspaceId,
+      agents: input.agents,
+      createdAt: now,
+      updatedAt: now
+    };
+    this.store.createTeam(team);
+    this.events.publish({ type: "team.updated", action: "created", teamId: team.id, team });
+    return team;
+  }
+
+  public updateTeam(teamId: string, input: UpdateTeamBody): AgentTeam {
+    const updates: Partial<Pick<AgentTeam, "name" | "description" | "agents">> = {};
+    if (input.name !== undefined) updates.name = input.name.trim();
+    if (input.description !== undefined) updates.description = input.description.trim();
+    if (input.agents !== undefined) updates.agents = input.agents;
+
+    const updated = this.store.updateTeam(teamId, updates);
+    if (!updated) {
+      throw new AppError(404, "TEAM_NOT_FOUND", "Team not found");
+    }
+    this.events.publish({ type: "team.updated", action: "updated", teamId: updated.id, team: updated });
+    return updated;
+  }
+
+  public deleteTeam(teamId: string): DeleteResult {
+    const deleted = this.store.deleteTeam(teamId);
+    if (!deleted) {
+      throw new AppError(404, "TEAM_NOT_FOUND", "Team not found");
+    }
+    this.events.publish({ type: "team.updated", action: "deleted", teamId });
+    return { id: teamId };
+  }
+
+  public listTeamMessages(teamId: string): TeamMessage[] {
+    // Ensure team exists before listing messages
+    this.getTeam(teamId);
+    return this.store.listTeamMessages(teamId);
   }
 
   private nextOrder(column: Task["column"]): number {
