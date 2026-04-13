@@ -2327,17 +2327,17 @@
               },
               {
                 "enum": [
+                  "default"
+                ]
+              },
+              {
+                "enum": [
                   "acceptEdits"
                 ]
               },
               {
                 "enum": [
                   "bypassPermissions"
-                ]
-              },
-              {
-                "enum": [
-                  "default"
                 ]
               },
               {
@@ -2819,7 +2819,8 @@
         "type": "object",
         "properties": {
           "reason": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 10240
           }
         },
         "required": []
@@ -3838,12 +3839,22 @@
         "oneOf": [
           {
             "enum": [
-              "system"
+              "text"
             ]
           },
           {
             "enum": [
-              "text"
+              "status"
+            ]
+          },
+          {
+            "enum": [
+              "plan"
+            ]
+          },
+          {
+            "enum": [
+              "system"
             ]
           },
           {
@@ -3864,16 +3875,6 @@
           {
             "enum": [
               "tool_output"
-            ]
-          },
-          {
-            "enum": [
-              "plan"
-            ]
-          },
-          {
-            "enum": [
-              "status"
             ]
           }
         ]

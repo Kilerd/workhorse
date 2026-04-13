@@ -47,6 +47,7 @@ import {
   validateWorkspaceGitPullParams
 } from "@workhorse/contracts";
 import type {
+  ListTeamMessagesParams,
   PostTeamMessageBody,
   PostTeamMessageParams,
   RejectTaskBody
@@ -488,9 +489,9 @@ export function createApp(
   });
 
   app.get("/api/teams/:teamId/messages", (c) => {
-    const params: PostTeamMessageParams = validateOrThrow(
+    const params: ListTeamMessagesParams = validateOrThrow(
       c.req.param(),
-      validatePostTeamMessageParams,
+      validateListTeamMessagesParams,
       "Invalid team params"
     );
     const query = validateOrThrow(
@@ -503,9 +504,9 @@ export function createApp(
   });
 
   app.post("/api/teams/:teamId/messages", async (c) => {
-    const params = validateOrThrow(
+    const params: PostTeamMessageParams = validateOrThrow(
       c.req.param(),
-      validateListTeamMessagesParams,
+      validatePostTeamMessageParams,
       "Invalid team params"
     );
     const body: PostTeamMessageBody = validateOrThrow(

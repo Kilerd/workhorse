@@ -631,7 +631,7 @@ export interface components {
             prompt: string;
             agent?: string;
             model?: string;
-            permissionMode?: "plan" | "acceptEdits" | "bypassPermissions" | "default" | "dontAsk";
+            permissionMode?: "plan" | "default" | "acceptEdits" | "bypassPermissions" | "dontAsk";
         };
         CodexRunnerConfig: {
             /**
@@ -1006,7 +1006,7 @@ export interface components {
             metadata?: components["schemas"]["Recordstringstring"];
         };
         RunLogStream: "stdout" | "stderr" | "system";
-        RunLogKind: "system" | "text" | "user" | "agent" | "tool_call" | "tool_output" | "plan" | "status";
+        RunLogKind: "text" | "status" | "plan" | "system" | "user" | "agent" | "tool_call" | "tool_output";
         HealthResponse: {
             /** @enum {unknown} */
             ok: true;

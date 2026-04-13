@@ -590,6 +590,56 @@ describe("team execution integration", () => {
     expect(parent.column).toBe("review");
   });
 
+  it("auto-rejects failed subtasks when autoApproveSubtasks is enabled", async () => {
+    const coordinatorOutput = JSON.stringify([
+      {
+        title: "Implement runtime hook",
+        description: "Wire run completion to child task creation.",
+        assignedAgent: "Worker",
+        dependencies: []
+      }
+    ]);
+    const codexRunner = new ScriptedCodexRunner([
+      {
+        outputText: coordinatorOutput,
+        exit: { status: "succeeded", exitCode: 0 }
+      },
+      {
+        outputText: "Implementation failed.",
+        exit: { status: "failed", exitCode: 1 }
+      }
+    ]);
+    const { service, workspace } = await createRuntime(codexRunner);
+    const team = service.createTeam(
+      makeTeam(workspace.id, { autoApproveSubtasks: true })
+    );
+    const parentTask = await service.createTask({
+      title: "Finish coordinator integration",
+      description: "Delegate the remaining coordinator flow work.",
+      workspaceId: workspace.id,
+      column: "todo",
+      runnerType: "codex",
+      runnerConfig: {
+        type: "codex",
+        prompt: "Split the work and assign it."
+      }
+    });
+    await attachTaskToTeam(service, parentTask.id, team.id);
+
+    await service.startTask(parentTask.id);
+    await waitForRunToFinish(service, parentTask.id);
+    const subtask = await waitFor(() =>
+      service.listTasks({}).find((task) => task.parentTaskId === parentTask.id)
+    );
+
+    const doneSubtask = await waitForTask(service, subtask.id, (task) => task.column === "done");
+    const parent = await waitForTask(service, parentTask.id, (task) => task.column === "review");
+
+    expect(doneSubtask.lastRunStatus).toBe("failed");
+    expect(doneSubtask.rejected).toBe(true);
+    expect(parent.column).toBe("review");
+  });
+
   it("waits for human approve/reject decisions before aggregating the parent task", async () => {
     const coordinatorOutput = JSON.stringify([
       {

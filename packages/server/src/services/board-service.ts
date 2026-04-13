@@ -633,6 +633,34 @@ export class BoardService {
           });
         }
       }
+    } else if (team.autoApproveSubtasks) {
+      // Fully automatic teams preserve the old pipeline semantics: failed
+      // subtasks are finalized immediately as rejected results instead of
+      // waiting for a human review decision.
+      const doneTask = await this.store.updateState((state) => {
+        const idx = state.tasks.findIndex((t) => t.id === task.id);
+        if (idx === -1) {
+          return null;
+        }
+        const entry = state.tasks[idx]!;
+        if (entry.column !== "review") {
+          return null;
+        }
+        entry.column = "done";
+        entry.rejected = true;
+        entry.order = this.nextOrderFromTasks("done", state.tasks);
+        entry.updatedAt = new Date().toISOString();
+        return { ...entry };
+      });
+
+      if (doneTask) {
+        this.events.publish({
+          type: "task.updated",
+          action: "updated",
+          taskId: doneTask.id,
+          task: doneTask
+        });
+      }
     }
 
     await this.checkAndHandleTeamCompletion(task.parentTaskId!, team.id);
@@ -650,6 +678,10 @@ export class BoardService {
         return null;
       }
 
+      // Human-in-the-loop teams only aggregate once every subtask reaches a
+      // terminal column. Review subtasks remain pending until a human approves,
+      // rejects, or retries them. Fully automatic teams convert review results
+      // to done/rejected earlier in handleSubtaskRunFinished().
       if (subtasks.some((t) => t.column !== "done")) {
         return null;
       }
@@ -1955,7 +1987,8 @@ export class BoardService {
 
   public async approveTask(taskId: string): Promise<Task> {
     const { task, team, parentTask } = this.requireReviewableTeamSubtask(taskId);
-    if (task.lastRunStatus !== "succeeded") {
+    const effectiveLastRunStatus = this.resolveEffectiveLastRunStatus(task);
+    if (effectiveLastRunStatus !== "succeeded") {
       throw new AppError(
         409,
         "TASK_APPROVAL_NOT_ALLOWED",
@@ -1991,6 +2024,8 @@ export class BoardService {
       taskId: approvedTask.id,
       task: approvedTask
     });
+    // Approve is the explicit human decision that a succeeded review result
+    // should count as complete work for parent aggregation.
     this.publishTeamThreadMessage({
       teamId: team.id,
       parentTaskId: parentTask.id,
@@ -2037,6 +2072,9 @@ export class BoardService {
       taskId: rejectedTask.id,
       task: rejectedTask
     });
+    // Reject is also a terminal decision: even a succeeded run can be
+    // discarded intentionally, while still allowing parent aggregation to
+    // continue once every subtask reaches a final outcome.
     this.publishTeamThreadMessage({
       teamId: team.id,
       parentTaskId: parentTask.id,
@@ -2071,6 +2109,7 @@ export class BoardService {
 
       currentTask.column = "todo";
       currentTask.rejected = false;
+      currentTask.lastRunStatus = undefined;
       currentTask.order = this.topOrderFromTasks("todo", state.tasks, currentTask.id);
       currentTask.updatedAt = new Date().toISOString();
       return { ...currentTask };
@@ -2094,6 +2133,8 @@ export class BoardService {
       fromAgentId: "human",
       senderType: "human",
       messageType: "status",
+      // Retry intentionally clears the previous terminal decision so the next
+      // run becomes the source of truth for approval / rejection.
       payload: truncateTeamMessagePayload(`User requested retry for subtask "${queuedTask.title}".`)
     });
 
@@ -2125,6 +2166,16 @@ export class BoardService {
     }
 
     return { task, team, parentTask };
+  }
+
+  private resolveEffectiveLastRunStatus(task: Task): Run["status"] | undefined {
+    if (task.lastRunStatus) {
+      return task.lastRunStatus;
+    }
+    if (!task.lastRunId) {
+      return undefined;
+    }
+    return this.store.listRuns().find((run) => run.id === task.lastRunId)?.status;
   }
 
   private nextOrder(column: Task["column"]): number {

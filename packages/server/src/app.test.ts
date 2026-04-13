@@ -600,6 +600,75 @@ describe("workhorse runtime", () => {
     expect(service.getTask(parentTask.id).column).toBe("review");
   });
 
+  it("approves a review subtask when lastRunStatus falls back to the latest run", async () => {
+    const { app, service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+    const team = service.createTeam({
+      name: "Delivery Team",
+      workspaceId: workspace.id,
+      autoApproveSubtasks: false,
+      agents: [
+        {
+          id: "agent-coordinator",
+          agentName: "Coordinator",
+          role: "coordinator",
+          runnerConfig: {
+            type: "codex",
+            prompt: "Coordinate the work."
+          }
+        },
+        {
+          id: "agent-worker",
+          agentName: "Worker",
+          role: "worker",
+          runnerConfig: {
+            type: "codex",
+            prompt: "Implement the assigned task."
+          }
+        }
+      ]
+    });
+    const parentTask = await service.createTask({
+      title: "Coordinate rollout",
+      workspaceId: workspace.id,
+      teamId: team.id,
+      column: "running",
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "echo should-be-overridden"
+      }
+    });
+    const subtask = await createReviewSubtask(service, {
+      workspaceId: workspace.id,
+      teamId: team.id,
+      parentTaskId: parentTask.id,
+      title: "Implement UI",
+      lastRunStatus: "succeeded"
+    });
+    const store = (service as any).store as StateStore;
+    await store.updateState((state) => {
+      const entry = state.tasks.find((task) => task.id === subtask.id);
+      if (!entry) {
+        return null;
+      }
+      entry.lastRunStatus = undefined;
+      return null;
+    });
+
+    const response = await app.request(`/api/tasks/${subtask.id}/approve`, {
+      method: "POST"
+    });
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.data.task).toMatchObject({
+      id: subtask.id,
+      column: "done",
+      rejected: false
+    });
+  });
+
   it("rejects a review subtask over HTTP and records the reason", async () => {
     const { app, service, workspaceDir } = await createRuntime();
     const workspace = await createWorkspace(service, workspaceDir);
@@ -719,6 +788,7 @@ describe("workhorse runtime", () => {
     const payload = await response.json();
     expect(["todo", "running"]).toContain(payload.data.task.column);
     expect(service.getTask(subtask.id).rejected).toBe(false);
+    expect(service.getTask(subtask.id).lastRunStatus).not.toBe("failed");
   });
 
   it("reports review monitor timing in health responses", async () => {

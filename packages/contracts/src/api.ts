@@ -158,7 +158,7 @@ export interface RejectTaskParams {
 }
 
 export interface RejectTaskBody {
-  reason?: string;
+  reason?: string & tags.MaxLength<10_240>;
 }
 
 export interface RetryTaskParams {
