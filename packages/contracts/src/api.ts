@@ -5,6 +5,7 @@ import type {
   GlobalSettings,
   RunnerConfig,
   RunnerType,
+  TeamPrStrategy,
   WorkspaceCodexSettings,
   WorkspacePromptTemplates,
   Run,
@@ -359,11 +360,17 @@ export type SchedulerEvaluateResponse = ApiSuccess<SchedulerEvaluateData>;
 
 // === Agent Teams ===
 
+export interface ListTeamsQuery {
+  workspaceId?: string;
+}
+
 export interface CreateTeamBody {
   name: string;
   description?: string;
   workspaceId: string;
+  prStrategy?: TeamPrStrategy;
   agents: Array<{
+    id: string;
     agentName: string;
     role: AgentRole;
     runnerConfig: RunnerConfig;
@@ -377,7 +384,9 @@ export interface UpdateTeamParams {
 export interface UpdateTeamBody {
   name?: string;
   description?: string;
+  prStrategy?: TeamPrStrategy;
   agents?: Array<{
+    id: string;
     agentName: string;
     role: AgentRole;
     runnerConfig: RunnerConfig;
@@ -494,6 +503,7 @@ export type SchemaName =
   | "TaskDependenciesResponse"
   | "SchedulerStatusResponse"
   | "SchedulerEvaluateResponse"
+  | "ListTeamsQuery"
   | "CreateTeamBody"
   | "UpdateTeamParams"
   | "UpdateTeamBody"
@@ -1122,6 +1132,7 @@ export const endpointRegistry: EndpointSpec[] = [
     path: "/api/teams",
     summary: "List agent teams",
     tag: "Teams",
+    querySchema: "ListTeamsQuery",
     responses: [
       {
         status: 200,

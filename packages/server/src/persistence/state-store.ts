@@ -125,6 +125,7 @@ function rowToTask(row: TaskRow, depIds: string[]): Task {
     pullRequest: row.pullRequest ? JSON.parse(row.pullRequest) : undefined,
     teamId: row.teamId ?? undefined,
     parentTaskId: row.parentTaskId ?? undefined,
+    teamAgentId: row.teamAgentId ?? undefined,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt
   };
@@ -148,6 +149,7 @@ function taskToRow(task: Task): typeof schema.tasks.$inferInsert {
     pullRequest: task.pullRequest != null ? JSON.stringify(task.pullRequest) : null,
     teamId: task.teamId ?? null,
     parentTaskId: task.parentTaskId ?? null,
+    teamAgentId: task.teamAgentId ?? null,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt
   };
@@ -160,6 +162,7 @@ function rowToTeam(row: TeamRow): AgentTeam {
     description: row.description,
     workspaceId: row.workspaceId,
     agents: JSON.parse(row.agents),
+    prStrategy: row.prStrategy as AgentTeam["prStrategy"],
     createdAt: row.createdAt,
     updatedAt: row.updatedAt
   };
@@ -171,7 +174,7 @@ function rowToTeamMessage(row: TeamMessageRow): TeamMessage {
     teamId: row.teamId,
     taskId: row.taskId ?? undefined,
     agentName: row.agentName,
-    direction: row.direction as TeamMessage["direction"],
+    senderType: row.senderType as TeamMessage["senderType"],
     content: row.content,
     createdAt: row.createdAt
   };
@@ -417,8 +420,11 @@ export class StateStore {
   // Team CRUD (go directly to SQLite, not buffered in AppState)
   // -------------------------------------------------------------------------
 
-  public listTeams(): AgentTeam[] {
-    const rows = this.db.select().from(schema.teams).all();
+  public listTeams(workspaceId?: string): AgentTeam[] {
+    const query = this.db.select().from(schema.teams);
+    const rows = workspaceId
+      ? query.where(eq(schema.teams.workspaceId, workspaceId)).all()
+      : query.all();
     return rows.map(rowToTeam);
   }
 
@@ -440,6 +446,7 @@ export class StateStore {
         description: team.description,
         workspaceId: team.workspaceId,
         agents: JSON.stringify(team.agents),
+        prStrategy: team.prStrategy,
         createdAt: team.createdAt,
         updatedAt: team.updatedAt
       })
@@ -447,7 +454,7 @@ export class StateStore {
     return team;
   }
 
-  public updateTeam(teamId: string, updates: Partial<Pick<AgentTeam, "name" | "description" | "agents">>): AgentTeam | null {
+  public updateTeam(teamId: string, updates: Partial<Pick<AgentTeam, "name" | "description" | "agents" | "prStrategy">>): AgentTeam | null {
     const existing = this.getTeam(teamId);
     if (!existing) {
       return null;
@@ -463,6 +470,7 @@ export class StateStore {
         name: updated.name,
         description: updated.description,
         agents: JSON.stringify(updated.agents),
+        prStrategy: updated.prStrategy,
         updatedAt: updated.updatedAt
       })
       .where(eq(schema.teams.id, teamId))
@@ -489,6 +497,10 @@ export class StateStore {
   }
 
   public appendTeamMessage(message: TeamMessage): void {
+    const MAX_CONTENT_BYTES = 10 * 1024;
+    if (Buffer.byteLength(message.content, "utf8") > MAX_CONTENT_BYTES) {
+      throw new AppError(400, "MESSAGE_TOO_LARGE", "Message content exceeds 10KB limit");
+    }
     this.db
       .insert(schema.teamMessages)
       .values({
@@ -496,7 +508,7 @@ export class StateStore {
         teamId: message.teamId,
         taskId: message.taskId ?? null,
         agentName: message.agentName,
-        direction: message.direction,
+        senderType: message.senderType,
         content: message.content,
         createdAt: message.createdAt
       })
@@ -599,6 +611,7 @@ export class StateStore {
         description TEXT NOT NULL DEFAULT '',
         workspace_id TEXT NOT NULL,
         agents TEXT NOT NULL,
+        pr_strategy TEXT NOT NULL DEFAULT 'independent',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
@@ -610,7 +623,7 @@ export class StateStore {
         team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
         task_id TEXT,
         agent_name TEXT NOT NULL,
-        direction TEXT NOT NULL,
+        sender_type TEXT NOT NULL,
         content TEXT NOT NULL,
         created_at TEXT NOT NULL
       );
@@ -618,11 +631,15 @@ export class StateStore {
       CREATE INDEX IF NOT EXISTS idx_team_messages_team_id ON team_messages (team_id);
     `);
 
-    // Add team columns to tasks table. SQLite does not support IF NOT EXISTS
+    // Add new columns to existing tables. SQLite does not support IF NOT EXISTS
     // on ALTER TABLE ADD COLUMN, so we use try/catch for idempotency.
     for (const col of [
       "ALTER TABLE tasks ADD COLUMN team_id TEXT",
-      "ALTER TABLE tasks ADD COLUMN parent_task_id TEXT"
+      "ALTER TABLE tasks ADD COLUMN parent_task_id TEXT",
+      "ALTER TABLE tasks ADD COLUMN team_agent_id TEXT",
+      "ALTER TABLE teams ADD COLUMN pr_strategy TEXT NOT NULL DEFAULT 'independent'",
+      // Renamed from direction; default 'agent' covers rows written by the initial PR version
+      "ALTER TABLE team_messages ADD COLUMN sender_type TEXT NOT NULL DEFAULT 'agent'"
     ]) {
       try {
         this.sqlite.exec(col);
@@ -720,8 +737,8 @@ export class StateStore {
         const row = taskToRow(task);
         this.sqlite
           .prepare(
-            `INSERT INTO tasks (id, title, description, workspace_id, column, task_order, runner_type, runner_config, plan, worktree, last_run_id, continuation_run_id, pull_request_url, pull_request, team_id, parent_task_id, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            `INSERT INTO tasks (id, title, description, workspace_id, column, task_order, runner_type, runner_config, plan, worktree, last_run_id, continuation_run_id, pull_request_url, pull_request, team_id, parent_task_id, team_agent_id, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
           )
           .run(
             row.id,
@@ -740,6 +757,7 @@ export class StateStore {
             row.pullRequest ?? null,
             row.teamId ?? null,
             row.parentTaskId ?? null,
+            row.teamAgentId ?? null,
             row.createdAt,
             row.updatedAt
           );

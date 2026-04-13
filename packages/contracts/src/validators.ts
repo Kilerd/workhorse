@@ -18,6 +18,7 @@ import type {
   GetTeamParams,
   HealthResponse,
   ListTeamMessagesParams,
+  ListTeamsQuery,
   PickWorkspaceRootResponse,
   ListWorkspaceGitRefsParams,
   WorkspaceGitStatusParams,
@@ -122,6 +123,7 @@ export const validateSetTaskDependenciesBody =
 export const validateGetTaskDependenciesParams =
   typia.createValidate<GetTaskDependenciesParams>();
 
+export const validateListTeamsQuery = typia.createValidate<ListTeamsQuery>();
 export const validateCreateTeamBody = typia.createValidate<CreateTeamBody>();
 export const validateUpdateTeamParams = typia.createValidate<UpdateTeamParams>();
 export const validateUpdateTeamBody = typia.createValidate<UpdateTeamBody>();
@@ -200,6 +202,7 @@ export const schemaRegistry = {
   GetTeamParams: () => typia.json.schema<GetTeamParams>(),
   DeleteTeamParams: () => typia.json.schema<DeleteTeamParams>(),
   ListTeamMessagesParams: () => typia.json.schema<ListTeamMessagesParams>(),
+  ListTeamsQuery: () => typia.json.schema<ListTeamsQuery>(),
   TeamsResponse: () => typia.json.schema<TeamsResponse>(),
   AgentTeamResponse: () => typia.json.schema<AgentTeamResponse>(),
   DeleteTeamResponse: () => typia.json.schema<DeleteTeamResponse>(),

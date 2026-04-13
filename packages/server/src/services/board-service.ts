@@ -19,6 +19,7 @@ import type {
   Task,
   TaskPullRequest,
   TaskWorktree,
+  TeamAgent,
   TeamMessage,
   UpdateSettingsBody,
   UpdateTaskBody,
@@ -85,6 +86,17 @@ interface BoardServiceDependencies {
 }
 
 export type { GitReviewMonitorResult } from "./pr-monitor-service.js";
+
+function validateTeamAgents(agents: TeamAgent[]): void {
+  const coordinators = agents.filter((a) => a.role === "coordinator");
+  if (coordinators.length !== 1) {
+    throw new AppError(
+      400,
+      "INVALID_TEAM_AGENTS",
+      `Team must have exactly 1 coordinator, got ${coordinators.length}`
+    );
+  }
+}
 
 const COLUMN_ORDER: Record<Task["column"], number> = {
   backlog: 0,
@@ -1139,8 +1151,8 @@ export class BoardService {
   // Agent Teams
   // -------------------------------------------------------------------------
 
-  public listTeams(): AgentTeam[] {
-    return this.store.listTeams();
+  public listTeams(workspaceId?: string): AgentTeam[] {
+    return this.store.listTeams(workspaceId);
   }
 
   public getTeam(teamId: string): AgentTeam {
@@ -1152,6 +1164,8 @@ export class BoardService {
   }
 
   public createTeam(input: CreateTeamBody): AgentTeam {
+    this.requireWorkspace(input.workspaceId);
+    validateTeamAgents(input.agents);
     const now = new Date().toISOString();
     const team: AgentTeam = {
       id: createId(),
@@ -1159,6 +1173,7 @@ export class BoardService {
       description: input.description?.trim() ?? "",
       workspaceId: input.workspaceId,
       agents: input.agents,
+      prStrategy: input.prStrategy ?? "independent",
       createdAt: now,
       updatedAt: now
     };
@@ -1168,10 +1183,14 @@ export class BoardService {
   }
 
   public updateTeam(teamId: string, input: UpdateTeamBody): AgentTeam {
-    const updates: Partial<Pick<AgentTeam, "name" | "description" | "agents">> = {};
+    const updates: Partial<Pick<AgentTeam, "name" | "description" | "agents" | "prStrategy">> = {};
     if (input.name !== undefined) updates.name = input.name.trim();
     if (input.description !== undefined) updates.description = input.description.trim();
-    if (input.agents !== undefined) updates.agents = input.agents;
+    if (input.agents !== undefined) {
+      validateTeamAgents(input.agents);
+      updates.agents = input.agents;
+    }
+    if (input.prStrategy !== undefined) updates.prStrategy = input.prStrategy;
 
     const updated = this.store.updateTeam(teamId, updates);
     if (!updated) {

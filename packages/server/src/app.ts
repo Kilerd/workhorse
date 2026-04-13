@@ -12,6 +12,7 @@ import {
   validateGetTaskDependenciesParams,
   validateGetTeamParams,
   validateListTeamMessagesParams,
+  validateListTeamsQuery,
   validateListWorkspaceGitRefsParams,
   validateListRunsParams,
   validateListTasksQuery,
@@ -385,9 +386,14 @@ export function createApp(
     return c.json(ok(await service.evaluateScheduler()));
   });
 
-  app.get("/api/teams", (c) =>
-    c.json(ok({ items: service.listTeams() }))
-  );
+  app.get("/api/teams", (c) => {
+    const query = validateOrThrow(
+      Object.fromEntries(new URL(c.req.url).searchParams),
+      validateListTeamsQuery,
+      "Invalid teams query"
+    );
+    return c.json(ok({ items: service.listTeams(query.workspaceId) }));
+  });
 
   app.post("/api/teams", async (c) => {
     const body = validateOrThrow(

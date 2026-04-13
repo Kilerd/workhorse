@@ -196,6 +196,8 @@ export interface Task {
   teamId?: string;
   /** When set, this task is a subtask created by a team coordinator. */
   parentTaskId?: string;
+  /** The TeamAgent.id responsible for this subtask. */
+  teamAgentId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -238,21 +240,27 @@ export interface AppState {
 
 export type AgentRole = "coordinator" | "worker";
 
+export type TeamPrStrategy = "independent" | "stacked" | "single";
+
 export interface TeamAgent {
+  /** Unique agent identifier within the team (nanoid). */
+  id: string;
   agentName: string;
   role: AgentRole;
   runnerConfig: RunnerConfig;
 }
 
-export type TeamMessageDirection = "in" | "out";
+export type TeamMessageSenderType = "agent" | "human" | "system";
 
 export interface TeamMessage {
   id: string;
   teamId: string;
   /** The task this message is associated with (subtask or parent task). */
   taskId?: string;
+  /** Name of the agent or user that sent the message. */
   agentName: string;
-  direction: TeamMessageDirection;
+  /** Whether the message was sent by an agent, human, or the system. */
+  senderType: TeamMessageSenderType;
   content: string;
   createdAt: string;
 }
@@ -262,7 +270,11 @@ export interface AgentTeam {
   name: string;
   description: string;
   workspaceId: string;
+  // agents is stored as a JSON column — always loaded with the team,
+  // so a separate table would add overhead without query benefit.
   agents: TeamAgent[];
+  /** Strategy for creating pull requests from subtask branches. */
+  prStrategy: TeamPrStrategy;
   createdAt: string;
   updatedAt: string;
 }
