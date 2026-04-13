@@ -405,6 +405,10 @@ export interface ListTeamMessagesParams {
   teamId: string;
 }
 
+export interface ListTeamMessagesQuery {
+  parentTaskId?: string;
+}
+
 export interface ListTeamsData {
   items: AgentTeam[];
 }
@@ -510,6 +514,7 @@ export type SchemaName =
   | "GetTeamParams"
   | "DeleteTeamParams"
   | "ListTeamMessagesParams"
+  | "ListTeamMessagesQuery"
   | "TeamsResponse"
   | "AgentTeamResponse"
   | "DeleteTeamResponse"
@@ -1234,6 +1239,7 @@ export const endpointRegistry: EndpointSpec[] = [
     summary: "List messages for a team",
     tag: "Teams",
     paramsSchema: "ListTeamMessagesParams",
+    querySchema: "ListTeamMessagesQuery",
     responses: [
       {
         status: 200,

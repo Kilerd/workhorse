@@ -100,9 +100,11 @@ export const teamMessages = sqliteTable("team_messages", {
   teamId: text("team_id")
     .notNull()
     .references(() => teams.id, { onDelete: "cascade" }),
+  parentTaskId: text("parent_task_id").notNull(),
   taskId: text("task_id"),
   agentName: text("agent_name").notNull(),
   senderType: text("sender_type").notNull(),
+  messageType: text("message_type").notNull(),
   content: text("content").notNull(),
   createdAt: text("created_at").notNull()
 });

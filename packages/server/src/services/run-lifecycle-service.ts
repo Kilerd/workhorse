@@ -57,6 +57,7 @@ export interface RunLifecycleDependencies {
   topOrder(column: Task["column"], excludingTaskId?: string): number;
   canTaskStart(task: Task, source?: Task[]): boolean;
   evaluateScheduler(): Promise<void>;
+  afterRunFinished?(task: Task, run: Run): Promise<void>;
 }
 
 export class RunLifecycleService {
@@ -530,6 +531,7 @@ export class RunLifecycleService {
         run: runEntry,
         task: taskEntry
       });
+      await this.deps.afterRunFinished?.(taskEntry, runEntry);
       return { run: runEntry, task: taskEntry };
     }
 
@@ -577,6 +579,7 @@ export class RunLifecycleService {
     }
 
     await this.deps.evaluateScheduler();
+    await this.deps.afterRunFinished?.(taskEntry, runEntry);
 
     return {
       run: runEntry,

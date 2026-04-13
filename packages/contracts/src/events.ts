@@ -1,4 +1,4 @@
-import type { AgentTeam, Run, RunLogEntry, Task, TeamMessage, Workspace } from "./domain.js";
+import type { AgentTeam, Run, RunLogEntry, Task, Workspace } from "./domain.js";
 
 export interface WorkspaceUpdatedEvent {
   type: "workspace.updated";
@@ -66,7 +66,22 @@ export interface TeamUpdatedEvent {
 export interface TeamAgentMessageEvent {
   type: "team.agent.message";
   teamId: string;
-  message: TeamMessage;
+  parentTaskId: string;
+  fromAgentId: string;
+  toAgentId?: string;
+  messageType: "status" | "artifact" | "context" | "feedback";
+  payload: string;
+}
+
+export interface TeamTaskCreatedEvent {
+  type: "team.task.created";
+  teamId: string;
+  parentTaskId: string;
+  subtasks: Array<{
+    taskId: string;
+    title: string;
+    agentName: string;
+  }>;
 }
 
 export type ServerEvent =
@@ -80,4 +95,5 @@ export type ServerEvent =
   | TaskUnblockedEvent
   | SchedulerEvaluatedEvent
   | TeamUpdatedEvent
-  | TeamAgentMessageEvent;
+  | TeamAgentMessageEvent
+  | TeamTaskCreatedEvent;

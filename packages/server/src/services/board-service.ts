@@ -41,6 +41,7 @@ import {
 import { resolveWorkspaceCodexSettings } from "../lib/codex-settings.js";
 import { createId } from "../lib/id.js";
 import { parseUnifiedDiff, type DiffFile } from "../lib/diff-parser.js";
+import { createRunLogEntry } from "../lib/run-log.js";
 import { createTaskWorktree } from "../lib/task-worktree.js";
 import { resolveGlobalSettings } from "../lib/global-settings.js";
 import { resolveWorkspacePromptTemplates } from "../lib/workspace-prompt-templates.js";
@@ -73,8 +74,18 @@ import {
   NativeWorkspaceRootPicker,
   type WorkspaceRootPicker
 } from "./workspace-root-picker.js";
-import { RunLifecycleService } from "./run-lifecycle-service.js";
+import { RunLifecycleService, type StartTaskOptions } from "./run-lifecycle-service.js";
 import { TaskScheduler } from "./task-scheduler.js";
+import {
+  CoordinatorSubtaskParseError,
+  buildCoordinatorPrompt,
+  buildSubtaskPrompt,
+  buildTeamAgentMessageEvent,
+  buildTeamTaskCreatedEvent,
+  parseCoordinatorSubtasks,
+  truncateTeamMessagePayload,
+  type TeamAgentContext
+} from "./team-coordinator-service.js";
 
 interface BoardServiceDependencies {
   gitWorktrees?: GitWorktreeService;
@@ -159,7 +170,7 @@ export class BoardService {
       gitWorktrees: this.gitWorktrees,
       githubPullRequests: this.githubPullRequests,
       startTask: (taskId, opts) =>
-        this.runLifecycle.startTask(taskId, {
+        this.startTaskInternal(taskId, {
           ...opts,
           skipDependencyCheck: true
         }),
@@ -181,7 +192,8 @@ export class BoardService {
       requireRun: (runId, source) => this.requireRun(runId, source),
       topOrder: (column, excludingId) => this.topOrder(column, excludingId),
       canTaskStart: (task, source) => this.canTaskStart(task, source),
-      evaluateScheduler: () => this.scheduler.evaluate()
+      evaluateScheduler: () => this.scheduler.evaluate(),
+      afterRunFinished: (task, run) => this.handleTeamRunFinished(task, run)
     });
     this.scheduler = new TaskScheduler(
       () => ({
@@ -194,7 +206,7 @@ export class BoardService {
         store: this.store,
         events: this.events,
         lifecycle: {
-          startTask: (taskId, options) => this.runLifecycle.startTask(taskId, options),
+          startTask: (taskId, options) => this.startTaskInternal(taskId, options),
           isActive: (taskId) => this.runLifecycle.isActive(taskId),
           activeCount: () => this.runLifecycle.activeCount(),
           activeCountByRunner: (type) => this.runLifecycle.activeCountByRunner(type)
@@ -207,7 +219,7 @@ export class BoardService {
       gitWorktrees: this.gitWorktrees,
       githubPullRequests: this.githubPullRequests,
       startTask: (taskId, opts) =>
-        this.runLifecycle.startTask(taskId, {
+        this.startTaskInternal(taskId, {
           ...opts,
           skipDependencyCheck: true
         }),
@@ -248,6 +260,445 @@ export class BoardService {
 
   private canTaskStart(task: Task, source?: Task[]): boolean {
     return this.scheduler.canStart(task, source ?? this.store.listTasks());
+  }
+
+  private async startTaskInternal(
+    taskId: string,
+    options: StartTaskOptions = {}
+  ): Promise<{ task: Task; run: Run }> {
+    const task = this.requireTask(taskId);
+    const teamOptions =
+      options.runnerConfigOverride != null
+        ? undefined
+        : this.resolveTeamStartOptions(task);
+
+    return this.runLifecycle.startTask(taskId, {
+      ...options,
+      runnerConfigOverride: teamOptions?.runnerConfigOverride ?? options.runnerConfigOverride,
+      runMetadata: {
+        ...(teamOptions?.runMetadata ?? {}),
+        ...(options.runMetadata ?? {})
+      }
+    });
+  }
+
+  private resolveTeamStartOptions(task: Task): Pick<
+    StartTaskOptions,
+    "runnerConfigOverride" | "runMetadata"
+  > | undefined {
+    if (!task.teamId) {
+      return undefined;
+    }
+
+    const team = this.getTeam(task.teamId);
+    if (task.parentTaskId) {
+      return this.buildSubtaskStartOptions(task, team);
+    }
+
+    return this.buildCoordinatorStartOptions(task, team);
+  }
+
+  private buildCoordinatorStartOptions(
+    task: Task,
+    team: AgentTeam
+  ): Pick<StartTaskOptions, "runnerConfigOverride" | "runMetadata"> {
+    const coordinator = this.resolveCoordinatorAgent(team);
+    const userPromptParts = [
+      this.extractRunnerPrompt(coordinator.runnerConfig),
+      this.resolveUserTaskPrompt(task)
+    ].filter((value): value is string => Boolean(value?.trim()));
+    const prompt = buildCoordinatorPrompt({
+      agents: this.buildTeamAgentContexts(team),
+      userPrompt: userPromptParts.join("\n\n")
+    });
+
+    return {
+      runnerConfigOverride: this.withRunnerPrompt(coordinator.runnerConfig, prompt),
+      runMetadata: {
+        trigger: "team_coordinator",
+        teamId: team.id,
+        teamAgentId: coordinator.id,
+        parentTaskId: task.id
+      }
+    };
+  }
+
+  private buildSubtaskStartOptions(
+    task: Task,
+    team: AgentTeam
+  ): Pick<StartTaskOptions, "runnerConfigOverride" | "runMetadata"> {
+    const parentTaskId = ensure(
+      task.parentTaskId,
+      400,
+      "TEAM_TASK_INVALID",
+      "Subtask is missing parentTaskId"
+    );
+    const assignedAgent = this.resolveAssignedTeamAgent(team, task);
+    const parentTask = this.requireTask(parentTaskId);
+    const prompt = buildSubtaskPrompt({
+      teamName: team.name,
+      parentTaskTitle: parentTask.title,
+      agents: this.buildTeamAgentContexts(team),
+      messages: this.store.listTeamMessages(team.id, parentTaskId).map((message) => ({
+        fromAgentId: message.agentName,
+        messageType: message.messageType,
+        payload: message.content
+      })),
+      subtaskTitle: task.title,
+      subtaskDescription: task.description,
+      userPrompt:
+        this.extractRunnerPrompt(assignedAgent.runnerConfig) ??
+        "Complete the assigned subtask and report concrete results."
+    });
+
+    return {
+      runnerConfigOverride: this.withRunnerPrompt(assignedAgent.runnerConfig, prompt),
+      runMetadata: {
+        trigger: "team_subtask",
+        teamId: team.id,
+        teamAgentId: assignedAgent.id,
+        parentTaskId
+      }
+    };
+  }
+
+  private buildTeamAgentContexts(team: AgentTeam): TeamAgentContext[] {
+    return team.agents.map((agent) => ({
+      id: agent.id,
+      name: agent.agentName,
+      role: agent.role,
+      runnerType: agent.runnerConfig.type
+    }));
+  }
+
+  private resolveCoordinatorAgent(team: AgentTeam): TeamAgent {
+    const coordinator = team.agents.find((agent) => agent.role === "coordinator");
+    return ensure(
+      coordinator,
+      400,
+      "TEAM_COORDINATOR_MISSING",
+      "Team must have exactly one coordinator"
+    );
+  }
+
+  private resolveAssignedTeamAgent(team: AgentTeam, task: Task): TeamAgent {
+    const teamAgentId = ensure(
+      task.teamAgentId,
+      400,
+      "TEAM_TASK_INVALID",
+      "Subtask is missing teamAgentId"
+    );
+    const agent = team.agents.find((entry) => entry.id === teamAgentId);
+    return ensure(
+      agent,
+      404,
+      "TEAM_AGENT_NOT_FOUND",
+      `Assigned team agent not found: ${teamAgentId}`
+    );
+  }
+
+  private extractRunnerPrompt(runnerConfig: RunnerConfig): string | undefined {
+    if (runnerConfig.type === "codex" || runnerConfig.type === "claude") {
+      const prompt = runnerConfig.prompt.trim();
+      return prompt ? prompt : undefined;
+    }
+
+    return undefined;
+  }
+
+  private resolveUserTaskPrompt(task: Task): string {
+    const parts = [task.description.trim(), this.extractRunnerPrompt(task.runnerConfig)].filter(
+      (value): value is string => Boolean(value?.trim())
+    );
+    return parts.length > 0 ? parts.join("\n\n") : task.title;
+  }
+
+  private withRunnerPrompt(runnerConfig: RunnerConfig, prompt: string): RunnerConfig {
+    if (runnerConfig.type === "codex" || runnerConfig.type === "claude") {
+      return {
+        ...runnerConfig,
+        prompt
+      };
+    }
+
+    throw new AppError(
+      400,
+      "TEAM_AGENT_RUNNER_NOT_SUPPORTED",
+      "Agent team execution currently requires codex or claude runners"
+    );
+  }
+
+  private async handleTeamRunFinished(task: Task, run: Run): Promise<void> {
+    if (!task.teamId || task.parentTaskId || run.status !== "succeeded") {
+      return;
+    }
+
+    if (run.metadata?.trigger !== "team_coordinator") {
+      return;
+    }
+
+    try {
+      const team = this.getTeam(task.teamId);
+      const coordinator = this.resolveCoordinatorAgent(team);
+      const output = await this.extractCoordinatorOutput(run.id);
+      const drafts = parseCoordinatorSubtasks(output);
+      const { parentTask, subtasks } = await this.createCoordinatorSubtasks(
+        task,
+        team,
+        drafts
+      );
+
+      const messageEvent = buildTeamAgentMessageEvent({
+        teamId: team.id,
+        parentTaskId: task.id,
+        fromAgentId: coordinator.id,
+        messageType: "context",
+        payload: this.buildCoordinatorSummary(subtasks, team)
+      });
+      this.store.appendTeamMessage({
+        id: createId(),
+        teamId: team.id,
+        parentTaskId: task.id,
+        taskId: task.id,
+        agentName: coordinator.agentName,
+        senderType: "agent",
+        messageType: messageEvent.messageType,
+        content: messageEvent.payload,
+        createdAt: new Date().toISOString()
+      });
+
+      this.events.publish({
+        type: "task.updated",
+        action: "updated",
+        taskId: parentTask.id,
+        task: parentTask
+      });
+      for (const subtask of subtasks) {
+        this.events.publish({
+          type: "task.updated",
+          action: "created",
+          taskId: subtask.id,
+          task: subtask
+        });
+      }
+      this.events.publish(messageEvent);
+      this.events.publish(
+        buildTeamTaskCreatedEvent({
+          teamId: team.id,
+          parentTaskId: task.id,
+          subtasks: subtasks.map((subtask) => ({
+            taskId: subtask.id,
+            title: subtask.title,
+            agentName: this.resolveAssignedTeamAgent(team, subtask).agentName
+          }))
+        })
+      );
+
+      await this.scheduler.evaluate();
+    } catch (error) {
+      await this.restoreCoordinatorParentToReview(task.id);
+      const message =
+        error instanceof Error ? error.message : "Coordinator output could not be processed";
+      await this.runLifecycle.appendAndPublishRunOutput(
+        task.id,
+        run.id,
+        createRunLogEntry(run.id, {
+          kind: "system",
+          stream: "system",
+          title: "Coordinator parse error",
+          text: `${message}\n`
+        })
+      );
+    }
+  }
+
+  private async restoreCoordinatorParentToReview(taskId: string): Promise<void> {
+    const recoveredTask = await this.store.updateState((state) => {
+      const taskIndex = state.tasks.findIndex((entry) => entry.id === taskId);
+      if (taskIndex === -1) {
+        return null;
+      }
+
+      const currentTask = state.tasks[taskIndex]!;
+      if (currentTask.column !== "running") {
+        return null;
+      }
+
+      currentTask.column = "review";
+      currentTask.order = this.topOrderFromTasks("review", state.tasks, currentTask.id);
+      currentTask.updatedAt = new Date().toISOString();
+      return { ...currentTask };
+    });
+
+    if (!recoveredTask) {
+      return;
+    }
+
+    try {
+      this.events.publish({
+        type: "task.updated",
+        action: "updated",
+        taskId: recoveredTask.id,
+        task: recoveredTask
+      });
+    } catch {
+      // Best-effort recovery notification. The persisted task state already reflects review.
+    }
+  }
+
+  private async extractCoordinatorOutput(runId: string): Promise<string> {
+    const entries = await this.store.readLogEntries(runId);
+    const lastAgentEntry = [...entries].reverse().find((entry) => entry.kind === "agent");
+    return ensure(
+      lastAgentEntry?.text.trim(),
+      400,
+      "TEAM_COORDINATOR_OUTPUT_MISSING",
+      "Coordinator run did not produce a final agent output"
+    );
+  }
+
+  private async createCoordinatorSubtasks(
+    parentTask: Task,
+    team: AgentTeam,
+    drafts: ReturnType<typeof parseCoordinatorSubtasks>
+  ): Promise<{ parentTask: Task; subtasks: Task[] }> {
+    const workspace = this.requireWorkspace(parentTask.workspaceId);
+    const existingTasks = this.store.listTasks();
+    if (existingTasks.some((task) => task.parentTaskId === parentTask.id)) {
+      throw new CoordinatorSubtaskParseError(
+        "Parent task already has subtasks; refusing to create duplicates"
+      );
+    }
+
+    const agentBuckets = new Map<string, TeamAgent[]>();
+    for (const agent of team.agents) {
+      const bucket = agentBuckets.get(agent.agentName) ?? [];
+      bucket.push(agent);
+      agentBuckets.set(agent.agentName, bucket);
+    }
+
+    const titleToId = new Map<string, string>();
+    const draftAssignments = drafts.map((draft) => {
+      const matches = agentBuckets.get(draft.assignedAgent) ?? [];
+      if (matches.length === 0) {
+        throw new CoordinatorSubtaskParseError(
+          `Coordinator assigned unknown agent "${draft.assignedAgent}"`
+        );
+      }
+      if (matches.length > 1) {
+        throw new CoordinatorSubtaskParseError(
+          `Coordinator assigned ambiguous agent "${draft.assignedAgent}"`
+        );
+      }
+      if (titleToId.has(draft.title)) {
+        throw new CoordinatorSubtaskParseError(
+          `Coordinator emitted duplicate subtask title "${draft.title}"`
+        );
+      }
+      const taskId = createId();
+      titleToId.set(draft.title, taskId);
+      return {
+        draft,
+        agent: matches[0]!,
+        taskId
+      };
+    });
+
+    const createdAt = new Date().toISOString();
+    return this.store.updateState((state) => {
+      const parentIndex = state.tasks.findIndex((task) => task.id === parentTask.id);
+      if (parentIndex === -1) {
+        throw new AppError(404, "TASK_NOT_FOUND", "Parent team task not found");
+      }
+
+      const plannedSubtasks = draftAssignments.map(({ draft, agent, taskId }, index) => {
+        const dependencyIds = draft.dependencies.map((dependencyTitle) => {
+          const dependencyId = titleToId.get(dependencyTitle);
+          if (!dependencyId) {
+            throw new CoordinatorSubtaskParseError(
+              `Coordinator referenced unknown dependency "${dependencyTitle}"`
+            );
+          }
+          return dependencyId;
+        });
+
+        return {
+          id: taskId,
+          title: draft.title,
+          description: draft.description,
+          workspaceId: workspace.id,
+          column: "todo",
+          order: this.nextOrderFromTasks("todo", state.tasks, index),
+          runnerType: agent.runnerConfig.type,
+          runnerConfig: agent.runnerConfig,
+          dependencies: dependencyIds,
+          worktree: createTaskWorktree(taskId, draft.title, {
+            workspace,
+            baseRef: workspace.isGitRepo ? parentTask.worktree.baseRef : undefined
+          }),
+          teamId: team.id,
+          parentTaskId: parentTask.id,
+          teamAgentId: agent.id,
+          createdAt,
+          updatedAt: createdAt
+        } satisfies Task;
+      });
+
+      const cycle = DependencyGraph.fromTasks([...state.tasks, ...plannedSubtasks]).detectCycle();
+      if (cycle) {
+        throw new CoordinatorSubtaskParseError(
+          `Coordinator emitted circular subtask dependencies: ${cycle.join(" -> ")}`
+        );
+      }
+
+      state.tasks.push(...plannedSubtasks);
+      const parent = state.tasks[parentIndex]!;
+      parent.column = "running";
+      parent.order = this.topOrderFromTasks("running", state.tasks, parent.id);
+      parent.updatedAt = createdAt;
+
+      return {
+        parentTask: { ...parent },
+        subtasks: plannedSubtasks.map((task) => ({ ...task }))
+      };
+    });
+  }
+
+  private buildCoordinatorSummary(subtasks: Task[], team: AgentTeam): string {
+    const lines = ["Coordinator created subtasks:"];
+    for (const subtask of subtasks) {
+      const agentName = this.resolveAssignedTeamAgent(team, subtask).agentName;
+      const dependencySummary =
+        subtask.dependencies.length > 0
+          ? ` (depends on ${subtask.dependencies.length} task${subtask.dependencies.length === 1 ? "" : "s"})`
+          : "";
+      lines.push(`- ${subtask.title} -> ${agentName}${dependencySummary}`);
+    }
+    return lines.join("\n");
+  }
+
+  private nextOrderFromTasks(
+    column: Task["column"],
+    tasks: Task[],
+    offset = 0
+  ): number {
+    const columnTasks = tasks
+      .filter((task) => task.column === column)
+      .sort((left, right) => left.order - right.order);
+    const last = columnTasks.at(-1);
+    return (last ? last.order : 0) + (offset + 1) * 1_024;
+  }
+
+  private topOrderFromTasks(
+    column: Task["column"],
+    tasks: Task[],
+    excludingTaskId?: string
+  ): number {
+    const columnTasks = tasks
+      .filter((task) => task.column === column && task.id !== excludingTaskId)
+      .sort((left, right) => left.order - right.order);
+    const first = columnTasks[0];
+    return first ? first.order - 1_024 : 1_024;
   }
 
   public async initialize(): Promise<void> {
@@ -666,7 +1117,7 @@ export class BoardService {
     taskId: string,
     input: StartTaskBody = {}
   ): Promise<{ task: Task; run: Run }> {
-    return this.runLifecycle.startTask(taskId, {
+    return this.startTaskInternal(taskId, {
       targetOrder: input.order
     });
   }
@@ -1209,10 +1660,10 @@ export class BoardService {
     return { id: teamId };
   }
 
-  public listTeamMessages(teamId: string): TeamMessage[] {
+  public listTeamMessages(teamId: string, parentTaskId?: string): TeamMessage[] {
     // Ensure team exists before listing messages
     this.getTeam(teamId);
-    return this.store.listTeamMessages(teamId);
+    return this.store.listTeamMessages(teamId, parentTaskId);
   }
 
   private nextOrder(column: Task["column"]): number {

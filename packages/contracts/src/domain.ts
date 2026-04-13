@@ -252,15 +252,21 @@ export interface TeamAgent {
 
 export type TeamMessageSenderType = "agent" | "human" | "system";
 
+export type TeamMessageType = "status" | "artifact" | "context" | "feedback";
+
 export interface TeamMessage {
   id: string;
   teamId: string;
+  /** Parent team task that owns this execution thread. */
+  parentTaskId: string;
   /** The task this message is associated with (subtask or parent task). */
   taskId?: string;
   /** Name of the agent or user that sent the message. */
   agentName: string;
   /** Whether the message was sent by an agent, human, or the system. */
   senderType: TeamMessageSenderType;
+  /** Semantic message category for prompt injection and UI rendering. */
+  messageType: TeamMessageType;
   content: string;
   createdAt: string;
 }

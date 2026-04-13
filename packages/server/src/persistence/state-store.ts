@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
-import { eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 
 import type {
   AgentTeam,
@@ -172,9 +172,11 @@ function rowToTeamMessage(row: TeamMessageRow): TeamMessage {
   return {
     id: row.id,
     teamId: row.teamId,
+    parentTaskId: row.parentTaskId,
     taskId: row.taskId ?? undefined,
     agentName: row.agentName,
     senderType: row.senderType as TeamMessage["senderType"],
+    messageType: row.messageType as TeamMessage["messageType"],
     content: row.content,
     createdAt: row.createdAt
   };
@@ -486,13 +488,25 @@ export class StateStore {
     return result.changes > 0;
   }
 
-  public listTeamMessages(teamId: string): TeamMessage[] {
-    const rows = this.db
-      .select()
-      .from(schema.teamMessages)
-      .where(eq(schema.teamMessages.teamId, teamId))
-      .orderBy(schema.teamMessages.createdAt)
-      .all();
+  public listTeamMessages(teamId: string, parentTaskId?: string): TeamMessage[] {
+    const rows = parentTaskId
+      ? this.db
+          .select()
+          .from(schema.teamMessages)
+          .where(
+            and(
+              eq(schema.teamMessages.teamId, teamId),
+              eq(schema.teamMessages.parentTaskId, parentTaskId)
+            )
+          )
+          .orderBy(asc(schema.teamMessages.createdAt))
+          .all()
+      : this.db
+          .select()
+          .from(schema.teamMessages)
+          .where(eq(schema.teamMessages.teamId, teamId))
+          .orderBy(asc(schema.teamMessages.createdAt))
+          .all();
     return rows.map(rowToTeamMessage);
   }
 
@@ -506,9 +520,11 @@ export class StateStore {
       .values({
         id: message.id,
         teamId: message.teamId,
+        parentTaskId: message.parentTaskId,
         taskId: message.taskId ?? null,
         agentName: message.agentName,
         senderType: message.senderType,
+        messageType: message.messageType,
         content: message.content,
         createdAt: message.createdAt
       })
@@ -621,14 +637,18 @@ export class StateStore {
       CREATE TABLE IF NOT EXISTS team_messages (
         id TEXT PRIMARY KEY,
         team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        parent_task_id TEXT NOT NULL,
         task_id TEXT,
         agent_name TEXT NOT NULL,
         sender_type TEXT NOT NULL,
+        message_type TEXT NOT NULL,
         content TEXT NOT NULL,
         created_at TEXT NOT NULL
       );
 
       CREATE INDEX IF NOT EXISTS idx_team_messages_team_id ON team_messages (team_id);
+      CREATE INDEX IF NOT EXISTS idx_team_messages_team_parent_created_at
+        ON team_messages (team_id, parent_task_id, created_at);
     `);
 
     // Add new columns to existing tables. SQLite does not support IF NOT EXISTS
@@ -637,9 +657,12 @@ export class StateStore {
       "ALTER TABLE tasks ADD COLUMN team_id TEXT",
       "ALTER TABLE tasks ADD COLUMN parent_task_id TEXT",
       "ALTER TABLE tasks ADD COLUMN team_agent_id TEXT",
+      // v1 -> v2 migration for team execution threads
+      "ALTER TABLE team_messages ADD COLUMN parent_task_id TEXT NOT NULL DEFAULT ''",
       "ALTER TABLE teams ADD COLUMN pr_strategy TEXT NOT NULL DEFAULT 'independent'",
       // Renamed from direction; default 'agent' covers rows written by the initial PR version
-      "ALTER TABLE team_messages ADD COLUMN sender_type TEXT NOT NULL DEFAULT 'agent'"
+      "ALTER TABLE team_messages ADD COLUMN sender_type TEXT NOT NULL DEFAULT 'agent'",
+      "ALTER TABLE team_messages ADD COLUMN message_type TEXT NOT NULL DEFAULT 'context'"
     ]) {
       try {
         this.sqlite.exec(col);

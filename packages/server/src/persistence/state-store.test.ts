@@ -199,8 +199,10 @@ describe("StateStore — Agent Teams", () => {
     const msg: TeamMessage = {
       id: "msg-1",
       teamId: "team-1",
+      parentTaskId: "task-parent",
       agentName: "Coordinator",
       senderType: "agent",
+      messageType: "context",
       content: "hello",
       createdAt: now
     };
@@ -208,7 +210,40 @@ describe("StateStore — Agent Teams", () => {
     const messages = store.listTeamMessages("team-1");
     expect(messages).toHaveLength(1);
     expect(messages[0]?.senderType).toBe("agent");
+    expect(messages[0]?.messageType).toBe("context");
+    expect(messages[0]?.parentTaskId).toBe("task-parent");
     expect(messages[0]?.content).toBe("hello");
+  });
+
+  it("filters team messages by parentTaskId", async () => {
+    const store = new StateStore(":memory:");
+    await store.load();
+
+    store.createTeam(makeTeam("ws-1"));
+    const now = new Date().toISOString();
+    store.appendTeamMessage({
+      id: "msg-1",
+      teamId: "team-1",
+      parentTaskId: "task-parent-a",
+      agentName: "Coordinator",
+      senderType: "agent",
+      messageType: "context",
+      content: "plan a",
+      createdAt: now
+    });
+    store.appendTeamMessage({
+      id: "msg-2",
+      teamId: "team-1",
+      parentTaskId: "task-parent-b",
+      agentName: "Coordinator",
+      senderType: "agent",
+      messageType: "status",
+      content: "plan b",
+      createdAt: now
+    });
+
+    expect(store.listTeamMessages("team-1", "task-parent-a")).toHaveLength(1);
+    expect(store.listTeamMessages("team-1", "task-parent-b")).toHaveLength(1);
   });
 
   it("rejects messages exceeding 10KB", async () => {
@@ -220,8 +255,10 @@ describe("StateStore — Agent Teams", () => {
     const msg: TeamMessage = {
       id: "msg-big",
       teamId: "team-1",
+      parentTaskId: "task-parent",
       agentName: "Coordinator",
       senderType: "agent",
+      messageType: "artifact",
       content: "x".repeat(10 * 1024 + 1),
       createdAt: now
     };
@@ -235,8 +272,14 @@ describe("StateStore — Agent Teams", () => {
     store.createTeam(makeTeam("ws-1"));
     const now = new Date().toISOString();
     store.appendTeamMessage({
-      id: "msg-1", teamId: "team-1", agentName: "Coordinator",
-      senderType: "agent", content: "hi", createdAt: now
+      id: "msg-1",
+      teamId: "team-1",
+      parentTaskId: "task-parent",
+      agentName: "Coordinator",
+      senderType: "agent",
+      messageType: "context",
+      content: "hi",
+      createdAt: now
     });
     expect(store.listTeamMessages("team-1")).toHaveLength(1);
 
