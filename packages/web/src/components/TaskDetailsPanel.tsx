@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { DiffViewer } from "./DiffViewer";
 import { LiveLog } from "./LiveLog";
+import { SubtaskReviewActions } from "./SubtaskReviewActions";
 import { TaskActionBar } from "./TaskActionBar";
 import { TeamCard } from "./TeamCard";
 import { TeamMessageFeed } from "./TeamMessageFeed";
@@ -31,6 +32,10 @@ interface Props {
   onPlan(): void;
   onSendPlanFeedback(text: string): Promise<unknown>;
   onSendTeamMessage?(text: string): Promise<unknown>;
+  onApproveSubtask?(): void;
+  onRejectSubtask?(reason?: string): void;
+  onRetrySubtask?(): void;
+  reviewActionBusy?: boolean;
   onStart(): void;
   onRequestReview(): void;
   onStop(): void;
@@ -272,6 +277,10 @@ export function TaskDetailsPanel({
   onPlan,
   onSendPlanFeedback,
   onSendTeamMessage,
+  onApproveSubtask,
+  onRejectSubtask,
+  onRetrySubtask,
+  reviewActionBusy = false,
   onStart,
   onRequestReview,
   onStop,
@@ -364,6 +373,8 @@ export function TaskDetailsPanel({
     task.column === "review" &&
     !activeRun &&
     Boolean(showWorktree && task.worktree.status !== "removed");
+  const isReviewableSubtask = Boolean(task.teamId && task.parentTaskId && task.column === "review");
+  const canApproveReviewSubtask = task.lastRunStatus === "succeeded";
 
   return (
     <aside className={cn(detailPanelClass, className)}>
@@ -388,7 +399,9 @@ export function TaskDetailsPanel({
                 className={cn(
                   chipClass,
                   chipTone(
-                    task.column === "backlog" && task.lastRunId
+                    task.rejected
+                      ? "danger"
+                      : task.column === "backlog" && task.lastRunId
                       ? "warning"
                       : task.column === "todo" && task.plan
                         ? "accent"
@@ -396,7 +409,9 @@ export function TaskDetailsPanel({
                   )
                 )}
               >
-                {task.column === "backlog" && task.lastRunId
+                {task.rejected
+                  ? "Rejected"
+                  : task.column === "backlog" && task.lastRunId
                   ? "Planning"
                   : task.column === "todo" && task.plan
                     ? "Planned"
@@ -410,17 +425,36 @@ export function TaskDetailsPanel({
 
           {/* Actions */}
           <div className="flex flex-wrap items-center gap-1.5 border-b border-border px-4 py-2 max-[720px]:px-3">
-            <TaskActionBar
-              column={task.column}
-              task={task}
-              onPlan={onPlan}
-              onStart={onStart}
-              onStop={onStop}
-              onMoveToTodo={onMoveToTodo}
-              onMarkDone={onMarkDone}
-              onArchive={onArchive}
-            />
-            {canRequestReview ? (
+            {isReviewableSubtask ? (
+              <SubtaskReviewActions
+                canApprove={canApproveReviewSubtask}
+                disabled={reviewActionBusy}
+                onApprove={() => onApproveSubtask?.()}
+                onReject={() => {
+                  const reason = window.prompt(
+                    `Why reject "${task.title}"? (optional)`,
+                    ""
+                  );
+                  if (reason === null) {
+                    return;
+                  }
+                  onRejectSubtask?.(reason || undefined);
+                }}
+                onRetry={() => onRetrySubtask?.()}
+              />
+            ) : (
+              <TaskActionBar
+                column={task.column}
+                task={task}
+                onPlan={onPlan}
+                onStart={onStart}
+                onStop={onStop}
+                onMoveToTodo={onMoveToTodo}
+                onMarkDone={onMarkDone}
+                onArchive={onArchive}
+              />
+            )}
+            {canRequestReview && !isReviewableSubtask ? (
               <button
                 type="button"
                 className={cn(
@@ -465,6 +499,7 @@ export function TaskDetailsPanel({
                   ) : (
                     <span>Coordinator thread · parent task</span>
                   )}
+                  {task.rejected ? <span>Decision · rejected</span> : null}
                   {task.teamAgentId ? (
                     <span>
                       Assigned agent ·{" "}

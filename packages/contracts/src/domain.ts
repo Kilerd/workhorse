@@ -189,9 +189,12 @@ export interface Task {
   plan?: string;
   worktree: TaskWorktree;
   lastRunId?: string;
+  lastRunStatus?: RunStatus;
   continuationRunId?: string;
   pullRequestUrl?: string;
   pullRequest?: TaskPullRequest;
+  /** Human reviewers explicitly rejected this subtask. */
+  rejected?: boolean;
   /** When set, this task belongs to an agent team. */
   teamId?: string;
   /** When set, this task is a subtask created by a team coordinator. */
@@ -281,6 +284,8 @@ export interface AgentTeam {
   agents: TeamAgent[];
   /** Strategy for creating pull requests from subtask branches. */
   prStrategy: TeamPrStrategy;
+  /** When true, succeeded subtasks skip manual human approval. */
+  autoApproveSubtasks: boolean;
   createdAt: string;
   updatedAt: string;
 }

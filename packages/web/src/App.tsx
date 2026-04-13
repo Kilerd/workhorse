@@ -342,6 +342,16 @@ function ReactAppShell() {
                   onMoveToTodo={(taskId) => board.moveToTodo(taskId)}
                   onMarkDone={(taskId) => board.markDone(taskId)}
                   onArchive={(taskId) => board.archiveTask(taskId)}
+                  onApproveSubtask={(taskId, teamId, parentTaskId) =>
+                    void board.approveTask({ taskId, teamId, parentTaskId })
+                  }
+                  onRejectSubtask={(taskId, teamId, parentTaskId, reason) =>
+                    void board.rejectTask({ taskId, teamId, parentTaskId, reason })
+                  }
+                  onRetrySubtask={(taskId, teamId, parentTaskId) =>
+                    void board.retryTask({ taskId, teamId, parentTaskId })
+                  }
+                  reviewActionBusy={board.isBusy}
                 />
               </DragDropContext>
             }
@@ -430,6 +440,7 @@ function ReactAppShell() {
               name: values.name,
               description: values.description,
               prStrategy: values.prStrategy,
+              autoApproveSubtasks: values.autoApproveSubtasks,
               agents: values.agents
             }
           })
@@ -547,6 +558,38 @@ function TaskDetailsRoute({
         onPlan={() => board.planTask(task.id)}
         onSendPlanFeedback={(text) => board.sendPlanFeedback({ taskId: task.id, text })}
         onSendTeamMessage={task.teamId ? (text) => postTeamMessage.mutateAsync(text) : undefined}
+        onApproveSubtask={
+          task.teamId && task.parentTaskId
+            ? () =>
+                board.approveTask({
+                  taskId: task.id,
+                  teamId: task.teamId!,
+                  parentTaskId: task.parentTaskId!
+                })
+            : undefined
+        }
+        onRejectSubtask={
+          task.teamId && task.parentTaskId
+            ? (reason) =>
+                board.rejectTask({
+                  taskId: task.id,
+                  teamId: task.teamId!,
+                  parentTaskId: task.parentTaskId!,
+                  reason
+                })
+            : undefined
+        }
+        onRetrySubtask={
+          task.teamId && task.parentTaskId
+            ? () =>
+                board.retryTask({
+                  taskId: task.id,
+                  teamId: task.teamId!,
+                  parentTaskId: task.parentTaskId!
+                })
+            : undefined
+        }
+        reviewActionBusy={board.isBusy}
         onStart={() => board.startTask(task.id)}
         onRequestReview={() => board.requestTaskReview(task.id)}
         onStop={() => board.stopTask(task.id)}

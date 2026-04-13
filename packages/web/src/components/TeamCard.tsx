@@ -83,6 +83,9 @@ export function TeamCard({
             {workerCount} workers
           </span>
         ) : null}
+        <span className="inline-flex min-h-5 items-center rounded-none border border-border px-1.5 font-mono text-[0.56rem] uppercase tracking-[0.1em] text-[var(--muted)]">
+          {team.autoApproveSubtasks ? "Auto-approve subtasks" : "Manual subtask review"}
+        </span>
       </div>
 
       <div className="grid gap-1 text-[0.68rem] text-[var(--muted)]">

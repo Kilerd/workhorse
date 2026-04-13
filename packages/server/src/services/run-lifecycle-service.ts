@@ -172,6 +172,8 @@ export class RunLifecycleService {
       column: targetColumn,
       order: options.targetOrder ?? this.deps.topOrder(targetColumn, task.id),
       lastRunId: run.id,
+      lastRunStatus: "queued",
+      rejected: false,
       continuationRunId:
         executionTask.runnerType === "codex" ? run.id : task.continuationRunId,
       updatedAt: new Date().toISOString()
@@ -514,6 +516,7 @@ export class RunLifecycleService {
       }
       taskEntry.column = "todo";
       taskEntry.order = this.deps.topOrder("todo", taskId);
+      taskEntry.lastRunStatus = result.status;
       taskEntry.updatedAt = new Date().toISOString();
 
       this.deps.store.setRuns(currentRuns);
@@ -546,6 +549,8 @@ export class RunLifecycleService {
 
     taskEntry.column = nextColumn;
     taskEntry.order = this.deps.topOrder(nextColumn, taskId);
+    taskEntry.lastRunStatus = result.status;
+    taskEntry.rejected = false;
     taskEntry.pullRequestUrl = resolveTaskPullRequestUrl(taskEntry, runEntry);
     taskEntry.pullRequest = resolveTaskPullRequestSummary(taskEntry, runEntry);
     taskEntry.updatedAt = new Date().toISOString();

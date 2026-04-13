@@ -17,7 +17,10 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
-type TeamFormPayload = Pick<CreateTeamBody, "name" | "description" | "workspaceId" | "prStrategy" | "agents">;
+type TeamFormPayload = Pick<
+  CreateTeamBody,
+  "name" | "description" | "workspaceId" | "prStrategy" | "autoApproveSubtasks" | "agents"
+>;
 
 interface Props {
   mode: "create" | "edit";
@@ -77,6 +80,7 @@ function normalizeTeamPayload(input: TeamFormPayload): TeamFormPayload {
     description: input.description?.trim() ?? "",
     workspaceId: input.workspaceId,
     prStrategy: input.prStrategy,
+    autoApproveSubtasks: input.autoApproveSubtasks,
     agents: input.agents.map((agent) => ({
       ...agent,
       agentName: agent.agentName.trim(),
@@ -114,6 +118,7 @@ function resolveInitialPayload(
       description: team.description,
       workspaceId: team.workspaceId,
       prStrategy: team.prStrategy,
+      autoApproveSubtasks: team.autoApproveSubtasks,
       agents: team.agents
     };
   }
@@ -123,6 +128,7 @@ function resolveInitialPayload(
     description: "",
     workspaceId: defaultWorkspaceId ?? "",
     prStrategy: "independent",
+    autoApproveSubtasks: false,
     agents: [createDefaultAgent("coordinator"), createDefaultAgent("worker")]
   };
 }
@@ -269,6 +275,28 @@ export function TeamForm({
             <p className="m-0 text-[0.68rem] text-[var(--muted)]">
               Initial UI only exposes the independent strategy.
             </p>
+          </label>
+
+          <label className="grid gap-2 rounded-none border border-border bg-[var(--surface-soft)] px-3 py-2 md:col-span-2">
+            <span className="font-mono text-[0.58rem] uppercase tracking-[0.12em] text-[var(--accent)]">
+              Subtask approval
+            </span>
+            <span className="text-[0.74rem] leading-[1.5] text-[var(--muted)]">
+              When enabled, succeeded subtasks skip manual review and move directly to done.
+            </span>
+            <label className="flex items-center gap-2 text-[0.78rem] text-foreground">
+              <input
+                type="checkbox"
+                checked={payload.autoApproveSubtasks}
+                onChange={(event) =>
+                  setPayload((current) => ({
+                    ...current,
+                    autoApproveSubtasks: event.target.checked
+                  }))
+                }
+              />
+              <span>Auto-approve succeeded subtasks</span>
+            </label>
           </label>
         </div>
 

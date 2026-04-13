@@ -179,6 +179,57 @@ export interface paths {
         patch: operations["updateTask"];
         trace?: never;
     };
+    "/api/tasks/{taskId}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve a review-ready subtask */
+        post: operations["approveTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/{taskId}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject a review-ready subtask */
+        post: operations["rejectTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/{taskId}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry a review-ready subtask */
+        post: operations["retryTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tasks/{taskId}/worktree/cleanup": {
         parameters: {
             query?: never;
@@ -545,9 +596,12 @@ export interface components {
             plan?: string;
             worktree: components["schemas"]["TaskWorktree"];
             lastRunId?: string;
+            lastRunStatus?: "running" | "queued" | "succeeded" | "failed" | "interrupted" | "canceled";
             continuationRunId?: string;
             pullRequestUrl?: string;
             pullRequest?: components["schemas"]["TaskPullRequest"];
+            /** @description Human reviewers explicitly rejected this subtask. */
+            rejected?: boolean;
             /** @description When set, this task belongs to an agent team. */
             teamId?: string;
             /** @description When set, this task is a subtask created by a team coordinator. */
@@ -688,6 +742,18 @@ export interface components {
             order?: number;
             runnerType: components["schemas"]["RunnerType"];
             runnerConfig: components["schemas"]["RunnerConfig"];
+        };
+        ApproveTaskParams: {
+            taskId: string;
+        };
+        RejectTaskParams: {
+            taskId: string;
+        };
+        RejectTaskBody: {
+            reason?: string;
+        };
+        RetryTaskParams: {
+            taskId: string;
         };
         UpdateTaskParams: {
             taskId: string;
@@ -1017,6 +1083,8 @@ export interface components {
             agents: components["schemas"]["TeamAgent"][];
             /** @description Strategy for creating pull requests from subtask branches. */
             prStrategy: components["schemas"]["TeamPrStrategy"];
+            /** @description When true, succeeded subtasks skip manual human approval. */
+            autoApproveSubtasks: boolean;
             createdAt: string;
             updatedAt: string;
         };
@@ -1052,6 +1120,7 @@ export interface components {
             description?: string;
             workspaceId: string;
             prStrategy?: "independent" | "stacked" | "single";
+            autoApproveSubtasks?: boolean;
             agents: {
                 id: string;
                 agentName: string;
@@ -1066,6 +1135,7 @@ export interface components {
             name?: string;
             description?: string;
             prStrategy?: "independent" | "stacked" | "single";
+            autoApproveSubtasks?: boolean;
             agents?: {
                 id: string;
                 agentName: string;
@@ -1594,6 +1664,139 @@ export interface operations {
             };
             /** @description Task not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    approveTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Approved task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            /** @description Task not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Task cannot be approved */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    rejectTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectTaskBody"];
+            };
+        };
+        responses: {
+            /** @description Rejected task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Task not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Task cannot be rejected */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    retryTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Retried task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            /** @description Task not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Task cannot be retried */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

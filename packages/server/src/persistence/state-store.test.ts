@@ -136,6 +136,7 @@ function makeTeam(workspaceId: string, overrides: Partial<AgentTeam> = {}): Agen
       { id: "agent-2", agentName: "Worker", role: "worker", runnerConfig: { type: "shell", command: "true" } }
     ],
     prStrategy: "independent",
+    autoApproveSubtasks: false,
     createdAt: now,
     updatedAt: now,
     ...overrides
@@ -154,6 +155,7 @@ describe("StateStore — Agent Teams", () => {
     expect(found).not.toBeNull();
     expect(found?.name).toBe("Test Team");
     expect(found?.prStrategy).toBe("independent");
+    expect(found?.autoApproveSubtasks).toBe(false);
     expect(found?.agents).toHaveLength(2);
   });
 
@@ -174,10 +176,15 @@ describe("StateStore — Agent Teams", () => {
     await store.load();
 
     store.createTeam(makeTeam("ws-1"));
-    const updated = store.updateTeam("team-1", { name: "Renamed", prStrategy: "stacked" });
+    const updated = store.updateTeam("team-1", {
+      name: "Renamed",
+      prStrategy: "stacked",
+      autoApproveSubtasks: true
+    });
 
     expect(updated?.name).toBe("Renamed");
     expect(updated?.prStrategy).toBe("stacked");
+    expect(updated?.autoApproveSubtasks).toBe(true);
   });
 
   it("deletes a team and returns true; returns false for missing team", async () => {

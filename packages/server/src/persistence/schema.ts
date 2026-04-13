@@ -28,9 +28,11 @@ export const tasks = sqliteTable("tasks", {
   plan: text("plan"),
   worktree: text("worktree").notNull(),
   lastRunId: text("last_run_id"),
+  lastRunStatus: text("last_run_status"),
   continuationRunId: text("continuation_run_id"),
   pullRequestUrl: text("pull_request_url"),
   pullRequest: text("pull_request"),
+  rejected: integer("rejected", { mode: "boolean" }).notNull().default(false),
   teamId: text("team_id"),
   parentTaskId: text("parent_task_id"),
   teamAgentId: text("team_agent_id"),
@@ -91,6 +93,9 @@ export const teams = sqliteTable("teams", {
   // so a separate table would add overhead without query benefit.
   agents: text("agents").notNull(),
   prStrategy: text("pr_strategy").notNull().default("independent"),
+  autoApproveSubtasks: integer("auto_approve_subtasks", { mode: "boolean" })
+    .notNull()
+    .default(false),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull()
 });
