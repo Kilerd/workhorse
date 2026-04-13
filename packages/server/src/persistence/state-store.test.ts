@@ -80,6 +80,10 @@ describe("StateStore", () => {
     });
     await store.save();
 
+    // Force a reload from SQLite to verify the data was actually persisted,
+    // not just held in the in-memory buffer.
+    (store as any).state = (store as any).readStateFromDb();
+
     const settings = store.getSettings();
     expect(settings.language).toBe("English");
     expect(settings.scheduler?.maxConcurrent).toBe(5);

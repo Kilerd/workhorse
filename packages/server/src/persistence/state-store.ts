@@ -359,6 +359,7 @@ export class StateStore {
       .select()
       .from(schema.runLogEntries)
       .where(eq(schema.runLogEntries.runId, runId))
+      .orderBy(schema.runLogEntries.timestamp)
       .all();
     return rows.map(rowToLogEntry);
   }
@@ -378,6 +379,11 @@ export class StateStore {
         metadata: entry.metadata != null ? JSON.stringify(entry.metadata) : null
       })
       .run();
+  }
+
+  /** Closes the underlying SQLite connection. Call on server shutdown. */
+  public close(): void {
+    this.sqlite?.close();
   }
 
   // -------------------------------------------------------------------------
@@ -422,8 +428,8 @@ export class StateStore {
       );
 
       CREATE TABLE IF NOT EXISTS task_dependencies (
-        task_id TEXT NOT NULL,
-        dep_id TEXT NOT NULL,
+        task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        dep_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
         PRIMARY KEY (task_id, dep_id)
       );
 
@@ -431,7 +437,7 @@ export class StateStore {
 
       CREATE TABLE IF NOT EXISTS runs (
         id TEXT PRIMARY KEY,
-        task_id TEXT NOT NULL,
+        task_id TEXT NOT NULL REFERENCES tasks(id),
         status TEXT NOT NULL,
         runner_type TEXT NOT NULL,
         command TEXT NOT NULL DEFAULT '',
@@ -445,6 +451,10 @@ export class StateStore {
 
       CREATE INDEX IF NOT EXISTS idx_runs_task_id ON runs (task_id);
 
+      -- run_log_entries intentionally has no FK to runs: persistState uses a
+      -- delete-all + re-insert pattern for runs, so a CASCADE would wipe all
+      -- log entries on every save(). Orphaned entries are cleaned up explicitly
+      -- at the end of each persistState transaction instead.
       CREATE TABLE IF NOT EXISTS run_log_entries (
         id TEXT PRIMARY KEY,
         run_id TEXT NOT NULL,
@@ -457,7 +467,9 @@ export class StateStore {
         metadata TEXT
       );
 
-      CREATE INDEX IF NOT EXISTS idx_run_log_entries_run_id ON run_log_entries (run_id);
+      -- Composite index supports efficient ORDER BY timestamp queries per run
+      CREATE INDEX IF NOT EXISTS idx_run_log_entries_run_id_ts
+        ON run_log_entries (run_id, timestamp);
     `);
   }
 
@@ -499,8 +511,17 @@ export class StateStore {
     };
   }
 
+  // TODO(tech-debt): replace delete-all + re-insert with incremental upsert to
+  // avoid write amplification on large datasets (W1 from Architect review).
+  // Raw SQL is intentionally used here (rather than Drizzle builder) because
+  // better-sqlite3 transactions require synchronous statements and the raw
+  // prepare/run pattern is simpler and faster for bulk operations.
   private persistState(state: AppState): void {
     const persist = this.sqlite.transaction(() => {
+      // Defer FK constraint checks until COMMIT so the delete-all + re-insert
+      // pattern doesn't produce intermediate FK violations.
+      this.sqlite.prepare("PRAGMA defer_foreign_keys = ON").run();
+
       // Settings
       this.sqlite
         .prepare(
@@ -529,8 +550,12 @@ export class StateStore {
           );
       }
 
-      // Tasks: replace all (cascade deletes task_dependencies)
-      this.sqlite.prepare("DELETE FROM task_dependencies").run();
+      // Runs: delete before tasks because runs.task_id REFERENCES tasks(id).
+      // With defer_foreign_keys this ordering is not strictly required, but it
+      // makes the intent explicit.
+      this.sqlite.prepare("DELETE FROM runs").run();
+
+      // Tasks: delete cascades to task_dependencies via FK ON DELETE CASCADE.
       this.sqlite.prepare("DELETE FROM tasks").run();
       for (const task of state.tasks) {
         const row = taskToRow(task);
@@ -566,8 +591,7 @@ export class StateStore {
         }
       }
 
-      // Runs: replace all
-      this.sqlite.prepare("DELETE FROM runs").run();
+      // Re-insert all current runs (tasks exist at this point).
       for (const run of state.runs) {
         const row = runToRow(run);
         this.sqlite
@@ -589,6 +613,13 @@ export class StateStore {
             row.metadata ?? null
           );
       }
+
+      // Clean up orphaned log entries for runs that are no longer in state.
+      // run_log_entries has no FK CASCADE (see DDL comment), so we handle
+      // cleanup explicitly here.
+      this.sqlite
+        .prepare("DELETE FROM run_log_entries WHERE run_id NOT IN (SELECT id FROM runs)")
+        .run();
     });
 
     persist();
