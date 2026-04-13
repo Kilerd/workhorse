@@ -722,11 +722,12 @@ export class BoardService {
   }
 
   public async evaluateScheduler(): Promise<{ started: string[]; blocked: string[] }> {
+    const beforeTasks = this.store.listTasks();
     const beforeTodo = new Set(
-      this.store.listTasks().filter((t) => t.column === "todo").map((t) => t.id)
+      beforeTasks.filter((t) => t.column === "todo").map((t) => t.id)
     );
     const beforeBlocked = new Set(
-      this.store.listTasks().filter((t) => t.column === "blocked").map((t) => t.id)
+      beforeTasks.filter((t) => t.column === "blocked").map((t) => t.id)
     );
     await this.scheduler.evaluate();
     const afterTasks = this.store.listTasks();
