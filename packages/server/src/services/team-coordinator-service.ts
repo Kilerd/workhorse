@@ -73,12 +73,18 @@ function trimToBytes(value: string, maxBytes: number): string {
     return value;
   }
 
-  let end = value.length;
-  while (end > 0 && Buffer.byteLength(value.slice(0, end), "utf8") > maxBytes) {
-    end -= 1;
+  let bytes = 0;
+  let end = 0;
+  for (const char of value) {
+    const charBytes = Buffer.byteLength(char, "utf8");
+    if (bytes + charBytes > maxBytes) {
+      break;
+    }
+    bytes += charBytes;
+    end += char.length;
   }
 
-  return value.slice(0, Math.max(end, 0)).trimEnd();
+  return value.slice(0, end).trimEnd();
 }
 
 function extractJsonCandidates(output: string): string[] {

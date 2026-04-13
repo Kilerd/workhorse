@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
-import { eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 
 import type {
   AgentTeam,
@@ -493,15 +493,19 @@ export class StateStore {
       ? this.db
           .select()
           .from(schema.teamMessages)
-          .where(eq(schema.teamMessages.teamId, teamId))
-          .orderBy(schema.teamMessages.createdAt)
+          .where(
+            and(
+              eq(schema.teamMessages.teamId, teamId),
+              eq(schema.teamMessages.parentTaskId, parentTaskId)
+            )
+          )
+          .orderBy(asc(schema.teamMessages.createdAt))
           .all()
-          .filter((row) => row.parentTaskId === parentTaskId)
       : this.db
           .select()
           .from(schema.teamMessages)
           .where(eq(schema.teamMessages.teamId, teamId))
-          .orderBy(schema.teamMessages.createdAt)
+          .orderBy(asc(schema.teamMessages.createdAt))
           .all();
     return rows.map(rowToTeamMessage);
   }
@@ -643,6 +647,8 @@ export class StateStore {
       );
 
       CREATE INDEX IF NOT EXISTS idx_team_messages_team_id ON team_messages (team_id);
+      CREATE INDEX IF NOT EXISTS idx_team_messages_team_parent_created_at
+        ON team_messages (team_id, parent_task_id, created_at);
     `);
 
     // Add new columns to existing tables. SQLite does not support IF NOT EXISTS

@@ -135,6 +135,13 @@ describe("team coordinator service", () => {
     expect(truncated).toContain("[truncated]");
   });
 
+  it("truncates multibyte payloads on code point boundaries", () => {
+    const truncated = truncateTeamMessagePayload("你好".repeat(6_000), 128);
+    expect(Buffer.byteLength(truncated, "utf8")).toBeLessThanOrEqual(128);
+    expect(truncated).toContain("[truncated]");
+    expect(truncated).not.toContain("\uFFFD");
+  });
+
   it("builds the new team events with normalized payloads", () => {
     const messageEvent = buildTeamAgentMessageEvent({
       teamId: "team-1",

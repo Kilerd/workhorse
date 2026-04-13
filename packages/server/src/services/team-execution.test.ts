@@ -21,8 +21,17 @@ import type { RunnerAdapter, RunnerControl, RunnerLifecycleHooks, RunnerStartCon
 
 class RecordingEventBus extends EventBus {
   public readonly published: ServerEvent[] = [];
+  private hasFailed = false;
+
+  public constructor(private readonly failOnType?: ServerEvent["type"]) {
+    super();
+  }
 
   public override publish(event: ServerEvent): void {
+    if (!this.hasFailed && this.failOnType === event.type) {
+      this.hasFailed = true;
+      throw new Error(`Injected event bus failure for ${event.type}`);
+    }
     this.published.push(event);
     super.publish(event);
   }
@@ -130,12 +139,15 @@ async function waitForTask(
   return waitFor(() => service.listTasks({}).find((entry) => entry.id === taskId && predicate(entry)));
 }
 
-async function createRuntime(codexRunner: ScriptedCodexRunner) {
+async function createRuntime(
+  codexRunner: ScriptedCodexRunner,
+  options: { events?: RecordingEventBus } = {}
+) {
   const dataDir = await mkdtemp(join(tmpdir(), "workhorse-team-runtime-"));
   const workspaceDir = join(dataDir, "workspace");
   await mkdir(workspaceDir, { recursive: true });
 
-  const events = new RecordingEventBus();
+  const events = options.events ?? new RecordingEventBus();
   const service = new BoardService(new StateStore(dataDir), events, {
     codexAppServer: createCodexAppServerStub(),
     runners: {
@@ -391,6 +403,55 @@ describe("team execution integration", () => {
         expect.objectContaining({
           kind: "system",
           title: "Coordinator parse error"
+        })
+      ])
+    );
+  });
+
+  it("returns the parent task to review if post-commit event publication fails", async () => {
+    const coordinatorOutput = JSON.stringify([
+      {
+        title: "Implement data model",
+        description: "Add parentTaskId and teamAgentId wiring.",
+        assignedAgent: "Worker",
+        dependencies: []
+      }
+    ]);
+    const codexRunner = new ScriptedCodexRunner([
+      {
+        outputText: coordinatorOutput,
+        exit: { status: "succeeded", exitCode: 0 }
+      }
+    ]);
+    const events = new RecordingEventBus("team.agent.message");
+    const { service, workspace } = await createRuntime(codexRunner, { events });
+    const team = service.createTeam(makeTeam(workspace.id));
+    const parentTask = await service.createTask({
+      title: "Recover coordinator failures",
+      workspaceId: workspace.id,
+      column: "todo",
+      runnerType: "codex",
+      runnerConfig: {
+        type: "codex",
+        prompt: "Create one child task."
+      }
+    });
+    await attachTaskToTeam(service, parentTask.id, team.id);
+
+    const started = await service.startTask(parentTask.id);
+    await waitForRunToFinish(service, parentTask.id);
+    const reviewTask = await waitForTask(service, parentTask.id, (task) => task.column === "review");
+    const subtasks = service.listTasks({}).filter((task) => task.parentTaskId === parentTask.id);
+    const log = await service.getRunLog(started.run.id);
+
+    expect(reviewTask.column).toBe("review");
+    expect(subtasks).toHaveLength(1);
+    expect(log).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "system",
+          title: "Coordinator parse error",
+          text: expect.stringContaining("Injected event bus failure")
         })
       ])
     );

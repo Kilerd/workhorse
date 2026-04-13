@@ -496,6 +496,7 @@ export class BoardService {
 
       await this.scheduler.evaluate();
     } catch (error) {
+      await this.restoreCoordinatorParentToReview(task.id);
       const message =
         error instanceof Error ? error.message : "Coordinator output could not be processed";
       await this.runLifecycle.appendAndPublishRunOutput(
@@ -508,6 +509,40 @@ export class BoardService {
           text: `${message}\n`
         })
       );
+    }
+  }
+
+  private async restoreCoordinatorParentToReview(taskId: string): Promise<void> {
+    const recoveredTask = await this.store.updateState((state) => {
+      const taskIndex = state.tasks.findIndex((entry) => entry.id === taskId);
+      if (taskIndex === -1) {
+        return null;
+      }
+
+      const currentTask = state.tasks[taskIndex]!;
+      if (currentTask.column !== "running") {
+        return null;
+      }
+
+      currentTask.column = "review";
+      currentTask.order = this.topOrderFromTasks("review", state.tasks, currentTask.id);
+      currentTask.updatedAt = new Date().toISOString();
+      return { ...currentTask };
+    });
+
+    if (!recoveredTask) {
+      return;
+    }
+
+    try {
+      this.events.publish({
+        type: "task.updated",
+        action: "updated",
+        taskId: recoveredTask.id,
+        task: recoveredTask
+      });
+    } catch {
+      // Best-effort recovery notification. The persisted task state already reflects review.
     }
   }
 
