@@ -35,7 +35,8 @@ import {
   teamQueryKeys,
   usePostTeamMessage,
   useTeam,
-  useTeamMessages
+  useTeamMessages,
+  useTeamProposals
 } from "@/hooks/useTeams";
 
 export default function App() {
@@ -135,6 +136,11 @@ function ReactAppShell() {
           queryClient.invalidateQueries({ queryKey: ["tasks"] });
           queryClient.invalidateQueries({
             queryKey: teamQueryKeys.messages(event.teamId, event.parentTaskId)
+          });
+          break;
+        case "team.proposal.created":
+          queryClient.invalidateQueries({
+            queryKey: teamQueryKeys.proposals(event.teamId, event.parentTaskId)
           });
           break;
         default:
@@ -484,6 +490,11 @@ function TaskDetailsRoute({
     teamThreadTaskId ?? undefined
   );
   const postTeamMessage = usePostTeamMessage(task?.teamId ?? null, teamThreadTaskId);
+  // Proposals are only relevant for coordinator (non-subtask) parent tasks
+  const teamProposals = useTeamProposals(
+    task?.teamId && !task.parentTaskId ? task.teamId : null,
+    task?.id
+  );
   const isSelectedTaskActive = task ? board.selectedTask?.id === task.id : false;
   const runs = isSelectedTaskActive ? board.selectedTaskRunsQuery.data ?? [] : [];
   const activeRunId = isSelectedTaskActive ? board.activeRunId : null;
@@ -552,6 +563,8 @@ function TaskDetailsRoute({
         teamMessagesError={
           teamMessages.error instanceof Error ? teamMessages.error.message : null
         }
+        teamProposals={teamProposals.data ?? []}
+        teamProposalsLoading={teamProposals.isLoading}
         selectedRunId={board.selectedRunId}
         runLogLoading={runLogQuery.isLoading}
         onBack={() => navigate("/")}

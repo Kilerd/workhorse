@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { AgentTeam, Run, RunLogEntry, TeamMessage, Workspace } from "@workhorse/contracts";
+import type { AgentTeam, CoordinatorProposal, Run, RunLogEntry, TeamMessage, Workspace } from "@workhorse/contracts";
 
 import { formatCount, formatRelativeTime, titleCase } from "@/lib/format";
 import type { DisplayTask } from "@/lib/task-view";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
+import { CoordinatorProposalPanel } from "./CoordinatorProposalPanel";
 import { DiffViewer } from "./DiffViewer";
 import { LiveLog } from "./LiveLog";
 import { SubtaskReviewActions } from "./SubtaskReviewActions";
@@ -23,6 +24,8 @@ interface Props {
   teamMessages: TeamMessage[];
   teamMessagesLoading?: boolean;
   teamMessagesError?: string | null;
+  teamProposals?: CoordinatorProposal[];
+  teamProposalsLoading?: boolean;
   selectedRunId: string | null;
   runLogLoading?: boolean;
   onBack?(): void;
@@ -269,6 +272,8 @@ export function TaskDetailsPanel({
   teamMessages,
   teamMessagesLoading = false,
   teamMessagesError = null,
+  teamProposals = [],
+  teamProposalsLoading = false,
   selectedRunId,
   runLogLoading = false,
   onBack,
@@ -541,6 +546,17 @@ export function TaskDetailsPanel({
                   onSendMessage={onSendTeamMessage}
                 />
               </SidebarSection>
+
+              {!task.parentTaskId ? (
+                <SidebarSection title="Coordinator Proposals">
+                  <CoordinatorProposalPanel
+                    teamId={team.id}
+                    parentTaskId={task.id}
+                    proposals={teamProposals}
+                    loading={teamProposalsLoading}
+                  />
+                </SidebarSection>
+              ) : null}
             </>
           ) : null}
 

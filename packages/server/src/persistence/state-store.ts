@@ -9,6 +9,9 @@ import { and, asc, eq } from "drizzle-orm";
 import type {
   AgentTeam,
   AppState,
+  CoordinatorProposal,
+  CoordinatorProposalDraft,
+  CoordinatorProposalStatus,
   GlobalSettings,
   Run,
   RunLogEntry,
@@ -188,6 +191,20 @@ function rowToTeamMessage(row: TeamMessageRow): TeamMessage {
     messageType: row.messageType as TeamMessage["messageType"],
     content: row.content,
     createdAt: row.createdAt
+  };
+}
+
+type ProposalRow = typeof schema.coordinatorProposals.$inferSelect;
+
+function rowToProposal(row: ProposalRow): CoordinatorProposal {
+  return {
+    id: row.id,
+    teamId: row.teamId,
+    parentTaskId: row.parentTaskId,
+    status: row.status as CoordinatorProposalStatus,
+    drafts: JSON.parse(row.drafts) as CoordinatorProposalDraft[],
+    createdAt: row.createdAt,
+    decidedAt: row.decidedAt ?? undefined
   };
 }
 
@@ -542,6 +559,74 @@ export class StateStore {
       .run();
   }
 
+  // -------------------------------------------------------------------------
+  // Coordinator Proposals (go directly to SQLite, not buffered in AppState)
+  // -------------------------------------------------------------------------
+
+  public listProposals(teamId: string, parentTaskId?: string): CoordinatorProposal[] {
+    const rows = parentTaskId
+      ? this.db
+          .select()
+          .from(schema.coordinatorProposals)
+          .where(
+            and(
+              eq(schema.coordinatorProposals.teamId, teamId),
+              eq(schema.coordinatorProposals.parentTaskId, parentTaskId)
+            )
+          )
+          .orderBy(asc(schema.coordinatorProposals.createdAt))
+          .all()
+      : this.db
+          .select()
+          .from(schema.coordinatorProposals)
+          .where(eq(schema.coordinatorProposals.teamId, teamId))
+          .orderBy(asc(schema.coordinatorProposals.createdAt))
+          .all();
+    return rows.map(rowToProposal);
+  }
+
+  public getProposal(proposalId: string): CoordinatorProposal | null {
+    const row = this.db
+      .select()
+      .from(schema.coordinatorProposals)
+      .where(eq(schema.coordinatorProposals.id, proposalId))
+      .get();
+    return row ? rowToProposal(row) : null;
+  }
+
+  public saveProposal(proposal: CoordinatorProposal): CoordinatorProposal {
+    this.db
+      .insert(schema.coordinatorProposals)
+      .values({
+        id: proposal.id,
+        teamId: proposal.teamId,
+        parentTaskId: proposal.parentTaskId,
+        status: proposal.status,
+        drafts: JSON.stringify(proposal.drafts),
+        createdAt: proposal.createdAt,
+        decidedAt: proposal.decidedAt ?? null
+      })
+      .run();
+    return proposal;
+  }
+
+  public updateProposalStatus(
+    proposalId: string,
+    status: CoordinatorProposalStatus,
+    decidedAt: string
+  ): CoordinatorProposal | null {
+    const existing = this.getProposal(proposalId);
+    if (!existing) {
+      return null;
+    }
+    this.db
+      .update(schema.coordinatorProposals)
+      .set({ status, decidedAt })
+      .where(eq(schema.coordinatorProposals.id, proposalId))
+      .run();
+    return { ...existing, status, decidedAt };
+  }
+
   /** Closes the underlying SQLite connection. Call on server shutdown. */
   public close(): void {
     this.sqlite?.close();
@@ -664,6 +749,19 @@ export class StateStore {
       CREATE INDEX IF NOT EXISTS idx_team_messages_team_id ON team_messages (team_id);
       CREATE INDEX IF NOT EXISTS idx_team_messages_team_parent_created_at
         ON team_messages (team_id, parent_task_id, created_at);
+
+      CREATE TABLE IF NOT EXISTS coordinator_proposals (
+        id TEXT PRIMARY KEY,
+        team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        parent_task_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        drafts TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        decided_at TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_coordinator_proposals_parent_task_id
+        ON coordinator_proposals (team_id, parent_task_id);
     `);
 
     // Add new columns to existing tables. SQLite does not support IF NOT EXISTS

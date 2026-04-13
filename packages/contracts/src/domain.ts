@@ -291,3 +291,30 @@ export interface AgentTeam {
   createdAt: string;
   updatedAt: string;
 }
+
+// === Coordinator Proposals ===
+
+export type CoordinatorProposalStatus = "pending" | "approved" | "rejected";
+
+/** A single subtask draft produced by the coordinator LLM output. */
+export interface CoordinatorProposalDraft {
+  title: string;
+  description: string;
+  assignedAgent: string;
+  dependencies: string[];
+}
+
+/**
+ * A coordinator proposal holds the parsed subtask plan from a coordinator
+ * run and waits for human approval before subtasks are actually created.
+ */
+export interface CoordinatorProposal {
+  id: string;
+  teamId: string;
+  parentTaskId: string;
+  status: CoordinatorProposalStatus;
+  drafts: CoordinatorProposalDraft[];
+  createdAt: string;
+  /** ISO timestamp of when the proposal was approved or rejected. */
+  decidedAt?: string;
+}

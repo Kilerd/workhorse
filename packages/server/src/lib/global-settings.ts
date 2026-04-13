@@ -34,7 +34,7 @@ export function resolveGlobalSettings(
       token: settings?.openRouter?.token?.trim() ?? "",
       model: settings?.openRouter?.model?.trim() ?? ""
     },
-    ...(maxConcurrent !== undefined && maxConcurrent > 0
+    ...(maxConcurrent !== undefined && maxConcurrent >= 0
       ? { scheduler: { maxConcurrent } }
       : {})
   };

@@ -4,6 +4,7 @@ import type {
   AgentTeam,
   AgentRole,
   AppState,
+  CoordinatorProposal,
   GlobalSettings,
   RunnerConfig,
   RunnerType,
@@ -465,6 +466,42 @@ export type AgentTeamResponse = ApiSuccess<AgentTeamData>;
 export type DeleteTeamResponse = ApiSuccess<DeleteResult>;
 export type TeamMessagesResponse = ApiSuccess<TeamMessagesData>;
 export type TeamMessageResponse = ApiSuccess<TeamMessageData>;
+
+// === Coordinator Proposals ===
+
+export interface ListProposalsParams {
+  teamId: string;
+}
+
+export interface ListProposalsQuery {
+  parentTaskId?: string;
+}
+
+export interface GetProposalParams {
+  teamId: string;
+  proposalId: string;
+}
+
+export interface ApproveProposalParams {
+  teamId: string;
+  proposalId: string;
+}
+
+export interface RejectProposalParams {
+  teamId: string;
+  proposalId: string;
+}
+
+export interface ProposalData {
+  proposal: CoordinatorProposal;
+}
+
+export interface ListProposalsData {
+  items: CoordinatorProposal[];
+}
+
+export type ProposalResponse = ApiSuccess<ProposalData>;
+export type ListProposalsResponse = ApiSuccess<ListProposalsData>;
 
 export type HttpMethod = "get" | "post" | "put" | "patch" | "delete";
 

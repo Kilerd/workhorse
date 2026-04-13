@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { AgentTeam, TeamMessage } from "@workhorse/contracts";
+import type { AgentTeam, CoordinatorProposal, TeamMessage } from "@workhorse/contracts";
 
 import { api } from "@/lib/api";
 
@@ -8,7 +8,9 @@ export const teamQueryKeys = {
   list: (workspaceId?: string) => ["teams", "list", workspaceId ?? "all"] as const,
   detail: (teamId?: string | null) => ["teams", "detail", teamId ?? "none"] as const,
   messages: (teamId?: string | null, parentTaskId?: string) =>
-    ["teams", "messages", teamId ?? "none", parentTaskId ?? "all"] as const
+    ["teams", "messages", teamId ?? "none", parentTaskId ?? "all"] as const,
+  proposals: (teamId?: string | null, parentTaskId?: string) =>
+    ["teams", "proposals", teamId ?? "none", parentTaskId ?? "all"] as const
 };
 
 export function useTeams(workspaceId?: string) {
@@ -76,5 +78,19 @@ export function usePostTeamMessage(
         queryKey: teamQueryKeys.messages(teamId, parentTaskId)
       });
     }
+  });
+}
+
+export function useTeamProposals(teamId: string | null, parentTaskId?: string) {
+  return useQuery({
+    queryKey: teamQueryKeys.proposals(teamId, parentTaskId),
+    queryFn: async (): Promise<CoordinatorProposal[]> => {
+      if (!teamId) {
+        return [];
+      }
+      const response = await api.listProposals(teamId, { parentTaskId });
+      return response.items;
+    },
+    enabled: Boolean(teamId)
   });
 }
