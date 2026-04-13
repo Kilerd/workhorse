@@ -206,7 +206,7 @@ export interface Run {
   exitCode?: number;
   startedAt: string;
   endedAt?: string;
-  logFile: string;
+  logFile?: string;
   metadata?: Record<string, string>;
 }
 
