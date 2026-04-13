@@ -18,6 +18,15 @@ interface ArtifactPayload {
   test_results?: string | null;
 }
 
+function isSafeUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 function parseArtifactPayload(content: string): ArtifactPayload | null {
   try {
     const parsed = JSON.parse(content) as ArtifactPayload;
@@ -87,6 +96,8 @@ export function TeamMessageFeed({ messages, loading = false, error = null }: Pro
             const artifact = message.messageType === "artifact"
               ? parseArtifactPayload(message.content)
               : null;
+            const safeArtifactUrl =
+              artifact?.pr_url && isSafeUrl(artifact.pr_url) ? artifact.pr_url : null;
 
             return (
               <article
@@ -153,14 +164,20 @@ export function TeamMessageFeed({ messages, loading = false, error = null }: Pro
                       </div>
 
                       {artifact.pr_url ? (
-                        <a
-                          href={artifact.pr_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-[var(--accent)] no-underline hover:underline"
-                        >
-                          {artifact.pr_url}
-                        </a>
+                        safeArtifactUrl ? (
+                          <a
+                            href={safeArtifactUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="break-all text-[var(--accent)] no-underline hover:underline"
+                          >
+                            {safeArtifactUrl}
+                          </a>
+                        ) : (
+                          <span className="break-all text-[var(--muted)]">
+                            {artifact.pr_url}
+                          </span>
+                        )
                       ) : null}
                     </div>
                   </details>

@@ -43,21 +43,21 @@ export function TeamManagementModal({
 
   useEffect(() => {
     if (!open) {
+      setSelectedTeamId(null);
+      setMode("create");
       return;
     }
-    if (mode === "create" && selectedTeamId === null) {
+    if (teams.length === 0) {
+      setSelectedTeamId(null);
+      setMode("create");
       return;
     }
-    if (teams.length > 0) {
-      setSelectedTeamId((current) =>
-        current && teams.some((team) => team.id === current) ? current : teams[0]!.id
-      );
-      setMode("edit");
-      return;
-    }
-    setSelectedTeamId(null);
-    setMode("create");
-  }, [mode, open, selectedTeamId, teams]);
+
+    setSelectedTeamId((current) =>
+      current && teams.some((team) => team.id === current) ? current : teams[0]!.id
+    );
+    setMode("edit");
+  }, [open, teams]);
 
   const selectedTeamQuery = useTeam(mode === "edit" ? selectedTeamId : null);
   const selectedTeam = mode === "edit"

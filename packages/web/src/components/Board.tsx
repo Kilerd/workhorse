@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Draggable, Droppable } from "@hello-pangea/dnd";
 import type { AgentTeam, Workspace } from "@workhorse/contracts";
 
@@ -204,10 +204,6 @@ function shouldShowBlockedBy(column: DisplayTaskColumn) {
   return column === "blocked";
 }
 
-function resolveTeam(teams: AgentTeam[], task: DisplayTask) {
-  return task.teamId ? teams.find((team) => team.id === task.teamId) ?? null : null;
-}
-
 function resolveTeamAgentName(team: AgentTeam | null, teamAgentId?: string) {
   if (!team || !teamAgentId) {
     return null;
@@ -237,6 +233,28 @@ export function Board({
     return acc;
   }, groupTasks());
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const teamMap = useMemo(
+    () => new Map<string, AgentTeam>(teams.map((team) => [team.id, team])),
+    [teams]
+  );
+  const childTaskMap = useMemo(() => {
+    const map = new Map<string, DisplayTask[]>();
+    for (const task of allTasks) {
+      if (!task.parentTaskId) {
+        continue;
+      }
+      const siblings = map.get(task.parentTaskId);
+      if (siblings) {
+        siblings.push(task);
+      } else {
+        map.set(task.parentTaskId, [task]);
+      }
+    }
+    for (const siblings of map.values()) {
+      siblings.sort((left, right) => left.order - right.order);
+    }
+    return map;
+  }, [allTasks]);
   const showReviewMonitor = tasks.some(
     (task) => task.column === "review" && Boolean(task.pullRequestUrl)
   );
@@ -280,13 +298,11 @@ export function Board({
                   const isActive = task.id === selectedTaskId;
                   const workspace = workspaces.find((entry) => entry.id === task.workspaceId);
                   const workspaceName = workspace?.name ?? "Unknown";
-                  const team = resolveTeam(teams, task);
+                  const team = task.teamId ? teamMap.get(task.teamId) ?? null : null;
                   const teamAgentName = resolveTeamAgentName(team, task.teamAgentId);
                   const childTasks =
                     task.teamId && !task.parentTaskId
-                      ? allTasks
-                          .filter((entry) => entry.parentTaskId === task.id)
-                          .sort((left, right) => left.order - right.order)
+                      ? childTaskMap.get(task.id) ?? []
                       : [];
                   const reviewCountdown =
                     task.column === "review" && task.pullRequestUrl

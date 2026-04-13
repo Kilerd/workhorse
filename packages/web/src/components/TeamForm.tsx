@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type {
   AgentRole,
   AgentTeam,
@@ -168,10 +168,6 @@ export function TeamForm({
   const [payload, setPayload] = useState<TeamFormPayload>(() =>
     resolveInitialPayload(team, defaultWorkspaceId)
   );
-
-  useEffect(() => {
-    setPayload(resolveInitialPayload(team, defaultWorkspaceId));
-  }, [defaultWorkspaceId, team]);
 
   const validationError = useMemo(() => validatePayload(payload), [payload]);
   const submitLabel = mode === "create" ? "Create Team" : "Save Team";

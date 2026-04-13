@@ -5,10 +5,10 @@ import { api } from "@/lib/api";
 
 export const teamQueryKeys = {
   lists: () => ["teams"] as const,
-  list: (workspaceId?: string) => ["teams", workspaceId ?? "all"] as const,
-  detail: (teamId: string) => ["team", teamId] as const,
-  messages: (teamId: string, parentTaskId?: string) =>
-    ["teamMessages", teamId, parentTaskId ?? "all"] as const
+  list: (workspaceId?: string) => ["teams", "list", workspaceId ?? "all"] as const,
+  detail: (teamId?: string | null) => ["teams", "detail", teamId ?? "none"] as const,
+  messages: (teamId?: string | null, parentTaskId?: string) =>
+    ["teams", "messages", teamId ?? "none", parentTaskId ?? "all"] as const
 };
 
 export function useTeams(workspaceId?: string) {
@@ -23,7 +23,7 @@ export function useTeams(workspaceId?: string) {
 
 export function useTeam(teamId: string | null) {
   return useQuery({
-    queryKey: teamId ? teamQueryKeys.detail(teamId) : ["team", "none"],
+    queryKey: teamQueryKeys.detail(teamId),
     queryFn: async (): Promise<AgentTeam | null> => {
       if (!teamId) {
         return null;
@@ -37,10 +37,7 @@ export function useTeam(teamId: string | null) {
 
 export function useTeamMessages(teamId: string | null, parentTaskId?: string) {
   return useQuery({
-    queryKey:
-      teamId != null
-        ? teamQueryKeys.messages(teamId, parentTaskId)
-        : ["teamMessages", "none"],
+    queryKey: teamQueryKeys.messages(teamId, parentTaskId),
     queryFn: async (): Promise<TeamMessage[]> => {
       if (!teamId) {
         return [];

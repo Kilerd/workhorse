@@ -1139,7 +1139,14 @@ export class BoardService {
 
   public async createTask(input: CreateTaskBody): Promise<Task> {
     const workspace = this.requireWorkspace(input.workspaceId);
-    const team = input.teamId ? this.getTeam(input.teamId) : null;
+    const team = input.teamId ? this.store.getTeam(input.teamId) : null;
+    if (input.teamId && !team) {
+      throw new AppError(
+        400,
+        "INVALID_TEAM",
+        "The specified team does not exist"
+      );
+    }
     if (team && team.workspaceId !== workspace.id) {
       throw new AppError(
         400,

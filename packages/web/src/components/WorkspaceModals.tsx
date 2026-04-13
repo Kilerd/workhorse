@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type {
   AgentTeam,
@@ -36,6 +36,7 @@ import { Textarea } from "@/components/ui/textarea";
 const DEFAULT_CODEX_PROMPT = "请完成用户请求的任务。";
 const DEFAULT_CLAUDE_PROMPT =
   "Review the current task carefully and summarize concrete risks, regressions, and missing tests.";
+const DEFAULT_SHELL_COMMAND = "npm test";
 const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
   language: DEFAULT_GLOBAL_LANGUAGE,
   openRouter: {
@@ -850,7 +851,7 @@ export function TaskModal({
   );
   const [teamId, setTeamId] = useState("");
   const [runnerType, setRunnerType] = useState<"claude" | "shell" | "codex">("codex");
-  const [shellCommand, setShellCommand] = useState("npm test");
+  const [shellCommand, setShellCommand] = useState(DEFAULT_SHELL_COMMAND);
   const [prompt, setPrompt] = useState(DEFAULT_CODEX_PROMPT);
   const [claudeAgent, setClaudeAgent] = useState("code-reviewer");
   const [claudeModel, setClaudeModel] = useState("");
@@ -862,6 +863,7 @@ export function TaskModal({
   const defaultWorkspaceId = resolveTaskWorkspaceId(workspaces, selectedWorkspaceId);
   const resolvedSettings = settings ?? DEFAULT_GLOBAL_SETTINGS;
   const canGenerateTitle = hasCompleteOpenRouterConfig(resolvedSettings);
+  const previousTeamIdRef = useRef("");
   const availableTeams = useMemo(
     () => teams.filter((team) => team.workspaceId === workspaceId),
     [teams, workspaceId]
@@ -875,6 +877,15 @@ export function TaskModal({
     [selectedTeam]
   );
   const isTeamTask = Boolean(selectedTeam && coordinatorAgent);
+
+  function resetRunnerConfig() {
+    setRunnerType("codex");
+    setShellCommand(DEFAULT_SHELL_COMMAND);
+    setPrompt(DEFAULT_CODEX_PROMPT);
+    setClaudeAgent("code-reviewer");
+    setClaudeModel("");
+    setClaudePermissionMode("default");
+  }
 
   useCloseOnEscape(open, onClose);
 
@@ -900,15 +911,11 @@ export function TaskModal({
       setDescription("");
       setWorkspaceId(defaultWorkspaceId);
       setTeamId("");
-      setRunnerType("codex");
-      setShellCommand("npm test");
-      setPrompt(DEFAULT_CODEX_PROMPT);
-      setClaudeAgent("code-reviewer");
-      setClaudeModel("");
-      setClaudePermissionMode("default");
+      resetRunnerConfig();
       setColumn("backlog");
       setWorktreeBaseRef("");
       setSubmitLocked(false);
+      previousTeamIdRef.current = "";
     }
   }, [defaultWorkspaceId, open]);
 
@@ -940,11 +947,16 @@ export function TaskModal({
 
   useEffect(() => {
     if (!coordinatorAgent) {
+      if (previousTeamIdRef.current && !teamId) {
+        resetRunnerConfig();
+      }
+      previousTeamIdRef.current = teamId;
       return;
     }
     setRunnerType(coordinatorAgent.runnerConfig.type);
     if (coordinatorAgent.runnerConfig.type === "shell") {
       setShellCommand(coordinatorAgent.runnerConfig.command);
+      previousTeamIdRef.current = teamId;
       return;
     }
     setPrompt(coordinatorAgent.runnerConfig.prompt);
@@ -952,12 +964,13 @@ export function TaskModal({
       setClaudeAgent(coordinatorAgent.runnerConfig.agent ?? "");
       setClaudeModel(coordinatorAgent.runnerConfig.model ?? "");
       setClaudePermissionMode(coordinatorAgent.runnerConfig.permissionMode ?? "default");
+      previousTeamIdRef.current = teamId;
       return;
     }
-    setClaudeAgent("code-reviewer");
-    setClaudeModel(coordinatorAgent.runnerConfig.model ?? "");
+    setClaudeModel("");
     setClaudePermissionMode("default");
-  }, [coordinatorAgent]);
+    previousTeamIdRef.current = teamId;
+  }, [coordinatorAgent, teamId]);
 
   useEffect(() => {
     if (!selectedWorkspace?.isGitRepo) {
