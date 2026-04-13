@@ -142,6 +142,21 @@ describe("team coordinator service", () => {
     expect(truncated).not.toContain("\uFFFD");
   });
 
+  it("rejects coordinator outputs with more than 8 subtasks", () => {
+    const payload = JSON.stringify(
+      Array.from({ length: 9 }, (_, index) => ({
+        title: `Task ${index + 1}`,
+        description: "Do the work.",
+        assignedAgent: "Worker",
+        dependencies: []
+      }))
+    );
+
+    expect(() => parseCoordinatorSubtasks(payload)).toThrow(
+      "Coordinator output 9 subtasks, maximum is 8"
+    );
+  });
+
   it("builds the new team events with normalized payloads", () => {
     const messageEvent = buildTeamAgentMessageEvent({
       teamId: "team-1",

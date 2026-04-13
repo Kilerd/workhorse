@@ -7,6 +7,7 @@ import type {
 const SYSTEM_CONTEXT_MARKER = "--- SYSTEM CONTEXT ---";
 const YOUR_TASK_MARKER = "--- YOUR TASK ---";
 const DEFAULT_MAX_TEAM_MESSAGE_BYTES = 10 * 1024;
+const MAX_COORDINATOR_SUBTASKS = 8;
 const TRUNCATION_SUFFIX = "\n...[truncated]";
 
 export interface TeamAgentContext {
@@ -184,6 +185,11 @@ export function parseCoordinatorSubtasks(output: string): CoordinatorSubtaskDraf
       if (!Array.isArray(parsed)) {
         throw new CoordinatorSubtaskParseError(
           "Coordinator output must be a JSON array of subtasks"
+        );
+      }
+      if (parsed.length > MAX_COORDINATOR_SUBTASKS) {
+        throw new CoordinatorSubtaskParseError(
+          `Coordinator output ${parsed.length} subtasks, maximum is ${MAX_COORDINATOR_SUBTASKS}`
         );
       }
 
