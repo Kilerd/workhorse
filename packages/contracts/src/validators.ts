@@ -30,6 +30,7 @@ import type {
   PlanFeedbackParams,
   PlanFeedbackResponse,
   PostTeamMessageBody,
+  PostTeamMessageParams,
   PlanTaskParams,
   PlanTaskResponse,
   RequestTaskReviewParams,
@@ -136,6 +137,8 @@ export const validateListTeamMessagesParams =
   typia.createValidate<ListTeamMessagesParams>();
 export const validateListTeamMessagesQuery =
   typia.createValidate<ListTeamMessagesQuery>();
+export const validatePostTeamMessageParams =
+  typia.createValidate<PostTeamMessageParams>();
 export const validatePostTeamMessageBody =
   typia.createValidate<PostTeamMessageBody>();
 
@@ -210,6 +213,7 @@ export const schemaRegistry = {
   DeleteTeamParams: () => typia.json.schema<DeleteTeamParams>(),
   ListTeamMessagesParams: () => typia.json.schema<ListTeamMessagesParams>(),
   ListTeamMessagesQuery: () => typia.json.schema<ListTeamMessagesQuery>(),
+  PostTeamMessageParams: () => typia.json.schema<PostTeamMessageParams>(),
   PostTeamMessageBody: () => typia.json.schema<PostTeamMessageBody>(),
   ListTeamsQuery: () => typia.json.schema<ListTeamsQuery>(),
   TeamsResponse: () => typia.json.schema<TeamsResponse>(),

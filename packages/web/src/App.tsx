@@ -546,7 +546,7 @@ function TaskDetailsRoute({
         runLog={runLog}
         onPlan={() => board.planTask(task.id)}
         onSendPlanFeedback={(text) => board.sendPlanFeedback({ taskId: task.id, text })}
-        onSendTeamMessage={(text) => postTeamMessage.mutateAsync(text)}
+        onSendTeamMessage={task.teamId ? (text) => postTeamMessage.mutateAsync(text) : undefined}
         onStart={() => board.startTask(task.id)}
         onRequestReview={() => board.requestTaskReview(task.id)}
         onStop={() => board.stopTask(task.id)}

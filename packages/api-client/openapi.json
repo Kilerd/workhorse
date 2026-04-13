@@ -2116,17 +2116,17 @@
               },
               {
                 "enum": [
+                  "default"
+                ]
+              },
+              {
+                "enum": [
                   "acceptEdits"
                 ]
               },
               {
                 "enum": [
                   "bypassPermissions"
-                ]
-              },
-              {
-                "enum": [
-                  "default"
                 ]
               },
               {
@@ -3585,12 +3585,22 @@
         "oneOf": [
           {
             "enum": [
-              "system"
+              "text"
             ]
           },
           {
             "enum": [
-              "text"
+              "status"
+            ]
+          },
+          {
+            "enum": [
+              "plan"
+            ]
+          },
+          {
+            "enum": [
+              "system"
             ]
           },
           {
@@ -3611,16 +3621,6 @@
           {
             "enum": [
               "tool_output"
-            ]
-          },
-          {
-            "enum": [
-              "plan"
-            ]
-          },
-          {
-            "enum": [
-              "status"
             ]
           }
         ]
@@ -4287,6 +4287,17 @@
         },
         "required": []
       },
+      "PostTeamMessageParams": {
+        "type": "object",
+        "properties": {
+          "teamId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "teamId"
+        ]
+      },
       "PostTeamMessageBody": {
         "type": "object",
         "properties": {
@@ -4294,7 +4305,8 @@
             "type": "string"
           },
           "content": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 10240
           }
         },
         "required": [

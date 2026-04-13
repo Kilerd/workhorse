@@ -455,6 +455,26 @@ describe("workhorse runtime", () => {
     expect(payload.error.code).toBe("INVALID_PARENT_TASK");
   });
 
+  it("returns 404 when posting a human team message for a missing team", async () => {
+    const { app } = await createRuntime();
+
+    const response = await app.request("/api/teams/team-missing/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        parentTaskId: "task-parent",
+        content: "Need a human checkpoint."
+      })
+    });
+
+    expect(response.status).toBe(404);
+    const payload = await response.json();
+    expect(payload.ok).toBe(false);
+    expect(payload.error.code).toBe("TEAM_NOT_FOUND");
+  });
+
   it("reports review monitor timing in health responses", async () => {
     const { app } = await createRuntime({ reviewMonitorIntervalMs: 15_000 });
 

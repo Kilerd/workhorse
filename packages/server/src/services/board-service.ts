@@ -1968,16 +1968,19 @@ export class BoardService {
         "Team message content cannot be blank"
       );
     }
+    const finalContent = truncateTeamMessagePayload(trimmedContent);
 
     const item: TeamMessage = {
       id: createId(),
       teamId: team.id,
       parentTaskId: parentTask.id,
+      // Human feedback is stored on the shared parent thread, even when authored
+      // from a subtask details panel that is rendering the same conversation.
       taskId: parentTask.id,
       agentName: "User",
       senderType: "human",
       messageType: "feedback",
-      content: trimmedContent,
+      content: finalContent,
       createdAt: new Date().toISOString()
     };
 
@@ -1988,7 +1991,7 @@ export class BoardService {
         parentTaskId: parentTask.id,
         fromAgentId: "human",
         messageType: "feedback",
-        payload: trimmedContent
+        payload: finalContent
       })
     );
     return item;

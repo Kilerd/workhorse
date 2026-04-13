@@ -21,6 +21,7 @@ import {
   validatePlanFeedbackParams,
   validatePlanTaskParams,
   validatePostTeamMessageBody,
+  validatePostTeamMessageParams,
   validateRequestTaskReviewParams,
   validateSetTaskDependenciesBody,
   validateSetTaskDependenciesParams,
@@ -41,7 +42,7 @@ import {
   validateWorkspaceGitStatusParams,
   validateWorkspaceGitPullParams
 } from "@workhorse/contracts";
-import type { PostTeamMessageBody } from "@workhorse/contracts";
+import type { PostTeamMessageBody, PostTeamMessageParams } from "@workhorse/contracts";
 
 import { getGitReviewMonitorIntervalMs } from "./config.js";
 import { AppError } from "./lib/errors.js";
@@ -444,9 +445,9 @@ export function createApp(
   });
 
   app.get("/api/teams/:teamId/messages", (c) => {
-    const params = validateOrThrow(
+    const params: PostTeamMessageParams = validateOrThrow(
       c.req.param(),
-      validateListTeamMessagesParams,
+      validatePostTeamMessageParams,
       "Invalid team params"
     );
     const query = validateOrThrow(

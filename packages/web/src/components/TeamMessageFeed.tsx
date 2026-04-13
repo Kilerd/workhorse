@@ -20,6 +20,8 @@ interface ArtifactPayload {
   test_results?: string | null;
 }
 
+const MAX_HUMAN_TEAM_MESSAGE_LENGTH = 10_240;
+
 function isSafeUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
@@ -247,6 +249,7 @@ export function TeamMessageFeed({
           <Textarea
             rows={3}
             value={draft}
+            maxLength={MAX_HUMAN_TEAM_MESSAGE_LENGTH}
             onChange={(event) => {
               setDraft(event.target.value);
               if (submitState === "failed") {
@@ -269,7 +272,10 @@ export function TeamMessageFeed({
             className="min-h-20 resize-y"
           />
           <div className="flex flex-wrap items-center justify-between gap-2 text-[0.68rem] text-[var(--muted)]">
-            <span>Press Ctrl/Cmd+Enter to send. v1 records the message only.</span>
+            <span>
+              Press Ctrl/Cmd+Enter to send. v1 records the message only. {draft.length}/
+              {MAX_HUMAN_TEAM_MESSAGE_LENGTH}
+            </span>
             <Button
               type="submit"
               disabled={!onSendMessage || submitState === "sending" || draft.trim().length === 0}

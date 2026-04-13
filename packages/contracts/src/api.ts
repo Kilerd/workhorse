@@ -1,3 +1,5 @@
+import type { tags } from "typia";
+
 import type {
   AgentTeam,
   AgentRole,
@@ -410,9 +412,13 @@ export interface ListTeamMessagesQuery {
   parentTaskId?: string;
 }
 
+export interface PostTeamMessageParams {
+  teamId: string;
+}
+
 export interface PostTeamMessageBody {
   parentTaskId: string;
-  content: string;
+  content: string & tags.MaxLength<10_240>;
 }
 
 export interface ListTeamsData {
@@ -526,6 +532,7 @@ export type SchemaName =
   | "DeleteTeamParams"
   | "ListTeamMessagesParams"
   | "ListTeamMessagesQuery"
+  | "PostTeamMessageParams"
   | "PostTeamMessageBody"
   | "TeamsResponse"
   | "AgentTeamResponse"
@@ -1272,7 +1279,7 @@ export const endpointRegistry: EndpointSpec[] = [
     path: "/api/teams/{teamId}/messages",
     summary: "Post a human message into a team task thread",
     tag: "Teams",
-    paramsSchema: "ListTeamMessagesParams",
+    paramsSchema: "PostTeamMessageParams",
     bodySchema: "PostTeamMessageBody",
     responses: [
       {
