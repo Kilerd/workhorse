@@ -154,7 +154,10 @@ function makeTeam(workspaceId: string, prStrategy: AgentTeam["prStrategy"] = "in
   };
 }
 
-function makeMockPrCreator(prUrl = "https://github.com/owner/repo/pull/99"): PrCreator & {
+function makeMockPrCreator(
+  prUrl = "https://github.com/owner/repo/pull/99",
+  repoFullName = "owner/repo"
+): PrCreator & {
   pushCalls: Array<{ worktreePath: string; branchName: string }>;
   createCalls: Array<{ repo: string; title: string; body: string; base: string; head: string }>;
 } {
@@ -165,6 +168,9 @@ function makeMockPrCreator(prUrl = "https://github.com/owner/repo/pull/99"): PrC
     createCalls,
     async pushBranch(worktreePath, branchName) {
       pushCalls.push({ worktreePath, branchName });
+    },
+    async resolveRepoFullName(_rootPath) {
+      return repoFullName;
     },
     async createPullRequest(opts) {
       createCalls.push(opts);
@@ -233,6 +239,9 @@ describe("TeamPrService", () => {
       async pushBranch() {
         throw new Error("git push: authentication failed");
       },
+      async resolveRepoFullName() {
+        return "owner/repo";
+      },
       async createPullRequest() {
         return "";
       }
@@ -267,6 +276,91 @@ describe("TeamPrService", () => {
         expect.objectContaining({
           type: "team.agent.message",
           payload: expect.stringContaining("Failed to push branch")
+        })
+      ])
+    );
+  });
+  it("updates task.pullRequestUrl and publishes success message on happy path", async () => {
+    const prUrl = "https://github.com/owner/repo/pull/42";
+    const events = new RecordingEventBus();
+    const { service, workspace } = await createRuntime(new ScriptedCodexRunner([]), { events });
+    const store = (service as unknown as { store: StateStore }).store;
+
+    const team = service.createTeam(makeTeam(workspace.id));
+    const parentTask = await service.createTask({
+      title: "Parent task",
+      description: "Coordinate work",
+      workspaceId: workspace.id,
+      column: "running",
+      runnerType: "codex",
+      runnerConfig: { type: "codex", prompt: "coord" }
+    });
+
+    // Seed a subtask directly in the store with a valid worktree path
+    const subtaskId = "task-subtask-happy";
+    await store.updateState((state) => {
+      state.tasks.push({
+        id: subtaskId,
+        title: "Implement feature",
+        description: "Write the feature code",
+        column: "done",
+        order: 999,
+        workspaceId: workspace.id,
+        teamId: team.id,
+        parentTaskId: parentTask.id,
+        teamAgentId: "agent-worker",
+        runnerType: "codex",
+        runnerConfig: { type: "codex", prompt: "work" },
+        worktree: {
+          path: workspace.rootPath,
+          branchName: "feat/subtask",
+          baseRef: "main",
+          status: "ready" as const,
+          lastSyncedBaseAt: undefined,
+          cleanupReason: undefined
+        },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lastRunId: undefined,
+        lastRunStatus: undefined,
+        pullRequestUrl: undefined,
+        reviewRequestedAt: undefined,
+        autoApproveSubtasks: false,
+        prStrategy: undefined,
+        dependencies: [],
+        rejected: false
+      } as unknown as Task);
+      return null;
+    });
+
+    const subtask = store.listTasks().find((t) => t.id === subtaskId)!;
+    const prCreator = makeMockPrCreator(prUrl);
+    const svc = new TeamPrService(store, events, prCreator);
+
+    const result = await svc.createSubtaskPullRequest(subtask, team);
+
+    expect(result).toBe(prUrl);
+    expect(prCreator.pushCalls).toHaveLength(1);
+    expect(prCreator.pushCalls[0]).toMatchObject({ branchName: "feat/subtask" });
+    expect(prCreator.createCalls).toHaveLength(1);
+    expect(prCreator.createCalls[0]).toMatchObject({
+      repo: "owner/repo",
+      title: "Implement feature",
+      base: "main",
+      head: "feat/subtask"
+    });
+
+    // task.pullRequestUrl should be updated in the store
+    const updated = store.listTasks().find((t) => t.id === subtaskId);
+    expect(updated?.pullRequestUrl).toBe(prUrl);
+
+    // success team message should be published
+    const statusMessages = events.published.filter((e) => e.type === "team.agent.message");
+    expect(statusMessages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "team.agent.message",
+          payload: expect.stringContaining(prUrl)
         })
       ])
     );

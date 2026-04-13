@@ -538,12 +538,6 @@ export class GitWorktreeService {
     }
   }
 
-  public async pushBranch(worktreePath: string, branchName: string): Promise<void> {
-    await execFileAsync("git", ["-C", worktreePath, "push", "-u", "origin", branchName], {
-      encoding: "utf8"
-    });
-  }
-
   public async getWorktreeDiff(
     worktreePath: string,
     baseRef: string

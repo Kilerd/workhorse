@@ -17,6 +17,7 @@ const execFileAsync = promisify(execFile);
 
 export interface PrCreator {
   pushBranch(worktreePath: string, branchName: string): Promise<void>;
+  resolveRepoFullName(rootPath: string): Promise<string | undefined>;
   createPullRequest(opts: {
     repo: string;
     title: string;
@@ -31,6 +32,19 @@ export class DefaultPrCreator implements PrCreator {
     await execFileAsync("git", ["-C", worktreePath, "push", "-u", "origin", branchName], {
       encoding: "utf8"
     });
+  }
+
+  async resolveRepoFullName(rootPath: string): Promise<string | undefined> {
+    try {
+      const result = await execFileAsync(
+        "git",
+        ["-C", rootPath, "remote", "get-url", "origin"],
+        { encoding: "utf8" }
+      );
+      return normalizeGitHubRepositoryFullName(result.stdout.trim());
+    } catch {
+      return undefined;
+    }
   }
 
   async createPullRequest(opts: {
@@ -79,17 +93,6 @@ function buildPrBody(task: Task, parentTaskTitle: string): string {
     "---",
     "Auto-created by Workhorse Agent Team"
   ].join("\n");
-}
-
-async function resolveRepoFullName(rootPath: string): Promise<string | undefined> {
-  try {
-    const result = await execFileAsync("git", ["-C", rootPath, "remote", "get-url", "origin"], {
-      encoding: "utf8"
-    });
-    return normalizeGitHubRepositoryFullName(result.stdout.trim());
-  } catch {
-    return undefined;
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -143,7 +146,7 @@ export class TeamPrService {
       return null;
     }
 
-    const repoFullName = await resolveRepoFullName(workspace.rootPath);
+    const repoFullName = await this.prCreator.resolveRepoFullName(workspace.rootPath);
     if (!repoFullName) {
       this.appendTeamStatusMessage(
         task,
