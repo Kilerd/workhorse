@@ -11,6 +11,7 @@ import {
   validateDeleteWorkspaceParams,
   validateGetTaskDependenciesParams,
   validateGetTeamParams,
+  validateListTeamMessagesQuery,
   validateListTeamMessagesParams,
   validateListTeamsQuery,
   validateListWorkspaceGitRefsParams,
@@ -446,7 +447,12 @@ export function createApp(
       validateListTeamMessagesParams,
       "Invalid team params"
     );
-    const items = service.listTeamMessages(params.teamId);
+    const query = validateOrThrow(
+      Object.fromEntries(new URL(c.req.url).searchParams),
+      validateListTeamMessagesQuery,
+      "Invalid team messages query"
+    );
+    const items = service.listTeamMessages(params.teamId, query.parentTaskId);
     return c.json(ok({ items }));
   });
 
