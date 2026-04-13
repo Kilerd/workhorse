@@ -559,6 +559,9 @@ export class BoardService {
     if (run.status !== "succeeded" && run.status !== "failed") {
       return;
     }
+    if (task.cancelledAt) {
+      return;
+    }
 
     const team = this.getTeam(task.teamId!);
     const agent = this.resolveAssignedTeamAgent(team, task);
@@ -712,12 +715,17 @@ export class BoardService {
     }
 
     const now = new Date().toISOString();
-    const hasRejectedSubtasks = result.subtasks.some((task) => task.rejected);
+    const hasFinalizedExceptions = result.subtasks.some(
+      (task) => task.rejected || Boolean(task.cancelledAt)
+    );
     const summaryLines = [
-      hasRejectedSubtasks
+      hasFinalizedExceptions
         ? "All subtasks reached a final decision:"
         : "All subtasks completed successfully:",
-      ...result.subtasks.map((t) => `- ${t.title}${t.rejected ? " (rejected)" : ""}`)
+      ...result.subtasks.map((t) => {
+        const suffix = t.cancelledAt ? " (cancelled)" : t.rejected ? " (rejected)" : "";
+        return `- ${t.title}${suffix}`;
+      })
     ];
     const payload = truncateTeamMessagePayload(summaryLines.join("\n"));
     this.publishTeamThreadMessage({
@@ -2142,17 +2150,87 @@ export class BoardService {
     return this.requireTask(taskId);
   }
 
-  private requireReviewableTeamSubtask(taskId: string): {
+  public async cancelSubtask(teamId: string, taskId: string): Promise<Task> {
+    const { task, team, parentTask } = this.requireTeamSubtask(taskId, teamId);
+
+    const cancellation = await this.store.updateState((state) => {
+      const taskIndex = state.tasks.findIndex((entry) => entry.id === task.id);
+      if (taskIndex === -1) {
+        return null;
+      }
+
+      const currentTask = state.tasks[taskIndex]!;
+      if (currentTask.column === "done" || currentTask.column === "archived") {
+        return null;
+      }
+
+      const shouldStopRun = currentTask.column === "running";
+      currentTask.column = "done";
+      currentTask.cancelledAt = new Date().toISOString();
+      currentTask.rejected = false;
+      currentTask.order = this.nextOrderFromTasks("done", state.tasks);
+      currentTask.updatedAt = new Date().toISOString();
+
+      return {
+        task: { ...currentTask },
+        shouldStopRun
+      };
+    });
+
+    if (!cancellation) {
+      throw new AppError(
+        409,
+        "TASK_CANCEL_NOT_ALLOWED",
+        "Only active team subtasks can be cancelled"
+      );
+    }
+
+    this.events.publish({
+      type: "task.updated",
+      action: "updated",
+      taskId: cancellation.task.id,
+      task: cancellation.task
+    });
+    this.publishTeamThreadMessage({
+      teamId: team.id,
+      parentTaskId: parentTask.id,
+      taskId: cancellation.task.id,
+      agentName: "User",
+      fromAgentId: "human",
+      senderType: "human",
+      messageType: "status",
+      payload: truncateTeamMessagePayload(`User cancelled subtask "${cancellation.task.title}".`)
+    });
+
+    await this.checkAndHandleTeamCompletion(parentTask.id, team.id);
+
+    if (cancellation.shouldStopRun) {
+      void this.runLifecycle.stopRun(taskId).catch(() => {
+        // Best-effort stop: the subtask is already marked cancelled in state.
+      });
+    }
+
+    return cancellation.task;
+  }
+
+  private requireTeamSubtask(
+    taskId: string,
+    teamId?: string
+  ): {
     task: Task;
     team: AgentTeam;
     parentTask: Task;
   } {
     const task = this.requireTask(taskId);
     if (!task.teamId || !task.parentTaskId) {
-      throw new AppError(409, "TASK_NOT_TEAM_SUBTASK", "Task is not a reviewable team subtask");
+      throw new AppError(409, "TASK_NOT_TEAM_SUBTASK", "Task is not a team subtask");
     }
-    if (task.column !== "review") {
-      throw new AppError(409, "TASK_NOT_REVIEWABLE", "Only review subtasks can be changed");
+    if (teamId && task.teamId !== teamId) {
+      throw new AppError(
+        409,
+        "INVALID_TEAM_TASK",
+        "Task does not belong to the selected team"
+      );
     }
 
     const team = this.getTeam(task.teamId);
@@ -2163,6 +2241,19 @@ export class BoardService {
         "INVALID_PARENT_TASK",
         "parentTaskId must reference a parent task owned by the same team"
       );
+    }
+
+    return { task, team, parentTask };
+  }
+
+  private requireReviewableTeamSubtask(taskId: string): {
+    task: Task;
+    team: AgentTeam;
+    parentTask: Task;
+  } {
+    const { task, team, parentTask } = this.requireTeamSubtask(taskId);
+    if (task.column !== "review") {
+      throw new AppError(409, "TASK_NOT_REVIEWABLE", "Only review subtasks can be changed");
     }
 
     return { task, team, parentTask };

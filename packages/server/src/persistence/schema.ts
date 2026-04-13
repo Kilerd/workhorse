@@ -33,6 +33,7 @@ export const tasks = sqliteTable("tasks", {
   pullRequestUrl: text("pull_request_url"),
   pullRequest: text("pull_request"),
   rejected: integer("rejected", { mode: "boolean" }).notNull().default(false),
+  cancelledAt: text("cancelled_at"),
   teamId: text("team_id"),
   parentTaskId: text("parent_task_id"),
   teamAgentId: text("team_agent_id"),

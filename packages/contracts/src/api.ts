@@ -165,6 +165,11 @@ export interface RetryTaskParams {
   taskId: string;
 }
 
+export interface CancelSubtaskParams {
+  teamId: string;
+  taskId: string;
+}
+
 export interface UpdateTaskBody {
   title?: string;
   description?: string;
@@ -504,6 +509,7 @@ export type SchemaName =
   | "RejectTaskParams"
   | "RejectTaskBody"
   | "RetryTaskParams"
+  | "CancelSubtaskParams"
   | "UpdateTaskParams"
   | "UpdateTaskBody"
   | "DeleteTaskParams"
@@ -913,6 +919,31 @@ export const endpointRegistry: EndpointSpec[] = [
       {
         status: 409,
         description: "Task cannot be retried",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "cancelSubtask",
+    method: "post",
+    path: "/api/teams/{teamId}/tasks/{taskId}/cancel",
+    summary: "Cancel a team subtask",
+    tag: "Teams",
+    paramsSchema: "CancelSubtaskParams",
+    responses: [
+      {
+        status: 200,
+        description: "Cancelled task",
+        schema: "TaskResponse"
+      },
+      {
+        status: 404,
+        description: "Task or team not found",
+        schema: "ApiError"
+      },
+      {
+        status: 409,
+        description: "Task cannot be cancelled",
         schema: "ApiError"
       }
     ]

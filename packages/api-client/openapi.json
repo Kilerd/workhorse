@@ -776,6 +776,65 @@
         ]
       }
     },
+    "/api/teams/{teamId}/tasks/{taskId}/cancel": {
+      "post": {
+        "operationId": "cancelSubtask",
+        "summary": "Cancel a team subtask",
+        "tags": [
+          "Teams"
+        ],
+        "responses": {
+          "200": {
+            "description": "Cancelled task",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task or team not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Task cannot be cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "teamId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
     "/api/tasks/{taskId}/worktree/cleanup": {
       "post": {
         "operationId": "cleanupTaskWorktree",
@@ -2171,6 +2230,10 @@
             "type": "boolean",
             "description": "Human reviewers explicitly rejected this subtask."
           },
+          "cancelledAt": {
+            "type": "string",
+            "description": "Present when a team subtask was explicitly cancelled by a user."
+          },
           "teamId": {
             "type": "string",
             "description": "When set, this task belongs to an agent team."
@@ -2327,17 +2390,17 @@
               },
               {
                 "enum": [
-                  "default"
-                ]
-              },
-              {
-                "enum": [
                   "acceptEdits"
                 ]
               },
               {
                 "enum": [
                   "bypassPermissions"
+                ]
+              },
+              {
+                "enum": [
+                  "default"
                 ]
               },
               {
@@ -2833,6 +2896,21 @@
           }
         },
         "required": [
+          "taskId"
+        ]
+      },
+      "CancelSubtaskParams": {
+        "type": "object",
+        "properties": {
+          "teamId": {
+            "type": "string"
+          },
+          "taskId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "teamId",
           "taskId"
         ]
       },
@@ -3839,22 +3917,12 @@
         "oneOf": [
           {
             "enum": [
-              "text"
-            ]
-          },
-          {
-            "enum": [
-              "status"
-            ]
-          },
-          {
-            "enum": [
-              "plan"
-            ]
-          },
-          {
-            "enum": [
               "system"
+            ]
+          },
+          {
+            "enum": [
+              "text"
             ]
           },
           {
@@ -3875,6 +3943,16 @@
           {
             "enum": [
               "tool_output"
+            ]
+          },
+          {
+            "enum": [
+              "plan"
+            ]
+          },
+          {
+            "enum": [
+              "status"
             ]
           }
         ]

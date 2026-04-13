@@ -107,6 +107,10 @@ export function createApiClient(baseUrl: string) {
     .path("/api/teams/{teamId}/messages")
     .method("post")
     .create();
+  const cancelSubtask = fetcher
+    .path("/api/teams/{teamId}/tasks/{taskId}/cancel")
+    .method("post")
+    .create();
 
   const listTasks = fetcher.path("/api/tasks").method("get").create();
   const createTask = fetcher.path("/api/tasks").method("post").create();
@@ -256,6 +260,11 @@ export function createApiClient(baseUrl: string) {
       body: PostTeamMessageBody
     ): Promise<TeamMessageData> =>
       unwrap((await postTeamMessage({ teamId, ...body })).data),
+    cancelSubtask: async (
+      teamId: GetTeamParams["teamId"],
+      taskId: string
+    ): Promise<TaskData> =>
+      unwrap((await cancelSubtask({ teamId, taskId })).data),
     listTasks: async (workspaceId?: string): Promise<ListTasksData> =>
       unwrap((await listTasks(workspaceId ? { workspaceId } : {})).data),
     createTask: async (body: CreateTaskBody): Promise<TaskData> =>

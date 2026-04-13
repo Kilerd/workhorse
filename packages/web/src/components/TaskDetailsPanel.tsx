@@ -35,6 +35,7 @@ interface Props {
   onApproveSubtask?(): void;
   onRejectSubtask?(reason?: string): void;
   onRetrySubtask?(): void;
+  onCancelSubtask?(): void;
   reviewActionBusy?: boolean;
   onStart(): void;
   onRequestReview(): void;
@@ -280,6 +281,7 @@ export function TaskDetailsPanel({
   onApproveSubtask,
   onRejectSubtask,
   onRetrySubtask,
+  onCancelSubtask,
   reviewActionBusy = false,
   onStart,
   onRequestReview,
@@ -374,6 +376,13 @@ export function TaskDetailsPanel({
     !activeRun &&
     Boolean(showWorktree && task.worktree.status !== "removed");
   const isReviewableSubtask = Boolean(task.teamId && task.parentTaskId && task.column === "review");
+  const isCancelableSubtask = Boolean(
+    task.teamId &&
+      task.parentTaskId &&
+      !task.cancelledAt &&
+      task.column !== "done" &&
+      task.column !== "archived"
+  );
   const canApproveReviewSubtask = task.lastRunStatus === "succeeded";
 
   return (
@@ -401,6 +410,8 @@ export function TaskDetailsPanel({
                   chipTone(
                     task.rejected
                       ? "danger"
+                      : task.cancelledAt
+                        ? "warning"
                       : task.column === "backlog" && task.lastRunId
                       ? "warning"
                       : task.column === "todo" && task.plan
@@ -409,7 +420,9 @@ export function TaskDetailsPanel({
                   )
                 )}
               >
-                {task.rejected
+                {task.cancelledAt
+                  ? "Cancelled"
+                  : task.rejected
                   ? "Rejected"
                   : task.column === "backlog" && task.lastRunId
                   ? "Planning"
@@ -425,9 +438,13 @@ export function TaskDetailsPanel({
 
           {/* Actions */}
           <div className="flex flex-wrap items-center gap-1.5 border-b border-border px-4 py-2 max-[720px]:px-3">
-            {isReviewableSubtask ? (
+            {isReviewableSubtask || isCancelableSubtask ? (
               <SubtaskReviewActions
                 canApprove={canApproveReviewSubtask}
+                showApprove={isReviewableSubtask}
+                showReject={isReviewableSubtask}
+                showRetry={isReviewableSubtask}
+                showCancel={isCancelableSubtask}
                 disabled={reviewActionBusy}
                 onApprove={() => onApproveSubtask?.()}
                 onReject={() => {
@@ -441,6 +458,12 @@ export function TaskDetailsPanel({
                   onRejectSubtask?.(reason || undefined);
                 }}
                 onRetry={() => onRetrySubtask?.()}
+                onCancel={() => {
+                  if (!window.confirm(`Cancel subtask "${task.title}"?`)) {
+                    return;
+                  }
+                  onCancelSubtask?.();
+                }}
               />
             ) : (
               <TaskActionBar

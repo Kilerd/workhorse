@@ -127,6 +127,7 @@ function rowToTask(row: TaskRow, depIds: string[]): Task {
     pullRequestUrl: row.pullRequestUrl ?? undefined,
     pullRequest: row.pullRequest ? JSON.parse(row.pullRequest) : undefined,
     rejected: row.rejected,
+    cancelledAt: row.cancelledAt ?? undefined,
     teamId: row.teamId ?? undefined,
     parentTaskId: row.parentTaskId ?? undefined,
     teamAgentId: row.teamAgentId ?? undefined,
@@ -153,6 +154,7 @@ function taskToRow(task: Task): typeof schema.tasks.$inferInsert {
     pullRequestUrl: task.pullRequestUrl ?? null,
     pullRequest: task.pullRequest != null ? JSON.stringify(task.pullRequest) : null,
     rejected: task.rejected ?? false,
+    cancelledAt: task.cancelledAt ?? null,
     teamId: task.teamId ?? null,
     parentTaskId: task.parentTaskId ?? null,
     teamAgentId: task.teamAgentId ?? null,
@@ -584,6 +586,7 @@ export class StateStore {
         pull_request_url TEXT,
         pull_request TEXT,
         rejected INTEGER NOT NULL DEFAULT 0,
+        cancelled_at TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
@@ -671,6 +674,7 @@ export class StateStore {
       "ALTER TABLE tasks ADD COLUMN team_agent_id TEXT",
       "ALTER TABLE tasks ADD COLUMN last_run_status TEXT",
       "ALTER TABLE tasks ADD COLUMN rejected INTEGER NOT NULL DEFAULT 0",
+      "ALTER TABLE tasks ADD COLUMN cancelled_at TEXT",
       // v1 -> v2 migration for team execution threads
       "ALTER TABLE team_messages ADD COLUMN parent_task_id TEXT NOT NULL DEFAULT ''",
       "ALTER TABLE teams ADD COLUMN pr_strategy TEXT NOT NULL DEFAULT 'independent'",
@@ -775,8 +779,8 @@ export class StateStore {
         const row = taskToRow(task);
         this.sqlite
           .prepare(
-            `INSERT INTO tasks (id, title, description, workspace_id, column, task_order, runner_type, runner_config, plan, worktree, last_run_id, last_run_status, continuation_run_id, pull_request_url, pull_request, rejected, team_id, parent_task_id, team_agent_id, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            `INSERT INTO tasks (id, title, description, workspace_id, column, task_order, runner_type, runner_config, plan, worktree, last_run_id, last_run_status, continuation_run_id, pull_request_url, pull_request, rejected, cancelled_at, team_id, parent_task_id, team_agent_id, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
           )
           .run(
             row.id,
@@ -795,6 +799,7 @@ export class StateStore {
             row.pullRequestUrl ?? null,
             row.pullRequest ?? null,
             row.rejected ? 1 : 0,
+            row.cancelledAt ?? null,
             row.teamId ?? null,
             row.parentTaskId ?? null,
             row.teamAgentId ?? null,

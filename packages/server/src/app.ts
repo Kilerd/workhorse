@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import {
   buildOpenApiDocument,
   validateCleanupTaskWorktreeParams,
+  validateCancelSubtaskParams,
   validateCreateTaskBody,
   validateCreateTeamBody,
   validateCreateWorkspaceBody,
@@ -274,6 +275,16 @@ export function createApp(
       "Invalid task params"
     );
     const task = await service.retryTask(params.taskId);
+    return c.json(ok({ task }));
+  });
+
+  app.post("/api/teams/:teamId/tasks/:taskId/cancel", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateCancelSubtaskParams,
+      "Invalid cancel subtask params"
+    );
+    const task = await service.cancelSubtask(params.teamId, params.taskId);
     return c.json(ok({ task }));
   });
 
