@@ -5,7 +5,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 import { describe, expect, it } from "vitest";
 
-import type { HealthCodexQuotaData, Run } from "@workhorse/contracts";
+import type { HealthCodexQuotaData, Run, Task } from "@workhorse/contracts";
 
 import { createApp } from "./app.js";
 import { createRunLogEntry } from "./lib/run-log.js";
@@ -256,6 +256,70 @@ async function setTaskDependencies(
   await store.save();
 }
 
+async function createReviewSubtask(
+  service: BoardService,
+  input: {
+    workspaceId: string;
+    teamId: string;
+    parentTaskId: string;
+    title: string;
+    runnerType?: Task["runnerType"];
+    runnerConfig?: Task["runnerConfig"];
+    lastRunStatus?: Run["status"];
+  }
+) {
+  const store = (service as any).store as StateStore;
+  const now = new Date().toISOString();
+  const taskId = `subtask-${Math.random().toString(36).slice(2, 10)}`;
+  const runId = `run-${Math.random().toString(36).slice(2, 10)}`;
+  const task: Task = {
+    id: taskId,
+    title: input.title,
+    description: "",
+    workspaceId: input.workspaceId,
+    column: "review",
+    order: 1_024,
+    runnerType: input.runnerType ?? "shell",
+    runnerConfig:
+      input.runnerConfig ??
+      {
+        type: "shell",
+        command: "true"
+      },
+    dependencies: [],
+    worktree: {
+      baseRef: "main",
+      branchName: `team/${input.teamId}/${taskId}`,
+      status: "ready"
+    },
+    lastRunId: runId,
+    lastRunStatus: input.lastRunStatus ?? "succeeded",
+    rejected: false,
+    teamId: input.teamId,
+    parentTaskId: input.parentTaskId,
+    teamAgentId: "agent-worker",
+    createdAt: now,
+    updatedAt: now
+  };
+  const run: Run = {
+    id: runId,
+    taskId,
+    status: input.lastRunStatus ?? "succeeded",
+    runnerType: task.runnerType,
+    command: task.runnerType === "shell" ? "true" : "codex mock",
+    startedAt: now,
+    endedAt: now
+  };
+
+  await store.updateState((state) => {
+    state.tasks.push(task);
+    state.runs.push(run);
+    return null;
+  });
+
+  return task;
+}
+
 describe("workhorse runtime", () => {
   it("creates a workspace and task over HTTP", async () => {
     const { app, workspaceDir } = await createRuntime();
@@ -473,6 +537,188 @@ describe("workhorse runtime", () => {
     const payload = await response.json();
     expect(payload.ok).toBe(false);
     expect(payload.error.code).toBe("TEAM_NOT_FOUND");
+  });
+
+  it("approves a succeeded review subtask over HTTP", async () => {
+    const { app, service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+    const team = service.createTeam({
+      name: "Delivery Team",
+      workspaceId: workspace.id,
+      autoApproveSubtasks: false,
+      agents: [
+        {
+          id: "agent-coordinator",
+          agentName: "Coordinator",
+          role: "coordinator",
+          runnerConfig: {
+            type: "codex",
+            prompt: "Coordinate the work."
+          }
+        },
+        {
+          id: "agent-worker",
+          agentName: "Worker",
+          role: "worker",
+          runnerConfig: {
+            type: "codex",
+            prompt: "Implement the assigned task."
+          }
+        }
+      ]
+    });
+    const parentTask = await service.createTask({
+      title: "Coordinate rollout",
+      workspaceId: workspace.id,
+      teamId: team.id,
+      column: "running",
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "echo should-be-overridden"
+      }
+    });
+    const subtask = await createReviewSubtask(service, {
+      workspaceId: workspace.id,
+      teamId: team.id,
+      parentTaskId: parentTask.id,
+      title: "Implement UI",
+      lastRunStatus: "succeeded"
+    });
+
+    const response = await app.request(`/api/tasks/${subtask.id}/approve`, {
+      method: "POST"
+    });
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.data.task).toMatchObject({
+      id: subtask.id,
+      column: "done",
+      rejected: false
+    });
+    expect(service.getTask(parentTask.id).column).toBe("review");
+  });
+
+  it("rejects a review subtask over HTTP and records the reason", async () => {
+    const { app, service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+    const team = service.createTeam({
+      name: "Delivery Team",
+      workspaceId: workspace.id,
+      autoApproveSubtasks: false,
+      agents: [
+        {
+          id: "agent-coordinator",
+          agentName: "Coordinator",
+          role: "coordinator",
+          runnerConfig: {
+            type: "codex",
+            prompt: "Coordinate the work."
+          }
+        }
+      ]
+    });
+    const parentTask = await service.createTask({
+      title: "Coordinate rollout",
+      workspaceId: workspace.id,
+      teamId: team.id,
+      column: "running",
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "echo should-be-overridden"
+      }
+    });
+    const subtask = await createReviewSubtask(service, {
+      workspaceId: workspace.id,
+      teamId: team.id,
+      parentTaskId: parentTask.id,
+      title: "Implement API",
+      lastRunStatus: "failed"
+    });
+
+    const response = await app.request(`/api/tasks/${subtask.id}/reject`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        reason: "Out of scope"
+      })
+    });
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.data.task).toMatchObject({
+      id: subtask.id,
+      column: "done",
+      rejected: true
+    });
+    expect(
+      service
+        .listTeamMessages(team.id, parentTask.id)
+        .some((message) => message.content.includes("Out of scope"))
+    ).toBe(true);
+  });
+
+  it("retries a review subtask over HTTP", async () => {
+    const { app, service, workspaceDir } = await createRuntime({
+      runners: {
+        claude: new MockClaudeRunner(),
+        codex: new HoldingRunner("codex"),
+        shell: new HoldingRunner("shell")
+      }
+    });
+    const workspace = await createWorkspace(service, workspaceDir);
+    const team = service.createTeam({
+      name: "Delivery Team",
+      workspaceId: workspace.id,
+      autoApproveSubtasks: false,
+      agents: [
+        {
+          id: "agent-coordinator",
+          agentName: "Coordinator",
+          role: "coordinator",
+          runnerConfig: {
+            type: "codex",
+            prompt: "Coordinate the work."
+          }
+        }
+      ]
+    });
+    const parentTask = await service.createTask({
+      title: "Coordinate rollout",
+      workspaceId: workspace.id,
+      teamId: team.id,
+      column: "todo",
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "echo should-be-overridden"
+      }
+    });
+    const subtask = await createReviewSubtask(service, {
+      workspaceId: workspace.id,
+      teamId: team.id,
+      parentTaskId: parentTask.id,
+      title: "Retry task",
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "echo retry"
+      },
+      lastRunStatus: "failed"
+    });
+
+    const response = await app.request(`/api/tasks/${subtask.id}/retry`, {
+      method: "POST"
+    });
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(["todo", "running"]).toContain(payload.data.task.column);
+    expect(service.getTask(subtask.id).rejected).toBe(false);
   });
 
   it("reports review monitor timing in health responses", async () => {

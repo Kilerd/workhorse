@@ -2,6 +2,7 @@ import typia from "typia";
 
 import type {
   AgentTeamResponse,
+  ApproveTaskParams,
   ApiError,
   CreateTaskBody,
   CreateTeamBody,
@@ -35,6 +36,8 @@ import type {
   PlanTaskResponse,
   RequestTaskReviewParams,
   RequestTaskReviewResponse,
+  RejectTaskBody,
+  RejectTaskParams,
   SchedulerEvaluateResponse,
   SchedulerStatusResponse,
   SetTaskDependenciesBody,
@@ -45,6 +48,7 @@ import type {
   TeamMessagesResponse,
   TeamMessageResponse,
   TeamsResponse,
+  RetryTaskParams,
   RunLogParams,
   RunLogResponse,
   RunsResponse,
@@ -102,6 +106,14 @@ export const validateWorkspaceGitPullParams =
 
 export const validateListTasksQuery = typia.createValidate<ListTasksQuery>();
 export const validateCreateTaskBody = typia.createValidate<CreateTaskBody>();
+export const validateApproveTaskParams =
+  typia.createValidate<ApproveTaskParams>();
+export const validateRejectTaskParams =
+  typia.createValidate<RejectTaskParams>();
+export const validateRejectTaskBody =
+  typia.createValidate<RejectTaskBody>();
+export const validateRetryTaskParams =
+  typia.createValidate<RetryTaskParams>();
 export const validateUpdateTaskParams = typia.createValidate<UpdateTaskParams>();
 export const validateUpdateTaskBody = typia.createValidate<UpdateTaskBody>();
 export const validateDeleteTaskParams = typia.createValidate<DeleteTaskParams>();
@@ -160,6 +172,10 @@ export const schemaRegistry = {
   DeleteWorkspaceParams: () => typia.json.schema<DeleteWorkspaceParams>(),
   ListTasksQuery: () => typia.json.schema<ListTasksQuery>(),
   CreateTaskBody: () => typia.json.schema<CreateTaskBody>(),
+  ApproveTaskParams: () => typia.json.schema<ApproveTaskParams>(),
+  RejectTaskParams: () => typia.json.schema<RejectTaskParams>(),
+  RejectTaskBody: () => typia.json.schema<RejectTaskBody>(),
+  RetryTaskParams: () => typia.json.schema<RetryTaskParams>(),
   UpdateTaskParams: () => typia.json.schema<UpdateTaskParams>(),
   UpdateTaskBody: () => typia.json.schema<UpdateTaskBody>(),
   DeleteTaskParams: () => typia.json.schema<DeleteTaskParams>(),

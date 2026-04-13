@@ -120,9 +120,13 @@ function rowToTask(row: TaskRow, depIds: string[]): Task {
     plan: row.plan ?? undefined,
     worktree: JSON.parse(row.worktree),
     lastRunId: row.lastRunId ?? undefined,
+    lastRunStatus: row.lastRunStatus
+      ? (row.lastRunStatus as Task["lastRunStatus"])
+      : undefined,
     continuationRunId: row.continuationRunId ?? undefined,
     pullRequestUrl: row.pullRequestUrl ?? undefined,
     pullRequest: row.pullRequest ? JSON.parse(row.pullRequest) : undefined,
+    rejected: row.rejected,
     teamId: row.teamId ?? undefined,
     parentTaskId: row.parentTaskId ?? undefined,
     teamAgentId: row.teamAgentId ?? undefined,
@@ -144,9 +148,11 @@ function taskToRow(task: Task): typeof schema.tasks.$inferInsert {
     plan: task.plan ?? null,
     worktree: JSON.stringify(task.worktree),
     lastRunId: task.lastRunId ?? null,
+    lastRunStatus: task.lastRunStatus ?? null,
     continuationRunId: task.continuationRunId ?? null,
     pullRequestUrl: task.pullRequestUrl ?? null,
     pullRequest: task.pullRequest != null ? JSON.stringify(task.pullRequest) : null,
+    rejected: task.rejected ?? false,
     teamId: task.teamId ?? null,
     parentTaskId: task.parentTaskId ?? null,
     teamAgentId: task.teamAgentId ?? null,
@@ -163,6 +169,7 @@ function rowToTeam(row: TeamRow): AgentTeam {
     workspaceId: row.workspaceId,
     agents: JSON.parse(row.agents),
     prStrategy: row.prStrategy as AgentTeam["prStrategy"],
+    autoApproveSubtasks: row.autoApproveSubtasks,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt
   };
@@ -449,6 +456,7 @@ export class StateStore {
         workspaceId: team.workspaceId,
         agents: JSON.stringify(team.agents),
         prStrategy: team.prStrategy,
+        autoApproveSubtasks: team.autoApproveSubtasks,
         createdAt: team.createdAt,
         updatedAt: team.updatedAt
       })
@@ -456,7 +464,7 @@ export class StateStore {
     return team;
   }
 
-  public updateTeam(teamId: string, updates: Partial<Pick<AgentTeam, "name" | "description" | "agents" | "prStrategy">>): AgentTeam | null {
+  public updateTeam(teamId: string, updates: Partial<Pick<AgentTeam, "name" | "description" | "agents" | "prStrategy" | "autoApproveSubtasks">>): AgentTeam | null {
     const existing = this.getTeam(teamId);
     if (!existing) {
       return null;
@@ -473,6 +481,7 @@ export class StateStore {
         description: updated.description,
         agents: JSON.stringify(updated.agents),
         prStrategy: updated.prStrategy,
+        autoApproveSubtasks: updated.autoApproveSubtasks,
         updatedAt: updated.updatedAt
       })
       .where(eq(schema.teams.id, teamId))
@@ -570,9 +579,11 @@ export class StateStore {
         plan TEXT,
         worktree TEXT NOT NULL,
         last_run_id TEXT,
+        last_run_status TEXT,
         continuation_run_id TEXT,
         pull_request_url TEXT,
         pull_request TEXT,
+        rejected INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
@@ -628,6 +639,7 @@ export class StateStore {
         workspace_id TEXT NOT NULL,
         agents TEXT NOT NULL,
         pr_strategy TEXT NOT NULL DEFAULT 'independent',
+        auto_approve_subtasks INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
@@ -657,9 +669,12 @@ export class StateStore {
       "ALTER TABLE tasks ADD COLUMN team_id TEXT",
       "ALTER TABLE tasks ADD COLUMN parent_task_id TEXT",
       "ALTER TABLE tasks ADD COLUMN team_agent_id TEXT",
+      "ALTER TABLE tasks ADD COLUMN last_run_status TEXT",
+      "ALTER TABLE tasks ADD COLUMN rejected INTEGER NOT NULL DEFAULT 0",
       // v1 -> v2 migration for team execution threads
       "ALTER TABLE team_messages ADD COLUMN parent_task_id TEXT NOT NULL DEFAULT ''",
       "ALTER TABLE teams ADD COLUMN pr_strategy TEXT NOT NULL DEFAULT 'independent'",
+      "ALTER TABLE teams ADD COLUMN auto_approve_subtasks INTEGER NOT NULL DEFAULT 0",
       // Renamed from direction; default 'agent' covers rows written by the initial PR version
       "ALTER TABLE team_messages ADD COLUMN sender_type TEXT NOT NULL DEFAULT 'agent'",
       "ALTER TABLE team_messages ADD COLUMN message_type TEXT NOT NULL DEFAULT 'context'"
@@ -760,8 +775,8 @@ export class StateStore {
         const row = taskToRow(task);
         this.sqlite
           .prepare(
-            `INSERT INTO tasks (id, title, description, workspace_id, column, task_order, runner_type, runner_config, plan, worktree, last_run_id, continuation_run_id, pull_request_url, pull_request, team_id, parent_task_id, team_agent_id, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            `INSERT INTO tasks (id, title, description, workspace_id, column, task_order, runner_type, runner_config, plan, worktree, last_run_id, last_run_status, continuation_run_id, pull_request_url, pull_request, rejected, team_id, parent_task_id, team_agent_id, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
           )
           .run(
             row.id,
@@ -775,9 +790,11 @@ export class StateStore {
             row.plan ?? null,
             row.worktree,
             row.lastRunId ?? null,
+            row.lastRunStatus ?? null,
             row.continuationRunId ?? null,
             row.pullRequestUrl ?? null,
             row.pullRequest ?? null,
+            row.rejected ? 1 : 0,
             row.teamId ?? null,
             row.parentTaskId ?? null,
             row.teamAgentId ?? null,

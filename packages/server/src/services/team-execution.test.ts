@@ -182,7 +182,10 @@ async function attachTaskToTeam(service: BoardService, taskId: string, teamId: s
   }));
 }
 
-function makeTeam(workspaceId: string): CreateTeamBody {
+function makeTeam(
+  workspaceId: string,
+  overrides: Partial<CreateTeamBody> = {}
+): CreateTeamBody {
   const coordinatorRunner: RunnerConfig = {
     type: "codex",
     prompt: "Break the parent task into executable subtasks."
@@ -197,6 +200,7 @@ function makeTeam(workspaceId: string): CreateTeamBody {
     description: "Coordinates agent work",
     workspaceId,
     prStrategy: "independent",
+    autoApproveSubtasks: false,
     agents: [
       {
         id: "agent-coordinator",
@@ -210,7 +214,8 @@ function makeTeam(workspaceId: string): CreateTeamBody {
         role: "worker",
         runnerConfig: workerRunner
       }
-    ]
+    ],
+    ...overrides
   };
 }
 
@@ -484,6 +489,240 @@ describe("team execution integration", () => {
     expect(subtaskPrompt).toContain("Coordinator created subtasks:");
     expect(subtaskPrompt).toContain("Title: Implement runtime hook");
     expect(subtaskPrompt).toContain("Implement the assigned subtask and report concrete results.");
+  });
+
+  it("keeps succeeded subtasks in review when autoApproveSubtasks is disabled", async () => {
+    const coordinatorOutput = JSON.stringify([
+      {
+        title: "Implement runtime hook",
+        description: "Wire run completion to child task creation.",
+        assignedAgent: "Worker",
+        dependencies: []
+      }
+    ]);
+    const codexRunner = new ScriptedCodexRunner([
+      {
+        outputText: coordinatorOutput,
+        exit: { status: "succeeded", exitCode: 0 }
+      },
+      {
+        outputText: "Implemented.",
+        exit: { status: "succeeded", exitCode: 0 }
+      }
+    ]);
+    const { service, workspace } = await createRuntime(codexRunner);
+    const team = service.createTeam(makeTeam(workspace.id));
+    const parentTask = await service.createTask({
+      title: "Finish coordinator integration",
+      description: "Delegate the remaining coordinator flow work.",
+      workspaceId: workspace.id,
+      column: "todo",
+      runnerType: "codex",
+      runnerConfig: {
+        type: "codex",
+        prompt: "Split the work and assign it."
+      }
+    });
+    await attachTaskToTeam(service, parentTask.id, team.id);
+
+    await service.startTask(parentTask.id);
+    await waitForRunToFinish(service, parentTask.id);
+    const subtask = await waitFor(() =>
+      service.listTasks({}).find((task) => task.parentTaskId === parentTask.id)
+    );
+    await waitForRunToFinish(service, subtask.id);
+
+    const reviewSubtask = await waitForTask(service, subtask.id, (task) => task.column === "review");
+    const parent = service.getTask(parentTask.id);
+
+    expect(reviewSubtask.lastRunStatus).toBe("succeeded");
+    expect(reviewSubtask.rejected).toBe(false);
+    expect(parent.column).toBe("running");
+  });
+
+  it("auto-approves succeeded subtasks when autoApproveSubtasks is enabled", async () => {
+    const coordinatorOutput = JSON.stringify([
+      {
+        title: "Implement runtime hook",
+        description: "Wire run completion to child task creation.",
+        assignedAgent: "Worker",
+        dependencies: []
+      }
+    ]);
+    const codexRunner = new ScriptedCodexRunner([
+      {
+        outputText: coordinatorOutput,
+        exit: { status: "succeeded", exitCode: 0 }
+      },
+      {
+        outputText: "Implemented.",
+        exit: { status: "succeeded", exitCode: 0 }
+      }
+    ]);
+    const { service, workspace } = await createRuntime(codexRunner);
+    const team = service.createTeam(
+      makeTeam(workspace.id, { autoApproveSubtasks: true })
+    );
+    const parentTask = await service.createTask({
+      title: "Finish coordinator integration",
+      description: "Delegate the remaining coordinator flow work.",
+      workspaceId: workspace.id,
+      column: "todo",
+      runnerType: "codex",
+      runnerConfig: {
+        type: "codex",
+        prompt: "Split the work and assign it."
+      }
+    });
+    await attachTaskToTeam(service, parentTask.id, team.id);
+
+    await service.startTask(parentTask.id);
+    await waitForRunToFinish(service, parentTask.id);
+    const subtask = await waitFor(() =>
+      service.listTasks({}).find((task) => task.parentTaskId === parentTask.id)
+    );
+
+    const doneSubtask = await waitForTask(service, subtask.id, (task) => task.column === "done");
+    const parent = await waitForTask(service, parentTask.id, (task) => task.column === "review");
+
+    expect(doneSubtask.lastRunStatus).toBe("succeeded");
+    expect(doneSubtask.rejected).toBe(false);
+    expect(parent.column).toBe("review");
+  });
+
+  it("waits for human approve/reject decisions before aggregating the parent task", async () => {
+    const coordinatorOutput = JSON.stringify([
+      {
+        title: "Implement data model",
+        description: "Add parentTaskId and teamAgentId wiring.",
+        assignedAgent: "Worker",
+        dependencies: []
+      },
+      {
+        title: "Wire coordinator callbacks",
+        description: "Hook run completion into child task creation.",
+        assignedAgent: "Worker",
+        dependencies: []
+      }
+    ]);
+    const codexRunner = new ScriptedCodexRunner([
+      {
+        outputText: coordinatorOutput,
+        exit: { status: "succeeded", exitCode: 0 }
+      },
+      {
+        outputText: "Subtask one complete.",
+        exit: { status: "succeeded", exitCode: 0 }
+      },
+      {
+        outputText: "Subtask two complete.",
+        exit: { status: "succeeded", exitCode: 0 }
+      }
+    ]);
+    const { service, workspace } = await createRuntime(codexRunner);
+    const team = service.createTeam(makeTeam(workspace.id));
+    const parentTask = await service.createTask({
+      title: "Deliver team execution",
+      description: "Coordinate the next implementation batch.",
+      workspaceId: workspace.id,
+      column: "todo",
+      runnerType: "codex",
+      runnerConfig: {
+        type: "codex",
+        prompt: "Plan and delegate the implementation."
+      }
+    });
+    await attachTaskToTeam(service, parentTask.id, team.id);
+
+    await service.startTask(parentTask.id);
+    await waitForRunToFinish(service, parentTask.id);
+    const subtasks = await waitFor(() => {
+      const items = service
+        .listTasks({})
+        .filter((task) => task.parentTaskId === parentTask.id)
+        .sort((left, right) => left.order - right.order);
+      return items.length === 2 ? items : undefined;
+    });
+    await waitForRunToFinish(service, subtasks[0]!.id);
+    await waitForRunToFinish(service, subtasks[1]!.id);
+    await waitForTask(service, subtasks[0]!.id, (task) => task.column === "review");
+    await waitForTask(service, subtasks[1]!.id, (task) => task.column === "review");
+
+    const approved = await service.approveTask(subtasks[0]!.id);
+    expect(approved.column).toBe("done");
+    expect(service.getTask(parentTask.id).column).toBe("running");
+
+    const rejected = await service.rejectTask(subtasks[1]!.id, "No longer needed");
+    expect(rejected.column).toBe("done");
+    expect(rejected.rejected).toBe(true);
+
+    const parent = await waitForTask(service, parentTask.id, (task) => task.column === "review");
+    const messages = service.listTeamMessages(team.id, parentTask.id);
+
+    expect(parent.column).toBe("review");
+    expect(messages.some((message) => message.content.includes("No longer needed"))).toBe(true);
+    expect(messages.at(-1)?.content).toContain("All subtasks reached a final decision");
+  });
+
+  it("retries review subtasks by moving them back to todo and rerunning them", async () => {
+    const coordinatorOutput = JSON.stringify([
+      {
+        title: "Implement runtime hook",
+        description: "Wire run completion to child task creation.",
+        assignedAgent: "Worker",
+        dependencies: []
+      }
+    ]);
+    const codexRunner = new ScriptedCodexRunner([
+      {
+        outputText: coordinatorOutput,
+        exit: { status: "succeeded", exitCode: 0 }
+      },
+      {
+        outputText: "First attempt failed.",
+        exit: { status: "failed", exitCode: 1 }
+      },
+      {
+        outputText: "Second attempt succeeded.",
+        exit: { status: "succeeded", exitCode: 0 }
+      }
+    ]);
+    const { service, workspace } = await createRuntime(codexRunner);
+    const team = service.createTeam(makeTeam(workspace.id));
+    const parentTask = await service.createTask({
+      title: "Finish coordinator integration",
+      description: "Delegate the remaining coordinator flow work.",
+      workspaceId: workspace.id,
+      column: "todo",
+      runnerType: "codex",
+      runnerConfig: {
+        type: "codex",
+        prompt: "Split the work and assign it."
+      }
+    });
+    await attachTaskToTeam(service, parentTask.id, team.id);
+
+    await service.startTask(parentTask.id);
+    await waitForRunToFinish(service, parentTask.id);
+    const subtask = await waitFor(() =>
+      service.listTasks({}).find((task) => task.parentTaskId === parentTask.id)
+    );
+    await waitForRunToFinish(service, subtask.id);
+    await waitForTask(service, subtask.id, (task) => task.column === "review");
+
+    const retriedTask = await service.retryTask(subtask.id);
+    expect(["todo", "running", "review"]).toContain(retriedTask.column);
+
+    await waitFor(() => (service.listRuns(subtask.id).length >= 2 ? service.listRuns(subtask.id) : undefined));
+    await waitFor(() => {
+      const task = service.getTask(subtask.id);
+      return task.column === "review" && task.lastRunStatus === "succeeded" ? task : undefined;
+    });
+
+    const runs = service.listRuns(subtask.id);
+    const messages = service.listTeamMessages(team.id, parentTask.id);
+    expect(runs).toHaveLength(2);
+    expect(messages.some((message) => message.content.includes("requested retry"))).toBe(true);
   });
 
   it("leaves the parent task in review when coordinator output is invalid", async () => {

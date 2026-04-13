@@ -22,7 +22,11 @@ import {
   validatePlanTaskParams,
   validatePostTeamMessageBody,
   validatePostTeamMessageParams,
+  validateApproveTaskParams,
+  validateRejectTaskBody,
+  validateRejectTaskParams,
   validateRequestTaskReviewParams,
+  validateRetryTaskParams,
   validateSetTaskDependenciesBody,
   validateSetTaskDependenciesParams,
   validateTaskDiffParams,
@@ -42,7 +46,11 @@ import {
   validateWorkspaceGitStatusParams,
   validateWorkspaceGitPullParams
 } from "@workhorse/contracts";
-import type { PostTeamMessageBody, PostTeamMessageParams } from "@workhorse/contracts";
+import type {
+  PostTeamMessageBody,
+  PostTeamMessageParams,
+  RejectTaskBody
+} from "@workhorse/contracts";
 
 import { getGitReviewMonitorIntervalMs } from "./config.js";
 import { AppError } from "./lib/errors.js";
@@ -230,6 +238,41 @@ export function createApp(
       "Invalid task payload"
     );
     const task = await service.updateTask(params.taskId, body);
+    return c.json(ok({ task }));
+  });
+
+  app.post("/api/tasks/:taskId/approve", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateApproveTaskParams,
+      "Invalid task params"
+    );
+    const task = await service.approveTask(params.taskId);
+    return c.json(ok({ task }));
+  });
+
+  app.post("/api/tasks/:taskId/reject", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateRejectTaskParams,
+      "Invalid task params"
+    );
+    const body: RejectTaskBody = validateOrThrow(
+      await readOptionalJsonBody(c.req, "Invalid reject task body"),
+      validateRejectTaskBody,
+      "Invalid reject task body"
+    );
+    const task = await service.rejectTask(params.taskId, body.reason);
+    return c.json(ok({ task }));
+  });
+
+  app.post("/api/tasks/:taskId/retry", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateRetryTaskParams,
+      "Invalid task params"
+    );
+    const task = await service.retryTask(params.taskId);
     return c.json(ok({ task }));
   });
 

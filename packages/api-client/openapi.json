@@ -603,6 +603,179 @@
         ]
       }
     },
+    "/api/tasks/{taskId}/approve": {
+      "post": {
+        "operationId": "approveTask",
+        "summary": "Approve a review-ready subtask",
+        "tags": [
+          "Tasks"
+        ],
+        "responses": {
+          "200": {
+            "description": "Approved task",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Task cannot be approved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/tasks/{taskId}/reject": {
+      "post": {
+        "operationId": "rejectTask",
+        "summary": "Reject a review-ready subtask",
+        "tags": [
+          "Tasks"
+        ],
+        "responses": {
+          "200": {
+            "description": "Rejected task",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Task cannot be rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectTaskBody"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{taskId}/retry": {
+      "post": {
+        "operationId": "retryTask",
+        "summary": "Retry a review-ready subtask",
+        "tags": [
+          "Tasks"
+        ],
+        "responses": {
+          "200": {
+            "description": "Retried task",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Task cannot be retried",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
     "/api/tasks/{taskId}/worktree/cleanup": {
       "post": {
         "operationId": "cleanupTaskWorktree",
@@ -1951,6 +2124,40 @@
           "lastRunId": {
             "type": "string"
           },
+          "lastRunStatus": {
+            "oneOf": [
+              {
+                "enum": [
+                  "running"
+                ]
+              },
+              {
+                "enum": [
+                  "queued"
+                ]
+              },
+              {
+                "enum": [
+                  "succeeded"
+                ]
+              },
+              {
+                "enum": [
+                  "failed"
+                ]
+              },
+              {
+                "enum": [
+                  "interrupted"
+                ]
+              },
+              {
+                "enum": [
+                  "canceled"
+                ]
+              }
+            ]
+          },
           "continuationRunId": {
             "type": "string"
           },
@@ -1959,6 +2166,10 @@
           },
           "pullRequest": {
             "$ref": "#/components/schemas/TaskPullRequest"
+          },
+          "rejected": {
+            "type": "boolean",
+            "description": "Human reviewers explicitly rejected this subtask."
           },
           "teamId": {
             "type": "string",
@@ -2116,17 +2327,17 @@
               },
               {
                 "enum": [
-                  "default"
-                ]
-              },
-              {
-                "enum": [
                   "acceptEdits"
                 ]
               },
               {
                 "enum": [
                   "bypassPermissions"
+                ]
+              },
+              {
+                "enum": [
+                  "default"
                 ]
               },
               {
@@ -2580,6 +2791,48 @@
           "workspaceId",
           "runnerType",
           "runnerConfig"
+        ]
+      },
+      "ApproveTaskParams": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      },
+      "RejectTaskParams": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      },
+      "RejectTaskBody": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "RetryTaskParams": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId"
         ]
       },
       "UpdateTaskParams": {
@@ -3585,22 +3838,12 @@
         "oneOf": [
           {
             "enum": [
-              "text"
-            ]
-          },
-          {
-            "enum": [
-              "status"
-            ]
-          },
-          {
-            "enum": [
-              "plan"
-            ]
-          },
-          {
-            "enum": [
               "system"
+            ]
+          },
+          {
+            "enum": [
+              "text"
             ]
           },
           {
@@ -3621,6 +3864,16 @@
           {
             "enum": [
               "tool_output"
+            ]
+          },
+          {
+            "enum": [
+              "plan"
+            ]
+          },
+          {
+            "enum": [
+              "status"
             ]
           }
         ]
@@ -3948,6 +4201,10 @@
             "$ref": "#/components/schemas/TeamPrStrategy",
             "description": "Strategy for creating pull requests from subtask branches."
           },
+          "autoApproveSubtasks": {
+            "type": "boolean",
+            "description": "When true, succeeded subtasks skip manual human approval."
+          },
           "createdAt": {
             "type": "string"
           },
@@ -3962,6 +4219,7 @@
           "workspaceId",
           "agents",
           "prStrategy",
+          "autoApproveSubtasks",
           "createdAt",
           "updatedAt"
         ]
@@ -4144,6 +4402,9 @@
               }
             ]
           },
+          "autoApproveSubtasks": {
+            "type": "boolean"
+          },
           "agents": {
             "type": "array",
             "items": {
@@ -4215,6 +4476,9 @@
                 ]
               }
             ]
+          },
+          "autoApproveSubtasks": {
+            "type": "boolean"
           },
           "agents": {
             "type": "array",

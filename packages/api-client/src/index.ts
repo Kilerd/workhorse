@@ -20,6 +20,7 @@ import type {
   PlanFeedbackData,
   PlanTaskData,
   PostTeamMessageBody,
+  RejectTaskBody,
   RequestTaskReviewData,
   RunLogData,
   SettingsData,
@@ -110,6 +111,18 @@ export function createApiClient(baseUrl: string) {
   const listTasks = fetcher.path("/api/tasks").method("get").create();
   const createTask = fetcher.path("/api/tasks").method("post").create();
   const updateTask = fetcher.path("/api/tasks/{taskId}").method("patch").create();
+  const approveTask = fetcher
+    .path("/api/tasks/{taskId}/approve")
+    .method("post")
+    .create();
+  const rejectTask = fetcher
+    .path("/api/tasks/{taskId}/reject")
+    .method("post")
+    .create();
+  const retryTask = fetcher
+    .path("/api/tasks/{taskId}/retry")
+    .method("post")
+    .create();
   const deleteTask = fetcher
     .path("/api/tasks/{taskId}")
     .method("delete")
@@ -252,6 +265,15 @@ export function createApiClient(baseUrl: string) {
       body: UpdateTaskBody
     ): Promise<TaskData> =>
       unwrap((await updateTask({ taskId, ...body })).data),
+    approveTask: async (taskId: string): Promise<TaskData> =>
+      unwrap((await approveTask({ taskId })).data),
+    rejectTask: async (
+      taskId: string,
+      body: RejectTaskBody = {}
+    ): Promise<TaskData> =>
+      unwrap((await rejectTask({ taskId, ...body })).data),
+    retryTask: async (taskId: string): Promise<TaskData> =>
+      unwrap((await retryTask({ taskId })).data),
     deleteTask: async (taskId: string): Promise<DeleteResult> =>
       unwrap((await deleteTask({ taskId })).data),
     startTask: async (

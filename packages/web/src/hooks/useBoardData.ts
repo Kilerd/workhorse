@@ -58,6 +58,19 @@ export function useBoardData() {
     }
   });
 
+  const invalidateTeamThread = useCallback(
+    async (teamId?: string, parentTaskId?: string) => {
+      if (!teamId || !parentTaskId) {
+        return;
+      }
+
+      await queryClient.invalidateQueries({
+        queryKey: teamQueryKeys.messages(teamId, parentTaskId)
+      });
+    },
+    [queryClient]
+  );
+
   const healthQuery = useQuery({
     queryKey: queryKey("health"),
     queryFn: async () => api.health(),
@@ -357,6 +370,60 @@ export function useBoardData() {
     }
   });
 
+  const approveTaskMutation = useMutation({
+    mutationFn: async ({
+      taskId
+    }: {
+      taskId: string;
+      teamId?: string;
+      parentTaskId?: string;
+    }) => {
+      const response = await api.approveTask(taskId);
+      return response.task;
+    },
+    onSuccess: async (_task, variables) => {
+      await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
+      await invalidateTeamThread(variables.teamId, variables.parentTaskId);
+    }
+  });
+
+  const rejectTaskMutation = useMutation({
+    mutationFn: async ({
+      taskId,
+      reason
+    }: {
+      taskId: string;
+      reason?: string;
+      teamId?: string;
+      parentTaskId?: string;
+    }) => {
+      const response = await api.rejectTask(taskId, { reason });
+      return response.task;
+    },
+    onSuccess: async (_task, variables) => {
+      await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
+      await invalidateTeamThread(variables.teamId, variables.parentTaskId);
+    }
+  });
+
+  const retryTaskMutation = useMutation({
+    mutationFn: async ({
+      taskId
+    }: {
+      taskId: string;
+      teamId?: string;
+      parentTaskId?: string;
+    }) => {
+      const response = await api.retryTask(taskId);
+      return response.task;
+    },
+    onSuccess: async (_task, variables) => {
+      await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
+      await queryClient.invalidateQueries({ queryKey: queryKey("runs") });
+      await invalidateTeamThread(variables.teamId, variables.parentTaskId);
+    }
+  });
+
   const cleanupTaskWorktreeMutation = useMutation({
     mutationFn: async (taskId: string) => {
       const response = await api.cleanupTaskWorktree(taskId);
@@ -532,6 +599,9 @@ export function useBoardData() {
     stopTask: stopTaskMutation.mutateAsync,
     sendTaskInput: sendTaskInputMutation.mutateAsync,
     updateTask: updateTaskMutation.mutateAsync,
+    approveTask: approveTaskMutation.mutateAsync,
+    rejectTask: rejectTaskMutation.mutateAsync,
+    retryTask: retryTaskMutation.mutateAsync,
     planTask: planTaskMutation.mutateAsync,
     sendPlanFeedback: sendPlanFeedbackMutation.mutateAsync,
     requestTaskReview: requestTaskReviewMutation.mutateAsync,
@@ -552,6 +622,9 @@ export function useBoardData() {
       stopTaskMutation,
       sendTaskInputMutation,
       updateTaskMutation,
+      approveTaskMutation,
+      rejectTaskMutation,
+      retryTaskMutation,
       planTaskMutation,
       sendPlanFeedbackMutation,
       requestTaskReviewMutation,

@@ -6,6 +6,7 @@ import { formatRelativeTime, titleCase } from "@/lib/format";
 import { BOARD_COLUMNS, type DisplayTask, type DisplayTaskColumn } from "@/lib/task-view";
 import { cn } from "@/lib/utils";
 import { CompactPullRequestStatus } from "./CompactPullRequestStatus";
+import { SubtaskReviewActions } from "./SubtaskReviewActions";
 import { TaskActionBar } from "./TaskActionBar";
 
 interface ReviewMonitor {
@@ -32,6 +33,10 @@ interface Props {
   onMoveToTodo(taskId: string): void;
   onMarkDone(taskId: string): void;
   onArchive(taskId: string): void;
+  onApproveSubtask(taskId: string, teamId: string, parentTaskId: string): void;
+  onRejectSubtask(taskId: string, teamId: string, parentTaskId: string, reason?: string): void;
+  onRetrySubtask(taskId: string, teamId: string, parentTaskId: string): void;
+  reviewActionBusy?: boolean;
 }
 
 const boardClass =
@@ -88,6 +93,13 @@ function getReviewCountdown(reviewMonitor: ReviewMonitor, nowMs: number): Review
 }
 
 function getTaskRunBadge(task: DisplayTask) {
+  if (task.rejected) {
+    return {
+      label: "REJECTED",
+      className: "border-[rgba(240,113,113,0.28)] bg-[rgba(240,113,113,0.12)] text-[var(--danger)]"
+    };
+  }
+
   if (task.column === "running") {
     return {
       label: "RUNNING",
@@ -224,7 +236,11 @@ export function Board({
   onTaskStop,
   onMoveToTodo,
   onMarkDone,
-  onArchive
+  onArchive,
+  onApproveSubtask,
+  onRejectSubtask,
+  onRetrySubtask,
+  reviewActionBusy = false
 }: Props) {
   const grouped = BOARD_COLUMNS.reduce((acc, column) => {
     acc[column.id] = tasks
@@ -376,28 +392,73 @@ export function Board({
                               </div>
                               {(isActive ? childTasks : childTasks.slice(0, 3)).map((childTask) => {
                                 const childAgentName = resolveTeamAgentName(team, childTask.teamAgentId);
+                                const canApprove =
+                                  childTask.column === "review" &&
+                                  childTask.lastRunStatus === "succeeded";
                                 return (
-                                  <button
+                                  <article
                                     key={childTask.id}
-                                    type="button"
-                                    className="grid gap-1 rounded-none border border-border bg-[var(--surface-soft)] px-2.5 py-2 text-left transition-colors hover:bg-[var(--surface-hover)]"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      onTaskOpen(childTask.id);
-                                    }}
+                                    className="grid gap-2 rounded-none border border-border bg-[var(--surface-soft)] px-2.5 py-2"
                                   >
-                                    <div className="flex items-center justify-between gap-2">
-                                      <span className="text-[0.72rem] font-medium leading-[1.35]">
-                                        {childTask.title}
+                                    <button
+                                      type="button"
+                                      className="grid gap-1 text-left transition-colors hover:text-foreground"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        onTaskOpen(childTask.id);
+                                      }}
+                                    >
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="text-[0.72rem] font-medium leading-[1.35]">
+                                          {childTask.title}
+                                        </span>
+                                        <span className="font-mono text-[0.58rem] uppercase tracking-[0.08em] text-[var(--muted)]">
+                                          {childTask.rejected ? "Rejected" : titleCase(childTask.column)}
+                                        </span>
+                                      </div>
+                                      <span className="text-[0.66rem] text-[var(--muted)]">
+                                        {childAgentName ?? "Unassigned agent"}
                                       </span>
-                                      <span className="font-mono text-[0.58rem] uppercase tracking-[0.08em] text-[var(--muted)]">
-                                        {titleCase(childTask.column)}
-                                      </span>
-                                    </div>
-                                    <span className="text-[0.66rem] text-[var(--muted)]">
-                                      {childAgentName ?? "Unassigned agent"}
-                                    </span>
-                                  </button>
+                                    </button>
+                                    {childTask.column === "review" && childTask.teamId && childTask.parentTaskId ? (
+                                      <SubtaskReviewActions
+                                        compact
+                                        disabled={reviewActionBusy}
+                                        canApprove={canApprove}
+                                        onApprove={() =>
+                                          onApproveSubtask(
+                                            childTask.id,
+                                            childTask.teamId!,
+                                            childTask.parentTaskId!
+                                          )
+                                        }
+                                        onReject={() =>
+                                          (() => {
+                                            const reason = window.prompt(
+                                              `Why reject "${childTask.title}"? (optional)`,
+                                              ""
+                                            );
+                                            if (reason === null) {
+                                              return;
+                                            }
+                                            onRejectSubtask(
+                                              childTask.id,
+                                              childTask.teamId!,
+                                              childTask.parentTaskId!,
+                                              reason || undefined
+                                            );
+                                          })()
+                                        }
+                                        onRetry={() =>
+                                          onRetrySubtask(
+                                            childTask.id,
+                                            childTask.teamId!,
+                                            childTask.parentTaskId!
+                                          )
+                                        }
+                                      />
+                                    ) : null}
+                                  </article>
                                 );
                               })}
                               {!isActive && childTasks.length > 3 ? (

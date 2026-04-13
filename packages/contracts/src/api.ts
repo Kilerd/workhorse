@@ -149,6 +149,22 @@ export interface UpdateTaskParams {
   taskId: string;
 }
 
+export interface ApproveTaskParams {
+  taskId: string;
+}
+
+export interface RejectTaskParams {
+  taskId: string;
+}
+
+export interface RejectTaskBody {
+  reason?: string;
+}
+
+export interface RetryTaskParams {
+  taskId: string;
+}
+
 export interface UpdateTaskBody {
   title?: string;
   description?: string;
@@ -372,6 +388,7 @@ export interface CreateTeamBody {
   description?: string;
   workspaceId: string;
   prStrategy?: TeamPrStrategy;
+  autoApproveSubtasks?: boolean;
   agents: Array<{
     id: string;
     agentName: string;
@@ -388,6 +405,7 @@ export interface UpdateTeamBody {
   name?: string;
   description?: string;
   prStrategy?: TeamPrStrategy;
+  autoApproveSubtasks?: boolean;
   agents?: Array<{
     id: string;
     agentName: string;
@@ -482,6 +500,10 @@ export type SchemaName =
   | "DeleteWorkspaceParams"
   | "ListTasksQuery"
   | "CreateTaskBody"
+  | "ApproveTaskParams"
+  | "RejectTaskParams"
+  | "RejectTaskBody"
+  | "RetryTaskParams"
   | "UpdateTaskParams"
   | "UpdateTaskBody"
   | "DeleteTaskParams"
@@ -810,6 +832,87 @@ export const endpointRegistry: EndpointSpec[] = [
       {
         status: 404,
         description: "Task not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "approveTask",
+    method: "post",
+    path: "/api/tasks/{taskId}/approve",
+    summary: "Approve a review-ready subtask",
+    tag: "Tasks",
+    paramsSchema: "ApproveTaskParams",
+    responses: [
+      {
+        status: 200,
+        description: "Approved task",
+        schema: "TaskResponse"
+      },
+      {
+        status: 404,
+        description: "Task not found",
+        schema: "ApiError"
+      },
+      {
+        status: 409,
+        description: "Task cannot be approved",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "rejectTask",
+    method: "post",
+    path: "/api/tasks/{taskId}/reject",
+    summary: "Reject a review-ready subtask",
+    tag: "Tasks",
+    paramsSchema: "RejectTaskParams",
+    bodySchema: "RejectTaskBody",
+    responses: [
+      {
+        status: 200,
+        description: "Rejected task",
+        schema: "TaskResponse"
+      },
+      {
+        status: 400,
+        description: "Validation error",
+        schema: "ApiError"
+      },
+      {
+        status: 404,
+        description: "Task not found",
+        schema: "ApiError"
+      },
+      {
+        status: 409,
+        description: "Task cannot be rejected",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "retryTask",
+    method: "post",
+    path: "/api/tasks/{taskId}/retry",
+    summary: "Retry a review-ready subtask",
+    tag: "Tasks",
+    paramsSchema: "RetryTaskParams",
+    responses: [
+      {
+        status: 200,
+        description: "Retried task",
+        schema: "TaskResponse"
+      },
+      {
+        status: 404,
+        description: "Task not found",
+        schema: "ApiError"
+      },
+      {
+        status: 409,
+        description: "Task cannot be retried",
         schema: "ApiError"
       }
     ]
