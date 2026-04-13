@@ -110,18 +110,19 @@ describe("buildSubtaskArtifactPayload", () => {
     expect(parsed.diff_summary).not.toContain("truncated");
   });
 
-  it("applies 10KB truncation to oversized payload", () => {
-    // Generate a very large diff to exceed 10KB after JSON serialization
-    const bigLine = "+".padEnd(200, "x");
-    const lines = Array.from({ length: 10 }, () => bigLine);
-    const diff = lines.join("\n");
-    // Generate many files
-    const manyFiles = Array.from({ length: 200 }, (_, i) => `file${i}.ts`);
-    const bigDiff =
-      manyFiles.map((f) => `diff --git a/${f} b/${f}\n${diff}`).join("\n");
+  it("produces valid JSON even when diff_summary exceeds 8KB budget", () => {
+    // Generate a diff summary where each line is very long to exceed the 8KB limit
+    const longLine = "+".padEnd(300, "x");
+    const lines = Array.from({ length: 50 }, () => longLine);
+    const hugeDiff = lines.join("\n");
 
-    const payload = buildSubtaskArtifactPayload({ diff: bigDiff });
+    const payload = buildSubtaskArtifactPayload({ diff: hugeDiff });
+    // Must be parseable as valid JSON
+    expect(() => JSON.parse(payload)).not.toThrow();
+    // Payload must fit in 10KB
     expect(Buffer.byteLength(payload, "utf8")).toBeLessThanOrEqual(10 * 1024);
-    expect(payload).toContain("...[truncated]");
+    // diff_summary must be truncated with the overflow marker
+    const parsed = JSON.parse(payload) as { diff_summary: string };
+    expect(parsed.diff_summary).toContain("...[truncated]");
   });
 });
