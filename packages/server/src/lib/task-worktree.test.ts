@@ -8,7 +8,8 @@ import {
   createTaskWorktree,
   deriveTaskBranchName,
   deriveTaskBranchFallbackName,
-  deriveTaskWorktreePath
+  deriveTaskWorktreePath,
+  deriveTeamSubtaskBranchName
 } from "./task-worktree.js";
 
 const workspace: Workspace = {
@@ -157,5 +158,30 @@ describe("task worktree naming", () => {
         })
       )
     ).toBe("task-123-fix-onboarding-flow");
+  });
+});
+
+describe("deriveTeamSubtaskBranchName", () => {
+  it("produces team/{teamId}/{slug} branch name", () => {
+    expect(deriveTeamSubtaskBranchName("team-abc", "Implement auth module")).toBe(
+      "team/team-abc/implement-auth-module"
+    );
+  });
+
+  it("slugifies special characters in title", () => {
+    expect(deriveTeamSubtaskBranchName("t1", "Fix bug: handle null & empty!")).toBe(
+      "team/t1/fix-bug-handle-null-empty"
+    );
+  });
+
+  it("falls back to teamId when title is empty", () => {
+    expect(deriveTeamSubtaskBranchName("t1", "   ")).toBe("team/t1/t1");
+  });
+
+  it("truncates long titles at 48 characters", () => {
+    const longTitle = "a".repeat(60);
+    const branch = deriveTeamSubtaskBranchName("t1", longTitle);
+    const slug = branch.split("/").at(-1)!;
+    expect(slug.length).toBeLessThanOrEqual(48);
   });
 });
