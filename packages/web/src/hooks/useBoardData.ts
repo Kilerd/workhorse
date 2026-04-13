@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-query";
 
 import type {
+  AgentTeam,
   GlobalSettings,
   Run,
   StartTaskBody,
@@ -29,6 +30,7 @@ import { type DisplayTask, type TaskFormValues } from "@/lib/task-view";
 import { useLiveLog } from "./useLiveLog";
 import { useModalState } from "./useModalState";
 import { useSelectionState } from "./useSelectionState";
+import { useTeams, teamQueryKeys } from "./useTeams";
 
 function queryKey(name: string, extra?: string) {
   return extra ? [name, extra] : [name];
@@ -100,6 +102,8 @@ export function useBoardData() {
       return response.settings;
     }
   });
+
+  const teamsQuery = useTeams();
 
   const displayedTasks = useMemo<DisplayTask[]>(
     () => tasksQuery.data ?? [],
@@ -435,12 +439,54 @@ export function useBoardData() {
     [startTaskMutation]
   );
 
+  const createTeamMutation = useMutation({
+    mutationFn: async (input: Parameters<typeof api.createTeam>[0]) => {
+      const response = await api.createTeam(input);
+      return response.team;
+    },
+    onSuccess: async (team) => {
+      await queryClient.invalidateQueries({ queryKey: teamQueryKeys.lists() });
+      await queryClient.invalidateQueries({
+        queryKey: teamQueryKeys.detail(team.id)
+      });
+    }
+  });
+
+  const updateTeamMutation = useMutation({
+    mutationFn: async ({
+      teamId,
+      body
+    }: {
+      teamId: string;
+      body: Parameters<typeof api.updateTeam>[1];
+    }) => {
+      const response = await api.updateTeam(teamId, body);
+      return response.team;
+    },
+    onSuccess: async (team) => {
+      await queryClient.invalidateQueries({ queryKey: teamQueryKeys.lists() });
+      await queryClient.invalidateQueries({
+        queryKey: teamQueryKeys.detail(team.id)
+      });
+    }
+  });
+
+  const deleteTeamMutation = useMutation({
+    mutationFn: async (teamId: string) => api.deleteTeam(teamId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: teamQueryKeys.lists() });
+      await queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    }
+  });
+
   return {
     queryClient,
     healthQuery,
     workspacesQuery,
     tasksQuery,
     settingsQuery,
+    teamsQuery,
+    teams: teamsQuery.data ?? ([] as AgentTeam[]),
     workspaceGitStatus: workspaceGitStatusQuery.data ?? null,
     pullWorkspace: pullWorkspaceMutation.mutateAsync,
     isPulling: pullWorkspaceMutation.isPending,
@@ -457,10 +503,12 @@ export function useBoardData() {
     workspaceSettingsModalOpen: modals.workspaceSettingsModalOpen,
     globalSettingsModalOpen: modals.globalSettingsModalOpen,
     taskModalOpen: modals.taskModalOpen,
+    teamModalOpen: modals.teamModalOpen,
     setWorkspaceModalOpen: modals.setWorkspaceModalOpen,
     setWorkspaceSettingsModalOpen: modals.setWorkspaceSettingsModalOpen,
     setGlobalSettingsModalOpen: modals.setGlobalSettingsModalOpen,
     setTaskModalOpen: modals.setTaskModalOpen,
+    setTeamModalOpen: modals.setTeamModalOpen,
     sidebarCollapsed: selection.sidebarCollapsed,
     toggleSidebarCollapsed: selection.toggleSidebarCollapsed,
     setWorkspaceSelection: selection.setWorkspaceSelection,
@@ -473,6 +521,13 @@ export function useBoardData() {
     updateWorkspace: updateWorkspaceMutation.mutateAsync,
     createTask: createTaskMutation.mutateAsync,
     isCreatingTask: createTaskMutation.isPending,
+    createTeam: createTeamMutation.mutateAsync,
+    updateTeamData: updateTeamMutation.mutateAsync,
+    deleteTeam: deleteTeamMutation.mutateAsync,
+    isSavingTeam:
+      createTeamMutation.isPending ||
+      updateTeamMutation.isPending ||
+      deleteTeamMutation.isPending,
     startTask,
     stopTask: stopTaskMutation.mutateAsync,
     sendTaskInput: sendTaskInputMutation.mutateAsync,
@@ -505,7 +560,10 @@ export function useBoardData() {
       deleteWorkspaceMutation,
       deleteTaskMutation,
       pullWorkspaceMutation,
-      setTaskDependenciesMutation
+      setTaskDependenciesMutation,
+      createTeamMutation,
+      updateTeamMutation,
+      deleteTeamMutation
     ].some((m) => m.isPending)
   };
 }

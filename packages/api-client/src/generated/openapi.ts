@@ -349,6 +349,112 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tasks/{taskId}/dependencies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get task dependencies */
+        get: operations["getTaskDependencies"];
+        /** Set task dependency list */
+        put: operations["setTaskDependencies"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scheduler/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get task scheduler status */
+        get: operations["getSchedulerStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scheduler/evaluate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Manually trigger scheduler evaluation */
+        post: operations["evaluateScheduler"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/teams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List agent teams */
+        get: operations["listTeams"];
+        put?: never;
+        /** Create an agent team */
+        post: operations["createTeam"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/teams/{teamId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get an agent team */
+        get: operations["getTeam"];
+        put?: never;
+        post?: never;
+        /** Delete an agent team */
+        delete: operations["deleteTeam"];
+        options?: never;
+        head?: never;
+        /** Update an agent team */
+        patch: operations["updateTeam"];
+        trace?: never;
+    };
+    "/api/teams/{teamId}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List messages for a team */
+        get: operations["listTeamMessages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -370,11 +476,22 @@ export interface components {
         GlobalSettings: {
             language: string;
             openRouter: components["schemas"]["OpenRouterSettings"];
+            scheduler?: components["schemas"]["SchedulerSettings"];
         };
         OpenRouterSettings: {
             baseUrl: string;
             token: string;
             model: string;
+        };
+        SchedulerSettings: {
+            maxConcurrent?: number;
+            maxPerRunner?: components["schemas"]["PartialRecordRunnerTypenumber"];
+        };
+        /** @description Make all properties in T optional */
+        PartialRecordRunnerTypenumber: {
+            claude?: number;
+            codex?: number;
+            shell?: number;
         };
         Workspace: {
             id: string;
@@ -422,17 +539,24 @@ export interface components {
             order: number;
             runnerType: components["schemas"]["RunnerType"];
             runnerConfig: components["schemas"]["RunnerConfig"];
+            /** @description Task IDs that must be "done" before this task can start */
+            dependencies: string[];
             plan?: string;
             worktree: components["schemas"]["TaskWorktree"];
             lastRunId?: string;
             continuationRunId?: string;
             pullRequestUrl?: string;
             pullRequest?: components["schemas"]["TaskPullRequest"];
-            dependencies: string[];
+            /** @description When set, this task belongs to an agent team. */
+            teamId?: string;
+            /** @description When set, this task is a subtask created by a team coordinator. */
+            parentTaskId?: string;
+            /** @description The TeamAgent.id responsible for this subtask. */
+            teamAgentId?: string;
             createdAt: string;
             updatedAt: string;
         };
-        TaskColumn: "review" | "backlog" | "todo" | "running" | "done" | "archived" | "blocked";
+        TaskColumn: "backlog" | "todo" | "blocked" | "running" | "review" | "done" | "archived";
         RunnerType: "claude" | "codex" | "shell";
         RunnerConfig: components["schemas"]["ShellRunnerConfig"] | components["schemas"]["ClaudeRunnerConfig"] | components["schemas"]["CodexRunnerConfig"];
         ShellRunnerConfig: {
@@ -505,7 +629,7 @@ export interface components {
             exitCode?: number;
             startedAt: string;
             endedAt?: string;
-            logFile: string;
+            logFile?: string;
             metadata?: components["schemas"]["Recordstringstring"];
         };
         RunStatus: "running" | "queued" | "succeeded" | "failed" | "interrupted" | "canceled";
@@ -519,6 +643,9 @@ export interface components {
                 baseUrl: string;
                 token: string;
                 model: string;
+            };
+            scheduler?: {
+                maxConcurrent?: number;
             };
         };
         CreateWorkspaceBody: {
@@ -554,8 +681,9 @@ export interface components {
             title: string;
             description?: string;
             workspaceId: string;
+            teamId?: string;
             worktreeBaseRef?: string;
-            column?: components["schemas"]["TaskColumn"];
+            column?: "backlog" | "todo" | "blocked" | "running" | "review" | "done" | "archived";
             order?: number;
             runnerType: components["schemas"]["RunnerType"];
             runnerConfig: components["schemas"]["RunnerConfig"];
@@ -568,7 +696,7 @@ export interface components {
             description?: string;
             workspaceId?: string;
             worktreeBaseRef?: string;
-            column?: components["schemas"]["TaskColumn"];
+            column?: "backlog" | "todo" | "blocked" | "running" | "review" | "done" | "archived";
             order?: number;
             runnerType?: "claude" | "codex" | "shell";
             runnerConfig?: components["schemas"]["ShellRunnerConfig"] | components["schemas"]["ClaudeRunnerConfig"] | components["schemas"]["CodexRunnerConfig"];
@@ -811,7 +939,7 @@ export interface components {
             metadata?: components["schemas"]["Recordstringstring"];
         };
         RunLogStream: "stdout" | "stderr" | "system";
-        RunLogKind: "plan" | "system" | "text" | "user" | "agent" | "tool_call" | "tool_output" | "status";
+        RunLogKind: "system" | "text" | "user" | "agent" | "tool_call" | "tool_output" | "plan" | "status";
         HealthResponse: {
             /** @enum {unknown} */
             ok: true;
@@ -843,6 +971,150 @@ export interface components {
             remainingPercent: number;
             windowDurationMins?: number;
             resetsAt?: string;
+        };
+        SetTaskDependenciesParams: {
+            taskId: string;
+        };
+        SetTaskDependenciesBody: {
+            dependencies: string[];
+        };
+        GetTaskDependenciesParams: {
+            taskId: string;
+        };
+        TaskDependenciesResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["TaskDependenciesData"];
+        };
+        TaskDependenciesData: {
+            task: components["schemas"]["Task"];
+        };
+        SchedulerStatusResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["SchedulerStatusData"];
+        };
+        SchedulerStatusData: {
+            running: number;
+            queued: number;
+            blocked: number;
+        };
+        SchedulerEvaluateResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["SchedulerEvaluateData"];
+        };
+        SchedulerEvaluateData: {
+            started: string[];
+            blocked: string[];
+        };
+        AgentTeam: {
+            id: string;
+            name: string;
+            description: string;
+            workspaceId: string;
+            agents: components["schemas"]["TeamAgent"][];
+            /** @description Strategy for creating pull requests from subtask branches. */
+            prStrategy: components["schemas"]["TeamPrStrategy"];
+            createdAt: string;
+            updatedAt: string;
+        };
+        TeamAgent: {
+            /** @description Unique agent identifier within the team (nanoid). */
+            id: string;
+            agentName: string;
+            role: components["schemas"]["AgentRole"];
+            runnerConfig: components["schemas"]["RunnerConfig"];
+        };
+        AgentRole: "coordinator" | "worker";
+        TeamPrStrategy: "independent" | "stacked" | "single";
+        TeamMessage: {
+            id: string;
+            teamId: string;
+            /** @description Parent team task that owns this execution thread. */
+            parentTaskId: string;
+            /** @description The task this message is associated with (subtask or parent task). */
+            taskId?: string;
+            /** @description Name of the agent or user that sent the message. */
+            agentName: string;
+            /** @description Whether the message was sent by an agent, human, or the system. */
+            senderType: components["schemas"]["TeamMessageSenderType"];
+            /** @description Semantic message category for prompt injection and UI rendering. */
+            messageType: components["schemas"]["TeamMessageType"];
+            content: string;
+            createdAt: string;
+        };
+        TeamMessageSenderType: "system" | "agent" | "human";
+        TeamMessageType: "status" | "artifact" | "context" | "feedback";
+        CreateTeamBody: {
+            name: string;
+            description?: string;
+            workspaceId: string;
+            prStrategy?: "independent" | "stacked" | "single";
+            agents: {
+                id: string;
+                agentName: string;
+                role: components["schemas"]["AgentRole"];
+                runnerConfig: components["schemas"]["RunnerConfig"];
+            }[];
+        };
+        UpdateTeamParams: {
+            teamId: string;
+        };
+        UpdateTeamBody: {
+            name?: string;
+            description?: string;
+            prStrategy?: "independent" | "stacked" | "single";
+            agents?: {
+                id: string;
+                agentName: string;
+                role: components["schemas"]["AgentRole"];
+                runnerConfig: components["schemas"]["RunnerConfig"];
+            }[];
+        };
+        GetTeamParams: {
+            teamId: string;
+        };
+        DeleteTeamParams: {
+            teamId: string;
+        };
+        ListTeamMessagesParams: {
+            teamId: string;
+        };
+        ListTeamMessagesQuery: {
+            parentTaskId?: string;
+        };
+        ListTeamsQuery: {
+            workspaceId?: string;
+        };
+        TeamsResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["ListTeamsData"];
+        };
+        ListTeamsData: {
+            items: components["schemas"]["AgentTeam"][];
+        };
+        AgentTeamResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["AgentTeamData"];
+        };
+        AgentTeamData: {
+            team: components["schemas"]["AgentTeam"];
+        };
+        DeleteTeamResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["DeleteResult"];
+        };
+        TeamMessagesResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["TeamMessagesData"];
+        };
+        TeamMessagesData: {
+            items: components["schemas"]["TeamMessage"][];
         };
     };
     responses: never;
@@ -1699,6 +1971,315 @@ export interface operations {
                 };
             };
             /** @description Run not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getTaskDependencies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Task with dependencies */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskDependenciesResponse"];
+                };
+            };
+            /** @description Task not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    setTaskDependencies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetTaskDependenciesBody"];
+            };
+        };
+        responses: {
+            /** @description Updated task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskDependenciesResponse"];
+                };
+            };
+            /** @description Validation error or cycle detected */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Task not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getSchedulerStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Scheduler status snapshot */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchedulerStatusResponse"];
+                };
+            };
+        };
+    };
+    evaluateScheduler: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Evaluation result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchedulerEvaluateResponse"];
+                };
+            };
+        };
+    };
+    listTeams: {
+        parameters: {
+            query?: {
+                workspaceId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Team collection */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamsResponse"];
+                };
+            };
+        };
+    };
+    createTeam: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTeamBody"];
+            };
+        };
+        responses: {
+            /** @description Created team */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTeamResponse"];
+                };
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getTeam: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Team details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTeamResponse"];
+                };
+            };
+            /** @description Team not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteTeam: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted team id */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteTeamResponse"];
+                };
+            };
+            /** @description Team not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateTeam: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTeamBody"];
+            };
+        };
+        responses: {
+            /** @description Updated team */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTeamResponse"];
+                };
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Team not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listTeamMessages: {
+        parameters: {
+            query?: {
+                parentTaskId?: string;
+            };
+            header?: never;
+            path: {
+                teamId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Team message collection */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamMessagesResponse"];
+                };
+            };
+            /** @description Team not found */
             404: {
                 headers: {
                     [name: string]: unknown;

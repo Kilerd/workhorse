@@ -135,6 +135,7 @@ export interface CreateTaskBody {
   title: string;
   description?: string;
   workspaceId: string;
+  teamId?: string;
   worktreeBaseRef?: string;
   column?: TaskColumn;
   order?: number;

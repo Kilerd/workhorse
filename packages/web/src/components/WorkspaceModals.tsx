@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type {
+  AgentTeam,
   ClaudePermissionMode,
   GlobalSettings,
   Workspace,
@@ -191,6 +192,7 @@ interface GlobalSettingsModalProps {
 interface TaskModalProps {
   open: boolean;
   workspaces: Workspace[];
+  teams: AgentTeam[];
   selectedWorkspaceId: string | "all";
   settings: GlobalSettings | null;
   submitting: boolean;
@@ -834,6 +836,7 @@ export function GlobalSettingsModal({
 export function TaskModal({
   open,
   workspaces,
+  teams,
   selectedWorkspaceId,
   settings,
   submitting,
@@ -845,6 +848,7 @@ export function TaskModal({
   const [workspaceId, setWorkspaceId] = useState(() =>
     resolveTaskWorkspaceId(workspaces, selectedWorkspaceId)
   );
+  const [teamId, setTeamId] = useState("");
   const [runnerType, setRunnerType] = useState<"claude" | "shell" | "codex">("codex");
   const [shellCommand, setShellCommand] = useState("npm test");
   const [prompt, setPrompt] = useState(DEFAULT_CODEX_PROMPT);
@@ -858,6 +862,19 @@ export function TaskModal({
   const defaultWorkspaceId = resolveTaskWorkspaceId(workspaces, selectedWorkspaceId);
   const resolvedSettings = settings ?? DEFAULT_GLOBAL_SETTINGS;
   const canGenerateTitle = hasCompleteOpenRouterConfig(resolvedSettings);
+  const availableTeams = useMemo(
+    () => teams.filter((team) => team.workspaceId === workspaceId),
+    [teams, workspaceId]
+  );
+  const selectedTeam = useMemo(
+    () => availableTeams.find((team) => team.id === teamId) ?? null,
+    [availableTeams, teamId]
+  );
+  const coordinatorAgent = useMemo(
+    () => selectedTeam?.agents.find((agent) => agent.role === "coordinator") ?? null,
+    [selectedTeam]
+  );
+  const isTeamTask = Boolean(selectedTeam && coordinatorAgent);
 
   useCloseOnEscape(open, onClose);
 
@@ -882,6 +899,7 @@ export function TaskModal({
       setTitle("");
       setDescription("");
       setWorkspaceId(defaultWorkspaceId);
+      setTeamId("");
       setRunnerType("codex");
       setShellCommand("npm test");
       setPrompt(DEFAULT_CODEX_PROMPT);
@@ -910,6 +928,36 @@ export function TaskModal({
       setWorkspaceId(defaultWorkspaceId);
     }
   }, [defaultWorkspaceId, workspaceId, workspaces]);
+
+  useEffect(() => {
+    if (!teamId) {
+      return;
+    }
+    if (!availableTeams.some((team) => team.id === teamId)) {
+      setTeamId("");
+    }
+  }, [availableTeams, teamId]);
+
+  useEffect(() => {
+    if (!coordinatorAgent) {
+      return;
+    }
+    setRunnerType(coordinatorAgent.runnerConfig.type);
+    if (coordinatorAgent.runnerConfig.type === "shell") {
+      setShellCommand(coordinatorAgent.runnerConfig.command);
+      return;
+    }
+    setPrompt(coordinatorAgent.runnerConfig.prompt);
+    if (coordinatorAgent.runnerConfig.type === "claude") {
+      setClaudeAgent(coordinatorAgent.runnerConfig.agent ?? "");
+      setClaudeModel(coordinatorAgent.runnerConfig.model ?? "");
+      setClaudePermissionMode(coordinatorAgent.runnerConfig.permissionMode ?? "default");
+      return;
+    }
+    setClaudeAgent("code-reviewer");
+    setClaudeModel(coordinatorAgent.runnerConfig.model ?? "");
+    setClaudePermissionMode("default");
+  }, [coordinatorAgent]);
 
   useEffect(() => {
     if (!selectedWorkspace?.isGitRepo) {
@@ -974,9 +1022,12 @@ export function TaskModal({
               title,
               description,
               workspaceId,
+              teamId: selectedTeam?.id,
               runnerType,
               runnerConfig:
-                runnerType === "shell"
+                isTeamTask && coordinatorAgent
+                  ? coordinatorAgent.runnerConfig
+                  : runnerType === "shell"
                   ? { type: "shell", command: shellCommand }
                   : runnerType === "claude"
                     ? {
@@ -1022,6 +1073,20 @@ export function TaskModal({
                 <option key={workspace.id} value={workspace.id}>
                   {workspace.name}
                 </option>
+                ))}
+            </NativeSelect>
+          </label>
+          <label className={modalLabelClass}>
+            <span className={modalLabelTextClass}>Team</span>
+            <NativeSelect
+              value={teamId}
+              onChange={(event) => setTeamId(event.target.value)}
+            >
+              <option value="">No team</option>
+              {availableTeams.map((team) => (
+                <option key={team.id} value={team.id}>
+                  {team.name}
+                </option>
               ))}
             </NativeSelect>
           </label>
@@ -1046,6 +1111,7 @@ export function TaskModal({
             <span className={modalLabelTextClass}>Runner</span>
             <NativeSelect
               value={runnerType}
+              disabled={isTeamTask}
               onChange={(event) => {
                 const nextRunnerType = event.target.value as "claude" | "shell" | "codex";
                 setRunnerType(nextRunnerType);
@@ -1102,7 +1168,16 @@ export function TaskModal({
               </div>
             </>
           ) : null}
-          {runnerType === "shell" ? (
+          {isTeamTask ? (
+            <div className={cn(modalNoteClass, span2Class)}>
+              <span className={modalLabelTextClass}>Team coordinator</span>
+              <p>
+                Team tasks inherit the coordinator runner automatically. This task will run with{" "}
+                <code>{coordinatorAgent?.runnerConfig.type}</code> from{" "}
+                <code>{coordinatorAgent?.agentName}</code>.
+              </p>
+            </div>
+          ) : runnerType === "shell" ? (
             <label className={cn(modalLabelClass, span2Class)}>
               <span className={modalLabelTextClass}>Command</span>
               <Input

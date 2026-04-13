@@ -5,15 +5,18 @@ export function useModalState() {
   const [workspaceSettingsModalOpen, setWorkspaceSettingsModalOpen] = useState(false);
   const [globalSettingsModalOpen, setGlobalSettingsModalOpen] = useState(false);
   const [taskModalOpen, setTaskModalOpen] = useState(false);
+  const [teamModalOpen, setTeamModalOpen] = useState(false);
 
   return {
     workspaceModalOpen,
     workspaceSettingsModalOpen,
     globalSettingsModalOpen,
     taskModalOpen,
+    teamModalOpen,
     setWorkspaceModalOpen,
     setWorkspaceSettingsModalOpen,
     setGlobalSettingsModalOpen,
-    setTaskModalOpen
+    setTaskModalOpen,
+    setTeamModalOpen
   };
 }

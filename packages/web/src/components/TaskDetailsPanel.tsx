@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { Run, RunLogEntry, Workspace } from "@workhorse/contracts";
+import type { AgentTeam, Run, RunLogEntry, TeamMessage, Workspace } from "@workhorse/contracts";
 
 import { formatCount, formatRelativeTime, titleCase } from "@/lib/format";
 import type { DisplayTask } from "@/lib/task-view";
@@ -9,6 +9,8 @@ import { api } from "@/lib/api";
 import { DiffViewer } from "./DiffViewer";
 import { LiveLog } from "./LiveLog";
 import { TaskActionBar } from "./TaskActionBar";
+import { TeamCard } from "./TeamCard";
+import { TeamMessageFeed } from "./TeamMessageFeed";
 
 interface Props {
   className?: string;
@@ -16,6 +18,10 @@ interface Props {
   allTasks: DisplayTask[];
   runs: Run[];
   workspaces: Workspace[];
+  team: AgentTeam | null;
+  teamMessages: TeamMessage[];
+  teamMessagesLoading?: boolean;
+  teamMessagesError?: string | null;
   selectedRunId: string | null;
   runLogLoading?: boolean;
   onBack?(): void;
@@ -252,6 +258,10 @@ export function TaskDetailsPanel({
   allTasks,
   runs,
   workspaces,
+  team,
+  teamMessages,
+  teamMessagesLoading = false,
+  teamMessagesError = null,
   selectedRunId,
   runLogLoading = false,
   onBack,
@@ -438,6 +448,40 @@ export function TaskDetailsPanel({
               {task.description || "No description provided."}
             </p>
           </SidebarSection>
+
+          {team ? (
+            <>
+              <SidebarSection title="Team Context">
+                <TeamCard
+                  team={team}
+                  workspaceName={workspace?.name}
+                  compact
+                />
+                <div className="mt-3 grid gap-1 text-[0.72rem] text-[var(--muted)]">
+                  {task.parentTaskId ? (
+                    <span>Subtask thread · parent {task.parentTaskId}</span>
+                  ) : (
+                    <span>Coordinator thread · parent task</span>
+                  )}
+                  {task.teamAgentId ? (
+                    <span>
+                      Assigned agent ·{" "}
+                      {team.agents.find((agent) => agent.id === task.teamAgentId)?.agentName ??
+                        task.teamAgentId}
+                    </span>
+                  ) : null}
+                </div>
+              </SidebarSection>
+
+              <SidebarSection title="Team Activity">
+                <TeamMessageFeed
+                  messages={teamMessages}
+                  loading={teamMessagesLoading}
+                  error={teamMessagesError}
+                />
+              </SidebarSection>
+            </>
+          ) : null}
 
           {/* Dependencies */}
           <DependencyPicker
@@ -756,4 +800,3 @@ function SidebarField({
     </div>
   );
 }
-

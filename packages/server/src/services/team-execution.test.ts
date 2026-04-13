@@ -215,6 +215,32 @@ function makeTeam(workspaceId: string): CreateTeamBody {
 }
 
 describe("team execution integration", () => {
+  it("creates a team task directly from createTask input", async () => {
+    const codexRunner = new ScriptedCodexRunner([]);
+    const { service, workspace } = await createRuntime(codexRunner);
+    const team = service.createTeam(makeTeam(workspace.id));
+
+    const task = await service.createTask({
+      title: "Coordinate release readiness",
+      description: "Drive the next multi-agent implementation batch.",
+      workspaceId: workspace.id,
+      teamId: team.id,
+      column: "todo",
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "echo should-be-overridden"
+      }
+    });
+
+    expect(task.teamId).toBe(team.id);
+    expect(task.runnerType).toBe("codex");
+    expect(task.runnerConfig).toMatchObject({
+      type: "codex",
+      prompt: "Break the parent task into executable subtasks."
+    });
+  });
+
   it("creates subtasks, persists team messages, and keeps the parent task running", async () => {
     const coordinatorOutput = JSON.stringify([
       {
