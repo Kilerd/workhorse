@@ -306,7 +306,7 @@ export class RunLifecycleService {
         run,
         task: tasks[taskIndex]
       });
-      void this.deps.evaluateScheduler();
+      void this.deps.evaluateScheduler().catch(() => {});
       throw error;
     }
   }

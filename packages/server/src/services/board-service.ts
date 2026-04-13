@@ -453,6 +453,19 @@ export class BoardService {
       const output = await this.extractCoordinatorOutput(run.id);
       const drafts = parseCoordinatorSubtasks(output);
 
+      // C1: cancel any existing pending proposal for this parent task so only
+      // the latest coordinator output is ever awaiting approval.
+      const existingPending = this.store
+        .listProposals(team.id, task.id)
+        .find((p) => p.status === "pending");
+      if (existingPending) {
+        this.store.updateProposalStatus(
+          existingPending.id,
+          "rejected",
+          new Date().toISOString()
+        );
+      }
+
       const proposal: CoordinatorProposal = {
         id: createId(),
         teamId: team.id,
@@ -2256,24 +2269,32 @@ export class BoardService {
 
   public async approveProposal(teamId: string, proposalId: string): Promise<void> {
     const proposal = this.getProposal(teamId, proposalId);
-    if (proposal.status !== "pending") {
+
+    // C2: atomically claim the proposal before any async work to prevent
+    // concurrent approve calls from creating duplicate subtasks.
+    const now = new Date().toISOString();
+    const claimed = this.store.updateProposalStatusCAS(proposalId, "pending", "approved", now);
+    if (!claimed) {
       throw new AppError(409, "PROPOSAL_ALREADY_DECIDED", "Proposal has already been approved or rejected");
     }
 
-    const parentTask = this.store.listTasks().find((t) => t.id === proposal.parentTaskId);
-    if (!parentTask) {
-      throw new AppError(404, "TASK_NOT_FOUND", "Parent task not found");
-    }
+    // W3: use requireTask instead of a linear scan
+    const parentTask = this.requireTask(proposal.parentTaskId);
 
     const team = this.getTeam(teamId);
-    const { parentTask: updatedParent, subtasks } = await this.createCoordinatorSubtasks(
-      parentTask,
-      team,
-      proposal.drafts
-    );
-
-    // Mark proposal as approved
-    this.store.updateProposalStatus(proposalId, "approved", new Date().toISOString());
+    let updatedParent: Task;
+    let subtasks: Task[];
+    try {
+      ({ parentTask: updatedParent, subtasks } = await this.createCoordinatorSubtasks(
+        parentTask,
+        team,
+        proposal.drafts
+      ));
+    } catch (error) {
+      // Roll back the CAS so the proposal can be re-approved after the error is resolved.
+      this.store.updateProposalStatus(proposalId, "pending", null);
+      throw error;
+    }
 
     // Publish a coordinator context summary message to the team feed
     const coordinator = this.resolveCoordinatorAgent(team);
@@ -2322,6 +2343,13 @@ export class BoardService {
         }))
       })
     );
+    // W1: notify the UI that the proposal status has changed
+    this.events.publish({
+      type: "team.proposal.updated",
+      teamId: team.id,
+      parentTaskId: parentTask.id,
+      proposal: claimed
+    });
 
     await this.scheduler.evaluate();
   }
@@ -2331,7 +2359,17 @@ export class BoardService {
     if (proposal.status !== "pending") {
       throw new AppError(409, "PROPOSAL_ALREADY_DECIDED", "Proposal has already been approved or rejected");
     }
-    this.store.updateProposalStatus(proposalId, "rejected", new Date().toISOString());
+    const now = new Date().toISOString();
+    const updated = this.store.updateProposalStatus(proposalId, "rejected", now);
+    // W1: notify the UI that the proposal status has changed
+    if (updated) {
+      this.events.publish({
+        type: "team.proposal.updated",
+        teamId: proposal.teamId,
+        parentTaskId: proposal.parentTaskId,
+        proposal: updated
+      });
+    }
     // Parent task remains in "review" so the user can re-run the coordinator.
   }
 

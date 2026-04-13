@@ -613,7 +613,7 @@ export class StateStore {
   public updateProposalStatus(
     proposalId: string,
     status: CoordinatorProposalStatus,
-    decidedAt: string
+    decidedAt: string | null
   ): CoordinatorProposal | null {
     const existing = this.getProposal(proposalId);
     if (!existing) {
@@ -624,7 +624,38 @@ export class StateStore {
       .set({ status, decidedAt })
       .where(eq(schema.coordinatorProposals.id, proposalId))
       .run();
-    return { ...existing, status, decidedAt };
+    return { ...existing, status, decidedAt: decidedAt ?? undefined };
+  }
+
+  /**
+   * Compare-and-swap: updates status from `expectedStatus` to `newStatus` atomically.
+   * Returns the updated proposal on success, or null if the status did not match
+   * (i.e., a concurrent caller already changed it).
+   */
+  public updateProposalStatusCAS(
+    proposalId: string,
+    expectedStatus: CoordinatorProposalStatus,
+    newStatus: CoordinatorProposalStatus,
+    decidedAt: string
+  ): CoordinatorProposal | null {
+    const existing = this.getProposal(proposalId);
+    if (!existing) {
+      return null;
+    }
+    const result = this.db
+      .update(schema.coordinatorProposals)
+      .set({ status: newStatus, decidedAt })
+      .where(
+        and(
+          eq(schema.coordinatorProposals.id, proposalId),
+          eq(schema.coordinatorProposals.status, expectedStatus)
+        )
+      )
+      .run();
+    if (result.changes === 0) {
+      return null;
+    }
+    return { ...existing, status: newStatus, decidedAt };
   }
 
   /** Closes the underlying SQLite connection. Call on server shutdown. */

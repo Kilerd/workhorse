@@ -139,6 +139,7 @@ function ReactAppShell() {
           });
           break;
         case "team.proposal.created":
+        case "team.proposal.updated":
           queryClient.invalidateQueries({
             queryKey: teamQueryKeys.proposals(event.teamId, event.parentTaskId)
           });

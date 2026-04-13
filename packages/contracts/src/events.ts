@@ -91,6 +91,13 @@ export interface TeamProposalCreatedEvent {
   proposal: CoordinatorProposal;
 }
 
+export interface TeamProposalUpdatedEvent {
+  type: "team.proposal.updated";
+  teamId: string;
+  parentTaskId: string;
+  proposal: CoordinatorProposal;
+}
+
 export type ServerEvent =
   | WorkspaceUpdatedEvent
   | TaskUpdatedEvent
@@ -104,4 +111,5 @@ export type ServerEvent =
   | TeamUpdatedEvent
   | TeamAgentMessageEvent
   | TeamTaskCreatedEvent
-  | TeamProposalCreatedEvent;
+  | TeamProposalCreatedEvent
+  | TeamProposalUpdatedEvent;
