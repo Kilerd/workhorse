@@ -105,6 +105,30 @@ describe("StateStore", () => {
     expect(loaded2?.dependencies).toEqual(["task-1"]);
   });
 
+  it("persists cancelledAt on tasks", async () => {
+    const store = new StateStore(":memory:");
+    await store.load();
+
+    const workspace = makeWorkspace();
+    const cancelledAt = new Date().toISOString();
+    const task = {
+      ...makeTask(workspace.id),
+      column: "done" as const,
+      cancelledAt
+    };
+    store.setWorkspaces([workspace]);
+    store.setTasks([task]);
+    await store.save();
+
+    const storeInternals = store as unknown as {
+      state: unknown;
+      readStateFromDb(): unknown;
+    };
+    storeInternals.state = storeInternals.readStateFromDb();
+
+    expect(store.listTasks()[0]?.cancelledAt).toBe(cancelledAt);
+  });
+
   it("appends and reads log entries", async () => {
     const store = new StateStore(":memory:");
     await store.load();

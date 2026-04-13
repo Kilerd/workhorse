@@ -351,6 +351,9 @@ function ReactAppShell() {
                   onRetrySubtask={(taskId, teamId, parentTaskId) =>
                     void board.retryTask({ taskId, teamId, parentTaskId })
                   }
+                  onCancelSubtask={(taskId, teamId, parentTaskId) =>
+                    void board.cancelSubtask({ taskId, teamId, parentTaskId })
+                  }
                   reviewActionBusy={board.isBusy}
                 />
               </DragDropContext>
@@ -583,6 +586,16 @@ function TaskDetailsRoute({
           task.teamId && task.parentTaskId
             ? () =>
                 board.retryTask({
+                  taskId: task.id,
+                  teamId: task.teamId!,
+                  parentTaskId: task.parentTaskId!
+                })
+            : undefined
+        }
+        onCancelSubtask={
+          task.teamId && task.parentTaskId
+            ? () =>
+                board.cancelSubtask({
                   taskId: task.id,
                   teamId: task.teamId!,
                   parentTaskId: task.parentTaskId!

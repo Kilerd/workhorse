@@ -544,6 +544,38 @@ export class RunLifecycleService {
       isAiReviewRun &&
       result.status === "succeeded" &&
       runEntry.metadata?.reviewVerdict === "request_changes";
+    const shouldPreserveCancelledDone =
+      result.status === "canceled" && typeof taskEntry.cancelledAt === "string";
+
+    if (shouldPreserveCancelledDone) {
+      taskEntry.column = "done";
+      taskEntry.lastRunStatus = result.status;
+      taskEntry.rejected = false;
+      taskEntry.updatedAt = new Date().toISOString();
+
+      this.deps.store.setRuns(currentRuns);
+      this.deps.store.setTasks(currentTasks);
+      await this.deps.store.save();
+      this.deps.events.publish({
+        type: "task.updated",
+        action: "updated",
+        taskId: taskEntry.id,
+        task: taskEntry
+      });
+      this.deps.events.publish({
+        type: "run.finished",
+        taskId: taskEntry.id,
+        run: runEntry,
+        task: taskEntry
+      });
+      await this.deps.evaluateScheduler();
+      await this.deps.afterRunFinished?.(taskEntry, runEntry);
+      return {
+        run: runEntry,
+        task: taskEntry
+      };
+    }
+
     const nextColumn: Task["column"] =
       shouldAutoReview || shouldRework ? "running" : "review";
 

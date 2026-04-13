@@ -195,6 +195,8 @@ export interface Task {
   pullRequest?: TaskPullRequest;
   /** Human reviewers explicitly rejected this subtask. */
   rejected?: boolean;
+  /** Present when a team subtask was explicitly cancelled by a user. */
+  cancelledAt?: string;
   /** When set, this task belongs to an agent team. */
   teamId?: string;
   /** When set, this task is a subtask created by a team coordinator. */

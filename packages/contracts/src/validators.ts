@@ -4,6 +4,7 @@ import type {
   AgentTeamResponse,
   ApproveTaskParams,
   ApiError,
+  CancelSubtaskParams,
   CreateTaskBody,
   CreateTeamBody,
   CreateWorkspaceBody,
@@ -114,6 +115,8 @@ export const validateRejectTaskBody =
   typia.createValidate<RejectTaskBody>();
 export const validateRetryTaskParams =
   typia.createValidate<RetryTaskParams>();
+export const validateCancelSubtaskParams =
+  typia.createValidate<CancelSubtaskParams>();
 export const validateUpdateTaskParams = typia.createValidate<UpdateTaskParams>();
 export const validateUpdateTaskBody = typia.createValidate<UpdateTaskBody>();
 export const validateDeleteTaskParams = typia.createValidate<DeleteTaskParams>();
@@ -176,6 +179,7 @@ export const schemaRegistry = {
   RejectTaskParams: () => typia.json.schema<RejectTaskParams>(),
   RejectTaskBody: () => typia.json.schema<RejectTaskBody>(),
   RetryTaskParams: () => typia.json.schema<RetryTaskParams>(),
+  CancelSubtaskParams: () => typia.json.schema<CancelSubtaskParams>(),
   UpdateTaskParams: () => typia.json.schema<UpdateTaskParams>(),
   UpdateTaskBody: () => typia.json.schema<UpdateTaskBody>(),
   DeleteTaskParams: () => typia.json.schema<DeleteTaskParams>(),

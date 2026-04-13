@@ -230,6 +230,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/teams/{teamId}/tasks/{taskId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a team subtask */
+        post: operations["cancelSubtask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tasks/{taskId}/worktree/cleanup": {
         parameters: {
             query?: never;
@@ -602,6 +619,8 @@ export interface components {
             pullRequest?: components["schemas"]["TaskPullRequest"];
             /** @description Human reviewers explicitly rejected this subtask. */
             rejected?: boolean;
+            /** @description Present when a team subtask was explicitly cancelled by a user. */
+            cancelledAt?: string;
             /** @description When set, this task belongs to an agent team. */
             teamId?: string;
             /** @description When set, this task is a subtask created by a team coordinator. */
@@ -631,7 +650,7 @@ export interface components {
             prompt: string;
             agent?: string;
             model?: string;
-            permissionMode?: "plan" | "default" | "acceptEdits" | "bypassPermissions" | "dontAsk";
+            permissionMode?: "plan" | "acceptEdits" | "bypassPermissions" | "default" | "dontAsk";
         };
         CodexRunnerConfig: {
             /**
@@ -753,6 +772,10 @@ export interface components {
             reason?: string;
         };
         RetryTaskParams: {
+            taskId: string;
+        };
+        CancelSubtaskParams: {
+            teamId: string;
             taskId: string;
         };
         UpdateTaskParams: {
@@ -1006,7 +1029,7 @@ export interface components {
             metadata?: components["schemas"]["Recordstringstring"];
         };
         RunLogStream: "stdout" | "stderr" | "system";
-        RunLogKind: "text" | "status" | "plan" | "system" | "user" | "agent" | "tool_call" | "tool_output";
+        RunLogKind: "system" | "text" | "user" | "agent" | "tool_call" | "tool_output" | "plan" | "status";
         HealthResponse: {
             /** @enum {unknown} */
             ok: true;
@@ -1796,6 +1819,47 @@ export interface operations {
                 };
             };
             /** @description Task cannot be retried */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    cancelSubtask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamId: string;
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cancelled task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            /** @description Task or team not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Task cannot be cancelled */
             409: {
                 headers: {
                     [name: string]: unknown;

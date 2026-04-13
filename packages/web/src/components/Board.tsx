@@ -36,6 +36,7 @@ interface Props {
   onApproveSubtask(taskId: string, teamId: string, parentTaskId: string): void;
   onRejectSubtask(taskId: string, teamId: string, parentTaskId: string, reason?: string): void;
   onRetrySubtask(taskId: string, teamId: string, parentTaskId: string): void;
+  onCancelSubtask(taskId: string, teamId: string, parentTaskId: string): void;
   reviewActionBusy?: boolean;
 }
 
@@ -93,6 +94,14 @@ function getReviewCountdown(reviewMonitor: ReviewMonitor, nowMs: number): Review
 }
 
 function getTaskRunBadge(task: DisplayTask) {
+  if (task.cancelledAt) {
+    return {
+      label: "CANCELLED",
+      className:
+        "border-[rgba(242,195,92,0.28)] bg-[rgba(242,195,92,0.12)] text-[var(--warning)]"
+    };
+  }
+
   if (task.rejected) {
     return {
       label: "REJECTED",
@@ -240,6 +249,7 @@ export function Board({
   onApproveSubtask,
   onRejectSubtask,
   onRetrySubtask,
+  onCancelSubtask,
   reviewActionBusy = false
 }: Props) {
   const grouped = BOARD_COLUMNS.reduce((acc, column) => {
@@ -392,9 +402,14 @@ export function Board({
                               </div>
                               {(isActive ? childTasks : childTasks.slice(0, 3)).map((childTask) => {
                                 const childAgentName = resolveTeamAgentName(team, childTask.teamAgentId);
+                                const isReviewSubtask = childTask.column === "review";
+                                const isCancelableSubtask =
+                                  Boolean(childTask.teamId && childTask.parentTaskId) &&
+                                  !childTask.cancelledAt &&
+                                  childTask.column !== "done" &&
+                                  childTask.column !== "archived";
                                 const canApprove =
-                                  childTask.column === "review" &&
-                                  childTask.lastRunStatus === "succeeded";
+                                  isReviewSubtask && childTask.lastRunStatus === "succeeded";
                                 return (
                                   <article
                                     key={childTask.id}
@@ -413,18 +428,28 @@ export function Board({
                                           {childTask.title}
                                         </span>
                                         <span className="font-mono text-[0.58rem] uppercase tracking-[0.08em] text-[var(--muted)]">
-                                          {childTask.rejected ? "Rejected" : titleCase(childTask.column)}
+                                          {childTask.cancelledAt
+                                            ? "Cancelled"
+                                            : childTask.rejected
+                                              ? "Rejected"
+                                              : titleCase(childTask.column)}
                                         </span>
                                       </div>
                                       <span className="text-[0.66rem] text-[var(--muted)]">
                                         {childAgentName ?? "Unassigned agent"}
                                       </span>
                                     </button>
-                                    {childTask.column === "review" && childTask.teamId && childTask.parentTaskId ? (
+                                    {childTask.teamId &&
+                                    childTask.parentTaskId &&
+                                    (isReviewSubtask || isCancelableSubtask) ? (
                                       <SubtaskReviewActions
                                         compact
                                         disabled={reviewActionBusy}
                                         canApprove={canApprove}
+                                        showApprove={isReviewSubtask}
+                                        showReject={isReviewSubtask}
+                                        showRetry={isReviewSubtask}
+                                        showCancel={isCancelableSubtask}
                                         onApprove={() =>
                                           onApproveSubtask(
                                             childTask.id,
@@ -456,6 +481,20 @@ export function Board({
                                             childTask.parentTaskId!
                                           )
                                         }
+                                        onCancel={() => {
+                                          if (
+                                            !window.confirm(
+                                              `Cancel subtask "${childTask.title}"?`
+                                            )
+                                          ) {
+                                            return;
+                                          }
+                                          onCancelSubtask(
+                                            childTask.id,
+                                            childTask.teamId!,
+                                            childTask.parentTaskId!
+                                          );
+                                        }}
                                       />
                                     ) : null}
                                   </article>

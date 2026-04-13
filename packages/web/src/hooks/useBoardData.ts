@@ -424,6 +424,25 @@ export function useBoardData() {
     }
   });
 
+  const cancelSubtaskMutation = useMutation({
+    mutationFn: async ({
+      taskId,
+      teamId
+    }: {
+      taskId: string;
+      teamId: string;
+      parentTaskId?: string;
+    }) => {
+      const response = await api.cancelSubtask(teamId, taskId);
+      return response.task;
+    },
+    onSuccess: async (_task, variables) => {
+      await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
+      await queryClient.invalidateQueries({ queryKey: queryKey("runs") });
+      await invalidateTeamThread(variables.teamId, variables.parentTaskId);
+    }
+  });
+
   const cleanupTaskWorktreeMutation = useMutation({
     mutationFn: async (taskId: string) => {
       const response = await api.cleanupTaskWorktree(taskId);
@@ -602,6 +621,7 @@ export function useBoardData() {
     approveTask: approveTaskMutation.mutateAsync,
     rejectTask: rejectTaskMutation.mutateAsync,
     retryTask: retryTaskMutation.mutateAsync,
+    cancelSubtask: cancelSubtaskMutation.mutateAsync,
     planTask: planTaskMutation.mutateAsync,
     sendPlanFeedback: sendPlanFeedbackMutation.mutateAsync,
     requestTaskReview: requestTaskReviewMutation.mutateAsync,
@@ -625,6 +645,7 @@ export function useBoardData() {
       approveTaskMutation,
       rejectTaskMutation,
       retryTaskMutation,
+      cancelSubtaskMutation,
       planTaskMutation,
       sendPlanFeedbackMutation,
       requestTaskReviewMutation,
