@@ -643,6 +643,12 @@ export class BoardService {
             taskId: doneTask.id,
             task: doneTask
           });
+          // Best-effort PR creation for "independent" strategy teams
+          void this.teamPrService
+            .createSubtaskPullRequest(doneTask, team)
+            .catch((err) => {
+              console.error("TeamPrService.createSubtaskPullRequest failed", err);
+            });
         }
       }
     } else if (team.autoApproveSubtasks) {
@@ -672,12 +678,6 @@ export class BoardService {
           taskId: doneTask.id,
           task: doneTask
         });
-        // Best-effort PR creation for "independent" strategy teams
-        void this.teamPrService
-          .createSubtaskPullRequest(doneTask, team)
-          .catch((err) => {
-            console.error("TeamPrService.createSubtaskPullRequest failed", err);
-          });
       }
     }
 

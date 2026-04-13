@@ -147,6 +147,7 @@ function makeTeam(workspaceId: string, prStrategy: AgentTeam["prStrategy"] = "in
     description: "For PR creation tests",
     workspaceId,
     prStrategy,
+    autoApproveSubtasks: true,
     agents: [
       { id: "agent-coordinator", agentName: "Coordinator", role: "coordinator", runnerConfig: codexRunner },
       { id: "agent-worker", agentName: "Worker", role: "worker", runnerConfig: codexRunner }
