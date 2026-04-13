@@ -38,15 +38,21 @@ export const tasks = sqliteTable("tasks", {
 export const taskDependencies = sqliteTable(
   "task_dependencies",
   {
-    taskId: text("task_id").notNull(),
-    depId: text("dep_id").notNull()
+    taskId: text("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    depId: text("dep_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" })
   },
   (table) => [primaryKey({ columns: [table.taskId, table.depId] })]
 );
 
 export const runs = sqliteTable("runs", {
   id: text("id").primaryKey(),
-  taskId: text("task_id").notNull(),
+  taskId: text("task_id")
+    .notNull()
+    .references(() => tasks.id),
   status: text("status").notNull(),
   runnerType: text("runner_type").notNull(),
   command: text("command").notNull().default(""),
@@ -58,6 +64,9 @@ export const runs = sqliteTable("runs", {
   metadata: text("metadata")
 });
 
+// run_log_entries intentionally has no FK reference to runs: persistState uses
+// delete-all + re-insert for runs, so a CASCADE would wipe all log entries on
+// every save(). Orphaned entries are cleaned up explicitly in persistState instead.
 export const runLogEntries = sqliteTable("run_log_entries", {
   id: text("id").primaryKey(),
   runId: text("run_id").notNull(),
