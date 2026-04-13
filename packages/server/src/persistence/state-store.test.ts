@@ -1,7 +1,3 @@
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import { describe, expect, it } from "vitest";
 
 import type { Task, Workspace } from "@workhorse/contracts";
@@ -51,8 +47,7 @@ function makeTask(workspaceId: string): Task {
 
 describe("StateStore", () => {
   it("serializes concurrent task updates through the write lock", async () => {
-    const dataDir = await mkdtemp(join(tmpdir(), "state-store-test-"));
-    const store = new StateStore(dataDir);
+    const store = new StateStore(":memory:");
     await store.load();
 
     const workspace = makeWorkspace();
@@ -72,5 +67,59 @@ describe("StateStore", () => {
 
     const updated = store.listTasks().find((entry) => entry.id === task.id);
     expect(updated?.description.split(",").filter(Boolean)).toHaveLength(20);
+  });
+
+  it("persists and reloads settings", async () => {
+    const store = new StateStore(":memory:");
+    await store.load();
+
+    store.setSettings({
+      language: "English",
+      openRouter: { baseUrl: "https://example.com", token: "tok", model: "gpt-4" },
+      scheduler: { maxConcurrent: 5 }
+    });
+    await store.save();
+
+    // Force a reload from SQLite to verify the data was actually persisted,
+    // not just held in the in-memory buffer.
+    (store as any).state = (store as any).readStateFromDb();
+
+    const settings = store.getSettings();
+    expect(settings.language).toBe("English");
+    expect(settings.scheduler?.maxConcurrent).toBe(5);
+  });
+
+  it("persists tasks with dependencies", async () => {
+    const store = new StateStore(":memory:");
+    await store.load();
+
+    const workspace = makeWorkspace();
+    const task1 = makeTask(workspace.id);
+    const task2: Task = { ...makeTask(workspace.id), id: "task-2", dependencies: ["task-1"] };
+    store.setWorkspaces([workspace]);
+    store.setTasks([task1, task2]);
+    await store.save();
+
+    const tasks = store.listTasks();
+    const loaded2 = tasks.find((t) => t.id === "task-2");
+    expect(loaded2?.dependencies).toEqual(["task-1"]);
+  });
+
+  it("appends and reads log entries", async () => {
+    const store = new StateStore(":memory:");
+    await store.load();
+
+    const entry = {
+      id: "entry-1",
+      runId: "run-1",
+      timestamp: new Date().toISOString(),
+      stream: "stdout" as const,
+      kind: "text" as const,
+      text: "hello\n"
+    };
+    await store.appendLogEntry("run-1", entry);
+    const entries = await store.readLogEntries("run-1");
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.text).toBe("hello\n");
   });
 });

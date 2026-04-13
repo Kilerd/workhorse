@@ -1,6 +1,10 @@
-import { access, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, rename } from "node:fs/promises";
 import { constants } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
+
+import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import { eq } from "drizzle-orm";
 
 import type {
   AppState,
@@ -11,21 +15,23 @@ import type {
   Workspace
 } from "@workhorse/contracts";
 
-import {
-  parseRunLogEntries,
-  serializeRunLogEntry
-} from "../lib/run-log.js";
+import { parseRunLogEntries } from "../lib/run-log.js";
 import { resolveWorkspaceCodexSettings } from "../lib/codex-settings.js";
 import { AppError } from "../lib/errors.js";
 import { resolveGlobalSettings } from "../lib/global-settings.js";
 import { createTaskWorktree } from "../lib/task-worktree.js";
 import { resolveWorkspacePromptTemplates } from "../lib/workspace-prompt-templates.js";
+import * as schema from "./schema.js";
 
-const SCHEMA_VERSION = 6;
+const SETTINGS_KEY = "global";
 
-function migrateState(state: AppState): AppState {
-  const settings = resolveGlobalSettings(state.settings);
-  const workspaces = (Array.isArray(state.workspaces) ? state.workspaces : []).map(
+// ---------------------------------------------------------------------------
+// JSON migration helpers (kept for one-shot migration from legacy state.json)
+// ---------------------------------------------------------------------------
+
+function migrateJsonState(state: AppState): AppState {
+  const resolvedSettings = resolveGlobalSettings(state.settings);
+  const workspaceList = (Array.isArray(state.workspaces) ? state.workspaces : []).map(
     (workspace) =>
       ({
         ...workspace,
@@ -33,8 +39,8 @@ function migrateState(state: AppState): AppState {
         promptTemplates: resolveWorkspacePromptTemplates(workspace)
       }) satisfies Workspace
   );
-  const workspaceById = new Map(workspaces.map((workspace) => [workspace.id, workspace]));
-  const tasks = (Array.isArray(state.tasks) ? state.tasks : []).map((task) => {
+  const workspaceById = new Map(workspaceList.map((ws) => [ws.id, ws]));
+  const taskList = (Array.isArray(state.tasks) ? state.tasks : []).map((task) => {
     const withWorktree =
       "worktree" in task && task.worktree
         ? (task as Task)
@@ -46,7 +52,6 @@ function migrateState(state: AppState): AppState {
             } as Task;
           })();
 
-    // v6: backfill dependencies array
     if (!Array.isArray(withWorktree.dependencies)) {
       return { ...withWorktree, dependencies: [] } satisfies Task;
     }
@@ -54,23 +59,159 @@ function migrateState(state: AppState): AppState {
   });
 
   return {
-    schemaVersion: SCHEMA_VERSION,
-    settings,
-    workspaces,
-    tasks,
+    schemaVersion: state.schemaVersion ?? 6,
+    settings: resolvedSettings,
+    workspaces: workspaceList,
+    tasks: taskList,
     runs: Array.isArray(state.runs) ? state.runs : []
   };
 }
 
+// ---------------------------------------------------------------------------
+// Row <-> domain type conversions
+// ---------------------------------------------------------------------------
+
+type WorkspaceRow = typeof schema.workspaces.$inferSelect;
+type TaskRow = typeof schema.tasks.$inferSelect;
+type RunRow = typeof schema.runs.$inferSelect;
+type RunLogEntryRow = typeof schema.runLogEntries.$inferSelect;
+
+function rowToWorkspace(row: WorkspaceRow): Workspace {
+  return {
+    id: row.id,
+    name: row.name,
+    rootPath: row.rootPath,
+    isGitRepo: Boolean(row.isGitRepo),
+    codexSettings: JSON.parse(row.codexSettings),
+    promptTemplates: row.promptTemplates ? JSON.parse(row.promptTemplates) : undefined,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt
+  };
+}
+
+function workspaceToRow(ws: Workspace): typeof schema.workspaces.$inferInsert {
+  return {
+    id: ws.id,
+    name: ws.name,
+    rootPath: ws.rootPath,
+    isGitRepo: ws.isGitRepo,
+    codexSettings: JSON.stringify(ws.codexSettings),
+    promptTemplates: ws.promptTemplates != null ? JSON.stringify(ws.promptTemplates) : null,
+    createdAt: ws.createdAt,
+    updatedAt: ws.updatedAt
+  };
+}
+
+function rowToTask(row: TaskRow, depIds: string[]): Task {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    workspaceId: row.workspaceId,
+    column: row.column as Task["column"],
+    order: row.taskOrder,
+    runnerType: row.runnerType as Task["runnerType"],
+    runnerConfig: JSON.parse(row.runnerConfig),
+    dependencies: depIds,
+    plan: row.plan ?? undefined,
+    worktree: JSON.parse(row.worktree),
+    lastRunId: row.lastRunId ?? undefined,
+    continuationRunId: row.continuationRunId ?? undefined,
+    pullRequestUrl: row.pullRequestUrl ?? undefined,
+    pullRequest: row.pullRequest ? JSON.parse(row.pullRequest) : undefined,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt
+  };
+}
+
+function taskToRow(task: Task): typeof schema.tasks.$inferInsert {
+  return {
+    id: task.id,
+    title: task.title,
+    description: task.description,
+    workspaceId: task.workspaceId,
+    column: task.column,
+    taskOrder: task.order,
+    runnerType: task.runnerType,
+    runnerConfig: JSON.stringify(task.runnerConfig),
+    plan: task.plan ?? null,
+    worktree: JSON.stringify(task.worktree),
+    lastRunId: task.lastRunId ?? null,
+    continuationRunId: task.continuationRunId ?? null,
+    pullRequestUrl: task.pullRequestUrl ?? null,
+    pullRequest: task.pullRequest != null ? JSON.stringify(task.pullRequest) : null,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt
+  };
+}
+
+function rowToRun(row: RunRow): Run {
+  return {
+    id: row.id,
+    taskId: row.taskId,
+    status: row.status as Run["status"],
+    runnerType: row.runnerType as Run["runnerType"],
+    command: row.command,
+    pid: row.pid ?? undefined,
+    exitCode: row.exitCode ?? undefined,
+    startedAt: row.startedAt,
+    endedAt: row.endedAt ?? undefined,
+    logFile: row.logFile ?? undefined,
+    metadata: row.metadata ? (JSON.parse(row.metadata) as Record<string, string>) : undefined
+  };
+}
+
+function runToRow(run: Run): typeof schema.runs.$inferInsert {
+  return {
+    id: run.id,
+    taskId: run.taskId,
+    status: run.status,
+    runnerType: run.runnerType,
+    command: run.command,
+    pid: run.pid ?? null,
+    exitCode: run.exitCode ?? null,
+    startedAt: run.startedAt,
+    endedAt: run.endedAt ?? null,
+    logFile: run.logFile ?? null,
+    metadata: run.metadata != null ? JSON.stringify(run.metadata) : null
+  };
+}
+
+function rowToLogEntry(row: RunLogEntryRow): RunLogEntry {
+  return {
+    id: row.id,
+    runId: row.runId,
+    timestamp: row.timestamp,
+    stream: row.stream as RunLogEntry["stream"],
+    kind: row.kind as RunLogEntry["kind"],
+    text: row.entryText,
+    title: row.title ?? undefined,
+    source: row.source ?? undefined,
+    metadata: row.metadata
+      ? (JSON.parse(row.metadata) as Record<string, string>)
+      : undefined
+  };
+}
+
+// ---------------------------------------------------------------------------
+// StateStore
+// ---------------------------------------------------------------------------
+
 export class StateStore {
   public readonly dataDir: string;
 
+  /** Kept for legacy: path of the old JSON state file (migration detection). */
   public readonly stateFile: string;
 
+  /** Kept for legacy: path of the old NDJSON log directory (migration source). */
   public readonly logsDir: string;
 
+  private sqlite!: InstanceType<typeof Database>;
+
+  private db!: ReturnType<typeof drizzle<typeof schema>>;
+
   private state: AppState = {
-    schemaVersion: SCHEMA_VERSION,
+    schemaVersion: 6,
     settings: resolveGlobalSettings(undefined),
     workspaces: [],
     tasks: [],
@@ -81,37 +222,51 @@ export class StateStore {
 
   public constructor(dataDir: string) {
     this.dataDir = dataDir;
-    this.stateFile = join(dataDir, "state.json");
-    this.logsDir = join(dataDir, "logs");
+    this.stateFile = dataDir === ":memory:" ? ":memory:" : join(dataDir, "state.json");
+    this.logsDir = dataDir === ":memory:" ? ":memory:" : join(dataDir, "logs");
   }
+
+  // -------------------------------------------------------------------------
+  // Lifecycle
+  // -------------------------------------------------------------------------
 
   public async load(): Promise<void> {
-    await mkdir(this.dataDir, { recursive: true });
-    await mkdir(this.logsDir, { recursive: true });
+    const isMemory = this.dataDir === ":memory:";
 
-    try {
-      await access(this.stateFile, constants.F_OK);
-    } catch {
-      await this.save();
-      return;
+    if (!isMemory) {
+      await mkdir(this.dataDir, { recursive: true });
     }
 
-    const raw = await readFile(this.stateFile, "utf8");
-    this.state = migrateState(JSON.parse(raw) as AppState);
-    if (this.state.schemaVersion !== SCHEMA_VERSION) {
-      this.state.schemaVersion = SCHEMA_VERSION;
+    const dbPath = isMemory ? ":memory:" : join(this.dataDir, "workhorse.db");
+    this.sqlite = new Database(dbPath);
+    if (!isMemory) {
+      this.sqlite.pragma("journal_mode = WAL");
     }
-    await this.save();
+    this.sqlite.pragma("foreign_keys = ON");
+
+    this.db = drizzle(this.sqlite, { schema });
+    this.initSchema();
+
+    if (!isMemory) {
+      const needsMigration = await this.detectJsonMigration();
+      if (needsMigration) {
+        await this.runJsonMigration();
+      }
+    }
+
+    this.state = this.readStateFromDb();
   }
+
+  // -------------------------------------------------------------------------
+  // Public read API
+  // -------------------------------------------------------------------------
 
   public snapshot(): AppState {
     return {
       schemaVersion: this.state.schemaVersion,
       settings: {
         ...this.state.settings,
-        openRouter: {
-          ...this.state.settings.openRouter
-        }
+        openRouter: { ...this.state.settings.openRouter }
       },
       workspaces: [...this.state.workspaces],
       tasks: [...this.state.tasks],
@@ -122,9 +277,7 @@ export class StateStore {
   public getSettings(): GlobalSettings {
     return {
       ...this.state.settings,
-      openRouter: {
-        ...this.state.settings.openRouter
-      }
+      openRouter: { ...this.state.settings.openRouter }
     };
   }
 
@@ -139,6 +292,10 @@ export class StateStore {
   public listRuns(): Run[] {
     return [...this.state.runs];
   }
+
+  // -------------------------------------------------------------------------
+  // Public write API
+  // -------------------------------------------------------------------------
 
   public setWorkspaces(workspaces: Workspace[]): void {
     this.state.workspaces = workspaces;
@@ -156,47 +313,24 @@ export class StateStore {
     this.state.runs = runs;
   }
 
-  public createLogPath(runId: string): string {
-    return join(this.logsDir, `${runId}.log`);
-  }
-
-  public async readLogEntries(runId: string): Promise<RunLogEntry[]> {
-    const path = this.createLogPath(runId);
-    try {
-      const raw = await readFile(path, "utf8");
-      return parseRunLogEntries(runId, raw);
-    } catch {
-      return [];
-    }
-  }
-
-  public async appendLogEntry(runId: string, entry: RunLogEntry): Promise<void> {
-    const path = this.createLogPath(runId);
-    await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, serializeRunLogEntry(entry), {
-      encoding: "utf8",
-      flag: "a"
-    });
-  }
-
+  /** Persists the current in-memory state to SQLite. */
   public async save(): Promise<void> {
     await this.withWriteLock(() => this.persistState(this.state));
   }
 
+  /** Atomically updates state within a write lock and persists. */
   public async updateState<T>(updater: (state: AppState) => T): Promise<T> {
     return this.withWriteLock(async () => {
       const nextState = structuredClone(this.state) as AppState;
       const result = updater(nextState);
-      await this.persistState(nextState);
+      this.persistState(nextState);
       this.state = nextState;
       return result;
     });
   }
 
-  public async updateTask(
-    taskId: string,
-    updater: (task: Task) => Task
-  ): Promise<Task> {
+  /** Atomically updates a single task. */
+  public async updateTask(taskId: string, updater: (task: Task) => Task): Promise<Task> {
     return this.updateState((state) => {
       const taskIndex = state.tasks.findIndex((task) => task.id === taskId);
       if (taskIndex === -1) {
@@ -208,7 +342,290 @@ export class StateStore {
     });
   }
 
-  private async withWriteLock<T>(work: () => Promise<T>): Promise<T> {
+  // -------------------------------------------------------------------------
+  // Log entries (go directly to SQLite, not buffered in memory)
+  // -------------------------------------------------------------------------
+
+  /** Returns a legacy file path string (kept for backward compat with callers). */
+  public createLogPath(runId: string): string {
+    if (this.dataDir === ":memory:") {
+      return `:memory:/${runId}.log`;
+    }
+    return join(this.logsDir, `${runId}.log`);
+  }
+
+  public async readLogEntries(runId: string): Promise<RunLogEntry[]> {
+    const rows = this.db
+      .select()
+      .from(schema.runLogEntries)
+      .where(eq(schema.runLogEntries.runId, runId))
+      .orderBy(schema.runLogEntries.timestamp)
+      .all();
+    return rows.map(rowToLogEntry);
+  }
+
+  public async appendLogEntry(runId: string, entry: RunLogEntry): Promise<void> {
+    this.db
+      .insert(schema.runLogEntries)
+      .values({
+        id: entry.id,
+        runId: entry.runId,
+        timestamp: entry.timestamp,
+        stream: entry.stream,
+        kind: entry.kind,
+        entryText: entry.text,
+        title: entry.title ?? null,
+        source: entry.source ?? null,
+        metadata: entry.metadata != null ? JSON.stringify(entry.metadata) : null
+      })
+      .run();
+  }
+
+  /** Closes the underlying SQLite connection. Call on server shutdown. */
+  public close(): void {
+    this.sqlite?.close();
+  }
+
+  // -------------------------------------------------------------------------
+  // Private helpers
+  // -------------------------------------------------------------------------
+
+  private initSchema(): void {
+    this.sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS workspaces (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        root_path TEXT NOT NULL,
+        is_git_repo INTEGER NOT NULL DEFAULT 0,
+        codex_settings TEXT NOT NULL,
+        prompt_templates TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS tasks (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        workspace_id TEXT NOT NULL,
+        column TEXT NOT NULL,
+        task_order REAL NOT NULL,
+        runner_type TEXT NOT NULL,
+        runner_config TEXT NOT NULL,
+        plan TEXT,
+        worktree TEXT NOT NULL,
+        last_run_id TEXT,
+        continuation_run_id TEXT,
+        pull_request_url TEXT,
+        pull_request TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS task_dependencies (
+        task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        dep_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        PRIMARY KEY (task_id, dep_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_task_deps_task_id ON task_dependencies (task_id);
+
+      CREATE TABLE IF NOT EXISTS runs (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL REFERENCES tasks(id),
+        status TEXT NOT NULL,
+        runner_type TEXT NOT NULL,
+        command TEXT NOT NULL DEFAULT '',
+        pid INTEGER,
+        exit_code INTEGER,
+        started_at TEXT NOT NULL,
+        ended_at TEXT,
+        log_file TEXT,
+        metadata TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_runs_task_id ON runs (task_id);
+
+      -- run_log_entries intentionally has no FK to runs: persistState uses a
+      -- delete-all + re-insert pattern for runs, so a CASCADE would wipe all
+      -- log entries on every save(). Orphaned entries are cleaned up explicitly
+      -- at the end of each persistState transaction instead.
+      CREATE TABLE IF NOT EXISTS run_log_entries (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        stream TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        entry_text TEXT NOT NULL,
+        title TEXT,
+        source TEXT,
+        metadata TEXT
+      );
+
+      -- Composite index supports efficient ORDER BY timestamp queries per run
+      CREATE INDEX IF NOT EXISTS idx_run_log_entries_run_id_ts
+        ON run_log_entries (run_id, timestamp);
+    `);
+  }
+
+  private readStateFromDb(): AppState {
+    const settingsRow = this.db
+      .select()
+      .from(schema.settings)
+      .where(eq(schema.settings.key, SETTINGS_KEY))
+      .get();
+    const globalSettings = settingsRow
+      ? resolveGlobalSettings(JSON.parse(settingsRow.value) as GlobalSettings)
+      : resolveGlobalSettings(undefined);
+
+    const workspaceRows = this.db.select().from(schema.workspaces).all();
+    const workspaceList = workspaceRows.map(rowToWorkspace);
+
+    const taskRows = this.db.select().from(schema.tasks).all();
+    const depRows = this.db.select().from(schema.taskDependencies).all();
+    const depsByTaskId = new Map<string, string[]>();
+    for (const dep of depRows) {
+      let arr = depsByTaskId.get(dep.taskId);
+      if (!arr) {
+        arr = [];
+        depsByTaskId.set(dep.taskId, arr);
+      }
+      arr.push(dep.depId);
+    }
+    const taskList = taskRows.map((row) => rowToTask(row, depsByTaskId.get(row.id) ?? []));
+
+    const runRows = this.db.select().from(schema.runs).all();
+    const runList = runRows.map(rowToRun);
+
+    return {
+      schemaVersion: 6,
+      settings: globalSettings,
+      workspaces: workspaceList,
+      tasks: taskList,
+      runs: runList
+    };
+  }
+
+  // TODO(tech-debt): replace delete-all + re-insert with incremental upsert to
+  // avoid write amplification on large datasets (W1 from Architect review).
+  // Raw SQL is intentionally used here (rather than Drizzle builder) because
+  // better-sqlite3 transactions require synchronous statements and the raw
+  // prepare/run pattern is simpler and faster for bulk operations.
+  private persistState(state: AppState): void {
+    const persist = this.sqlite.transaction(() => {
+      // Defer FK constraint checks until COMMIT so the delete-all + re-insert
+      // pattern doesn't produce intermediate FK violations.
+      this.sqlite.prepare("PRAGMA defer_foreign_keys = ON").run();
+
+      // Settings
+      this.sqlite
+        .prepare(
+          "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+        )
+        .run(SETTINGS_KEY, JSON.stringify(state.settings));
+
+      // Workspaces: replace all
+      this.sqlite.prepare("DELETE FROM workspaces").run();
+      for (const ws of state.workspaces) {
+        const row = workspaceToRow(ws);
+        this.sqlite
+          .prepare(
+            `INSERT INTO workspaces (id, name, root_path, is_git_repo, codex_settings, prompt_templates, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+          )
+          .run(
+            row.id,
+            row.name,
+            row.rootPath,
+            row.isGitRepo ? 1 : 0,
+            row.codexSettings,
+            row.promptTemplates ?? null,
+            row.createdAt,
+            row.updatedAt
+          );
+      }
+
+      // Runs: delete before tasks because runs.task_id REFERENCES tasks(id).
+      // With defer_foreign_keys this ordering is not strictly required, but it
+      // makes the intent explicit.
+      this.sqlite.prepare("DELETE FROM runs").run();
+
+      // Tasks: delete cascades to task_dependencies via FK ON DELETE CASCADE.
+      this.sqlite.prepare("DELETE FROM tasks").run();
+      for (const task of state.tasks) {
+        const row = taskToRow(task);
+        this.sqlite
+          .prepare(
+            `INSERT INTO tasks (id, title, description, workspace_id, column, task_order, runner_type, runner_config, plan, worktree, last_run_id, continuation_run_id, pull_request_url, pull_request, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          )
+          .run(
+            row.id,
+            row.title,
+            row.description,
+            row.workspaceId,
+            row.column,
+            row.taskOrder,
+            row.runnerType,
+            row.runnerConfig,
+            row.plan ?? null,
+            row.worktree,
+            row.lastRunId ?? null,
+            row.continuationRunId ?? null,
+            row.pullRequestUrl ?? null,
+            row.pullRequest ?? null,
+            row.createdAt,
+            row.updatedAt
+          );
+        for (const depId of task.dependencies) {
+          this.sqlite
+            .prepare(
+              "INSERT INTO task_dependencies (task_id, dep_id) VALUES (?, ?)"
+            )
+            .run(task.id, depId);
+        }
+      }
+
+      // Re-insert all current runs (tasks exist at this point).
+      for (const run of state.runs) {
+        const row = runToRow(run);
+        this.sqlite
+          .prepare(
+            `INSERT INTO runs (id, task_id, status, runner_type, command, pid, exit_code, started_at, ended_at, log_file, metadata)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          )
+          .run(
+            row.id,
+            row.taskId,
+            row.status,
+            row.runnerType,
+            row.command,
+            row.pid ?? null,
+            row.exitCode ?? null,
+            row.startedAt,
+            row.endedAt ?? null,
+            row.logFile ?? null,
+            row.metadata ?? null
+          );
+      }
+
+      // Clean up orphaned log entries for runs that are no longer in state.
+      // run_log_entries has no FK CASCADE (see DDL comment), so we handle
+      // cleanup explicitly here.
+      this.sqlite
+        .prepare("DELETE FROM run_log_entries WHERE run_id NOT IN (SELECT id FROM runs)")
+        .run();
+    });
+
+    persist();
+  }
+
+  private async withWriteLock<T>(work: () => Promise<T> | T): Promise<T> {
     const previous = this.writeBarrier;
     let release: (() => void) | undefined;
     this.writeBarrier = new Promise<void>((resolve) => {
@@ -223,9 +640,88 @@ export class StateStore {
     }
   }
 
-  private async persistState(state: AppState): Promise<void> {
-    const tempPath = `${this.stateFile}.tmp`;
-    await writeFile(tempPath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
-    await rename(tempPath, this.stateFile);
+  // -------------------------------------------------------------------------
+  // JSON → SQLite migration
+  // -------------------------------------------------------------------------
+
+  private async detectJsonMigration(): Promise<boolean> {
+    try {
+      await access(this.stateFile, constants.F_OK);
+    } catch {
+      return false;
+    }
+
+    // state.json exists — check if we already have data in SQLite
+    const hasSettings = this.sqlite
+      .prepare("SELECT 1 FROM settings WHERE key = ? LIMIT 1")
+      .get(SETTINGS_KEY);
+    return !hasSettings;
+  }
+
+  private async runJsonMigration(): Promise<void> {
+    let raw: string;
+    try {
+      raw = await readFile(this.stateFile, "utf8");
+    } catch {
+      return;
+    }
+
+    const jsonState = migrateJsonState(JSON.parse(raw) as AppState);
+
+    // Migrate per-run NDJSON log files
+    const logEntries = await this.collectLegacyLogEntries(jsonState.runs);
+
+    // Write everything in one transaction
+    const migrate = this.sqlite.transaction(() => {
+      this.persistState(jsonState);
+
+      for (const entry of logEntries) {
+        this.sqlite
+          .prepare(
+            `INSERT OR IGNORE INTO run_log_entries (id, run_id, timestamp, stream, kind, entry_text, title, source, metadata)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          )
+          .run(
+            entry.id,
+            entry.runId,
+            entry.timestamp,
+            entry.stream,
+            entry.kind,
+            entry.text,
+            entry.title ?? null,
+            entry.source ?? null,
+            entry.metadata != null ? JSON.stringify(entry.metadata) : null
+          );
+      }
+    });
+
+    migrate();
+
+    // Back up old files
+    try {
+      await rename(this.stateFile, `${this.stateFile}.backup`);
+    } catch {
+      // Best-effort backup
+    }
+    try {
+      await rename(this.logsDir, `${this.logsDir}.backup`);
+    } catch {
+      // Best-effort backup
+    }
+  }
+
+  private async collectLegacyLogEntries(runs: Run[]): Promise<RunLogEntry[]> {
+    const entries: RunLogEntry[] = [];
+    for (const run of runs) {
+      if (!run.logFile) continue;
+      try {
+        const raw = await readFile(run.logFile, "utf8");
+        const parsed = parseRunLogEntries(run.id, raw);
+        entries.push(...parsed);
+      } catch {
+        // Log file may not exist — skip
+      }
+    }
+    return entries;
   }
 }
