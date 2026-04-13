@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { Task, Workspace } from "@workhorse/contracts";
+import type { AgentTeam, Task, TeamMessage, Workspace } from "@workhorse/contracts";
 
 import { StateStore } from "./state-store.js";
 
@@ -121,5 +121,128 @@ describe("StateStore", () => {
     const entries = await store.readLogEntries("run-1");
     expect(entries).toHaveLength(1);
     expect(entries[0]?.text).toBe("hello\n");
+  });
+});
+
+function makeTeam(workspaceId: string, overrides: Partial<AgentTeam> = {}): AgentTeam {
+  const now = new Date().toISOString();
+  return {
+    id: "team-1",
+    name: "Test Team",
+    description: "desc",
+    workspaceId,
+    agents: [
+      { id: "agent-1", agentName: "Coordinator", role: "coordinator", runnerConfig: { type: "shell", command: "true" } },
+      { id: "agent-2", agentName: "Worker", role: "worker", runnerConfig: { type: "shell", command: "true" } }
+    ],
+    prStrategy: "independent",
+    createdAt: now,
+    updatedAt: now,
+    ...overrides
+  };
+}
+
+describe("StateStore — Agent Teams", () => {
+  it("creates and retrieves a team", async () => {
+    const store = new StateStore(":memory:");
+    await store.load();
+
+    const team = makeTeam("ws-1");
+    store.createTeam(team);
+
+    const found = store.getTeam("team-1");
+    expect(found).not.toBeNull();
+    expect(found?.name).toBe("Test Team");
+    expect(found?.prStrategy).toBe("independent");
+    expect(found?.agents).toHaveLength(2);
+  });
+
+  it("lists teams filtered by workspaceId", async () => {
+    const store = new StateStore(":memory:");
+    await store.load();
+
+    store.createTeam(makeTeam("ws-1", { id: "team-1" }));
+    store.createTeam(makeTeam("ws-2", { id: "team-2" }));
+
+    expect(store.listTeams("ws-1")).toHaveLength(1);
+    expect(store.listTeams("ws-2")).toHaveLength(1);
+    expect(store.listTeams()).toHaveLength(2);
+  });
+
+  it("updates team fields including prStrategy", async () => {
+    const store = new StateStore(":memory:");
+    await store.load();
+
+    store.createTeam(makeTeam("ws-1"));
+    const updated = store.updateTeam("team-1", { name: "Renamed", prStrategy: "stacked" });
+
+    expect(updated?.name).toBe("Renamed");
+    expect(updated?.prStrategy).toBe("stacked");
+  });
+
+  it("deletes a team and returns true; returns false for missing team", async () => {
+    const store = new StateStore(":memory:");
+    await store.load();
+
+    store.createTeam(makeTeam("ws-1"));
+    expect(store.deleteTeam("team-1")).toBe(true);
+    expect(store.getTeam("team-1")).toBeNull();
+    expect(store.deleteTeam("team-1")).toBe(false);
+  });
+
+  it("appends and lists team messages", async () => {
+    const store = new StateStore(":memory:");
+    await store.load();
+
+    store.createTeam(makeTeam("ws-1"));
+    const now = new Date().toISOString();
+    const msg: TeamMessage = {
+      id: "msg-1",
+      teamId: "team-1",
+      agentName: "Coordinator",
+      senderType: "agent",
+      content: "hello",
+      createdAt: now
+    };
+    store.appendTeamMessage(msg);
+    const messages = store.listTeamMessages("team-1");
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.senderType).toBe("agent");
+    expect(messages[0]?.content).toBe("hello");
+  });
+
+  it("rejects messages exceeding 10KB", async () => {
+    const store = new StateStore(":memory:");
+    await store.load();
+
+    store.createTeam(makeTeam("ws-1"));
+    const now = new Date().toISOString();
+    const msg: TeamMessage = {
+      id: "msg-big",
+      teamId: "team-1",
+      agentName: "Coordinator",
+      senderType: "agent",
+      content: "x".repeat(10 * 1024 + 1),
+      createdAt: now
+    };
+    expect(() => store.appendTeamMessage(msg)).toThrow("10KB");
+  });
+
+  it("cascades deletes team messages when team is deleted", async () => {
+    const store = new StateStore(":memory:");
+    await store.load();
+
+    store.createTeam(makeTeam("ws-1"));
+    const now = new Date().toISOString();
+    store.appendTeamMessage({
+      id: "msg-1", teamId: "team-1", agentName: "Coordinator",
+      senderType: "agent", content: "hi", createdAt: now
+    });
+    expect(store.listTeamMessages("team-1")).toHaveLength(1);
+
+    store.deleteTeam("team-1");
+    // After team deletion, messages are cascade-deleted; re-creating will start fresh
+    store.createTeam(makeTeam("ws-1"));
+    expect(store.listTeamMessages("team-1")).toHaveLength(0);
   });
 });

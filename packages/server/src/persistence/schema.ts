@@ -31,6 +31,9 @@ export const tasks = sqliteTable("tasks", {
   continuationRunId: text("continuation_run_id"),
   pullRequestUrl: text("pull_request_url"),
   pullRequest: text("pull_request"),
+  teamId: text("team_id"),
+  parentTaskId: text("parent_task_id"),
+  teamAgentId: text("team_agent_id"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull()
 });
@@ -77,4 +80,29 @@ export const runLogEntries = sqliteTable("run_log_entries", {
   title: text("title"),
   source: text("source"),
   metadata: text("metadata")
+});
+
+export const teams = sqliteTable("teams", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description").notNull().default(""),
+  workspaceId: text("workspace_id").notNull(),
+  // agents is stored as a JSON column — always loaded with the team,
+  // so a separate table would add overhead without query benefit.
+  agents: text("agents").notNull(),
+  prStrategy: text("pr_strategy").notNull().default("independent"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull()
+});
+
+export const teamMessages = sqliteTable("team_messages", {
+  id: text("id").primaryKey(),
+  teamId: text("team_id")
+    .notNull()
+    .references(() => teams.id, { onDelete: "cascade" }),
+  taskId: text("task_id"),
+  agentName: text("agent_name").notNull(),
+  senderType: text("sender_type").notNull(),
+  content: text("content").notNull(),
+  createdAt: text("created_at").notNull()
 });

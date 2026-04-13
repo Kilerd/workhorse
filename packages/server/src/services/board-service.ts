@@ -3,8 +3,10 @@ import { constants } from "node:fs";
 import { join } from "node:path";
 
 import type {
+  AgentTeam,
   AppState,
   CreateTaskBody,
+  CreateTeamBody,
   CreateWorkspaceBody,
   DeleteResult,
   GlobalSettings,
@@ -17,8 +19,11 @@ import type {
   Task,
   TaskPullRequest,
   TaskWorktree,
+  TeamAgent,
+  TeamMessage,
   UpdateSettingsBody,
   UpdateTaskBody,
+  UpdateTeamBody,
   UpdateWorkspaceBody,
   WorkspaceGitRef,
   Workspace
@@ -81,6 +86,17 @@ interface BoardServiceDependencies {
 }
 
 export type { GitReviewMonitorResult } from "./pr-monitor-service.js";
+
+function validateTeamAgents(agents: TeamAgent[]): void {
+  const coordinators = agents.filter((a) => a.role === "coordinator");
+  if (coordinators.length !== 1) {
+    throw new AppError(
+      400,
+      "INVALID_TEAM_AGENTS",
+      `Team must have exactly 1 coordinator, got ${coordinators.length}`
+    );
+  }
+}
 
 const COLUMN_ORDER: Record<Task["column"], number> = {
   backlog: 0,
@@ -1129,6 +1145,74 @@ export class BoardService {
         branchName: task.worktree.branchName
       }
     );
+  }
+
+  // -------------------------------------------------------------------------
+  // Agent Teams
+  // -------------------------------------------------------------------------
+
+  public listTeams(workspaceId?: string): AgentTeam[] {
+    return this.store.listTeams(workspaceId);
+  }
+
+  public getTeam(teamId: string): AgentTeam {
+    const team = this.store.getTeam(teamId);
+    if (!team) {
+      throw new AppError(404, "TEAM_NOT_FOUND", "Team not found");
+    }
+    return team;
+  }
+
+  public createTeam(input: CreateTeamBody): AgentTeam {
+    this.requireWorkspace(input.workspaceId);
+    validateTeamAgents(input.agents);
+    const now = new Date().toISOString();
+    const team: AgentTeam = {
+      id: createId(),
+      name: input.name.trim(),
+      description: input.description?.trim() ?? "",
+      workspaceId: input.workspaceId,
+      agents: input.agents,
+      prStrategy: input.prStrategy ?? "independent",
+      createdAt: now,
+      updatedAt: now
+    };
+    this.store.createTeam(team);
+    this.events.publish({ type: "team.updated", action: "created", teamId: team.id, team });
+    return team;
+  }
+
+  public updateTeam(teamId: string, input: UpdateTeamBody): AgentTeam {
+    const updates: Partial<Pick<AgentTeam, "name" | "description" | "agents" | "prStrategy">> = {};
+    if (input.name !== undefined) updates.name = input.name.trim();
+    if (input.description !== undefined) updates.description = input.description.trim();
+    if (input.agents !== undefined) {
+      validateTeamAgents(input.agents);
+      updates.agents = input.agents;
+    }
+    if (input.prStrategy !== undefined) updates.prStrategy = input.prStrategy;
+
+    const updated = this.store.updateTeam(teamId, updates);
+    if (!updated) {
+      throw new AppError(404, "TEAM_NOT_FOUND", "Team not found");
+    }
+    this.events.publish({ type: "team.updated", action: "updated", teamId: updated.id, team: updated });
+    return updated;
+  }
+
+  public deleteTeam(teamId: string): DeleteResult {
+    const deleted = this.store.deleteTeam(teamId);
+    if (!deleted) {
+      throw new AppError(404, "TEAM_NOT_FOUND", "Team not found");
+    }
+    this.events.publish({ type: "team.updated", action: "deleted", teamId });
+    return { id: teamId };
+  }
+
+  public listTeamMessages(teamId: string): TeamMessage[] {
+    // Ensure team exists before listing messages
+    this.getTeam(teamId);
+    return this.store.listTeamMessages(teamId);
   }
 
   private nextOrder(column: Task["column"]): number {

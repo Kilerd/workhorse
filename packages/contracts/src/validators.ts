@@ -1,17 +1,24 @@
 import typia from "typia";
 
 import type {
+  AgentTeamResponse,
   ApiError,
   CreateTaskBody,
+  CreateTeamBody,
   CreateWorkspaceBody,
   CleanupTaskWorktreeParams,
   CleanupTaskWorktreeResponse,
   DeleteTaskParams,
   DeleteTaskResponse,
+  DeleteTeamParams,
+  DeleteTeamResponse,
   DeleteWorkspaceParams,
   DeleteWorkspaceResponse,
   GetTaskDependenciesParams,
+  GetTeamParams,
   HealthResponse,
+  ListTeamMessagesParams,
+  ListTeamsQuery,
   PickWorkspaceRootResponse,
   ListWorkspaceGitRefsParams,
   WorkspaceGitStatusParams,
@@ -32,6 +39,8 @@ import type {
   TaskDependenciesResponse,
   TaskDiffParams,
   TaskDiffResponse,
+  TeamMessagesResponse,
+  TeamsResponse,
   RunLogParams,
   RunLogResponse,
   RunsResponse,
@@ -49,6 +58,8 @@ import type {
   UpdateTaskBody,
   UpdateTaskParams,
   UpdateSettingsBody,
+  UpdateTeamBody,
+  UpdateTeamParams,
   UpdateWorkspaceBody,
   UpdateWorkspaceParams,
   WorkspaceGitRefsResponse,
@@ -58,10 +69,12 @@ import type {
   WorkspacesResponse
 } from "./api.js";
 import type {
+  AgentTeam,
   GlobalSettings,
   Run,
   Task,
   TaskWorktree,
+  TeamMessage,
   Workspace,
   WorkspaceGitRef
 } from "./domain.js";
@@ -109,6 +122,15 @@ export const validateSetTaskDependenciesBody =
   typia.createValidate<SetTaskDependenciesBody>();
 export const validateGetTaskDependenciesParams =
   typia.createValidate<GetTaskDependenciesParams>();
+
+export const validateListTeamsQuery = typia.createValidate<ListTeamsQuery>();
+export const validateCreateTeamBody = typia.createValidate<CreateTeamBody>();
+export const validateUpdateTeamParams = typia.createValidate<UpdateTeamParams>();
+export const validateUpdateTeamBody = typia.createValidate<UpdateTeamBody>();
+export const validateGetTeamParams = typia.createValidate<GetTeamParams>();
+export const validateDeleteTeamParams = typia.createValidate<DeleteTeamParams>();
+export const validateListTeamMessagesParams =
+  typia.createValidate<ListTeamMessagesParams>();
 
 export const schemaRegistry = {
   ApiError: () => typia.json.schema<ApiError>(),
@@ -171,5 +193,18 @@ export const schemaRegistry = {
   GetTaskDependenciesParams: () => typia.json.schema<GetTaskDependenciesParams>(),
   TaskDependenciesResponse: () => typia.json.schema<TaskDependenciesResponse>(),
   SchedulerStatusResponse: () => typia.json.schema<SchedulerStatusResponse>(),
-  SchedulerEvaluateResponse: () => typia.json.schema<SchedulerEvaluateResponse>()
+  SchedulerEvaluateResponse: () => typia.json.schema<SchedulerEvaluateResponse>(),
+  AgentTeam: () => typia.json.schema<AgentTeam>(),
+  TeamMessage: () => typia.json.schema<TeamMessage>(),
+  CreateTeamBody: () => typia.json.schema<CreateTeamBody>(),
+  UpdateTeamParams: () => typia.json.schema<UpdateTeamParams>(),
+  UpdateTeamBody: () => typia.json.schema<UpdateTeamBody>(),
+  GetTeamParams: () => typia.json.schema<GetTeamParams>(),
+  DeleteTeamParams: () => typia.json.schema<DeleteTeamParams>(),
+  ListTeamMessagesParams: () => typia.json.schema<ListTeamMessagesParams>(),
+  ListTeamsQuery: () => typia.json.schema<ListTeamsQuery>(),
+  TeamsResponse: () => typia.json.schema<TeamsResponse>(),
+  AgentTeamResponse: () => typia.json.schema<AgentTeamResponse>(),
+  DeleteTeamResponse: () => typia.json.schema<DeleteTeamResponse>(),
+  TeamMessagesResponse: () => typia.json.schema<TeamMessagesResponse>()
 };
