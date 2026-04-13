@@ -1521,6 +1521,65 @@
             }
           }
         ]
+      },
+      "post": {
+        "operationId": "postTeamMessage",
+        "summary": "Post a human message into a team task thread",
+        "tags": [
+          "Teams"
+        ],
+        "responses": {
+          "201": {
+            "description": "Created team message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamMessageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Team not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "teamId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostTeamMessageBody"
+              }
+            }
+          }
+        }
       }
     }
   },
@@ -4228,6 +4287,21 @@
         },
         "required": []
       },
+      "PostTeamMessageBody": {
+        "type": "object",
+        "properties": {
+          "parentTaskId": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "parentTaskId",
+          "content"
+        ]
+      },
       "ListTeamsQuery": {
         "type": "object",
         "properties": {
@@ -4342,6 +4416,34 @@
         },
         "required": [
           "items"
+        ]
+      },
+      "TeamMessageResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/TeamMessageData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "TeamMessageData": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/TeamMessage"
+          }
+        },
+        "required": [
+          "item"
         ]
       }
     }

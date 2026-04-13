@@ -20,6 +20,7 @@ import {
   validatePlanFeedbackBody,
   validatePlanFeedbackParams,
   validatePlanTaskParams,
+  validatePostTeamMessageBody,
   validateRequestTaskReviewParams,
   validateSetTaskDependenciesBody,
   validateSetTaskDependenciesParams,
@@ -40,6 +41,7 @@ import {
   validateWorkspaceGitStatusParams,
   validateWorkspaceGitPullParams
 } from "@workhorse/contracts";
+import type { PostTeamMessageBody } from "@workhorse/contracts";
 
 import { getGitReviewMonitorIntervalMs } from "./config.js";
 import { AppError } from "./lib/errors.js";
@@ -454,6 +456,25 @@ export function createApp(
     );
     const items = service.listTeamMessages(params.teamId, query.parentTaskId);
     return c.json(ok({ items }));
+  });
+
+  app.post("/api/teams/:teamId/messages", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateListTeamMessagesParams,
+      "Invalid team params"
+    );
+    const body: PostTeamMessageBody = validateOrThrow(
+      await readOptionalJsonBody(c.req, "Invalid team message body"),
+      validatePostTeamMessageBody,
+      "Invalid team message body"
+    );
+    const item = service.postHumanTeamMessage(
+      params.teamId,
+      body.parentTaskId,
+      body.content
+    );
+    return c.json(ok({ item }), 201);
   });
 
   return app;

@@ -1945,6 +1945,55 @@ export class BoardService {
     return this.store.listTeamMessages(teamId, parentTaskId);
   }
 
+  public postHumanTeamMessage(
+    teamId: string,
+    parentTaskId: string,
+    content: string
+  ): TeamMessage {
+    const team = this.getTeam(teamId);
+    const parentTask = this.requireTask(parentTaskId);
+    if (parentTask.teamId !== team.id || parentTask.parentTaskId) {
+      throw new AppError(
+        400,
+        "INVALID_PARENT_TASK",
+        "parentTaskId must reference a parent task in the selected team"
+      );
+    }
+
+    const trimmedContent = content.trim();
+    if (!trimmedContent) {
+      throw new AppError(
+        400,
+        "INVALID_TEAM_MESSAGE",
+        "Team message content cannot be blank"
+      );
+    }
+
+    const item: TeamMessage = {
+      id: createId(),
+      teamId: team.id,
+      parentTaskId: parentTask.id,
+      taskId: parentTask.id,
+      agentName: "User",
+      senderType: "human",
+      messageType: "feedback",
+      content: trimmedContent,
+      createdAt: new Date().toISOString()
+    };
+
+    this.store.appendTeamMessage(item);
+    this.events.publish(
+      buildTeamAgentMessageEvent({
+        teamId: team.id,
+        parentTaskId: parentTask.id,
+        fromAgentId: "human",
+        messageType: "feedback",
+        payload: trimmedContent
+      })
+    );
+    return item;
+  }
+
   private nextOrder(column: Task["column"]): number {
     const columnTasks = this.store
       .listTasks()

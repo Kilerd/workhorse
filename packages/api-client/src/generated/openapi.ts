@@ -448,7 +448,8 @@ export interface paths {
         /** List messages for a team */
         get: operations["listTeamMessages"];
         put?: never;
-        post?: never;
+        /** Post a human message into a team task thread */
+        post: operations["postTeamMessage"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1084,6 +1085,10 @@ export interface components {
         ListTeamMessagesQuery: {
             parentTaskId?: string;
         };
+        PostTeamMessageBody: {
+            parentTaskId: string;
+            content: string;
+        };
         ListTeamsQuery: {
             workspaceId?: string;
         };
@@ -1115,6 +1120,14 @@ export interface components {
         };
         TeamMessagesData: {
             items: components["schemas"]["TeamMessage"][];
+        };
+        TeamMessageResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["TeamMessageData"];
+        };
+        TeamMessageData: {
+            item: components["schemas"]["TeamMessage"];
         };
     };
     responses: never;
@@ -2277,6 +2290,50 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TeamMessagesResponse"];
+                };
+            };
+            /** @description Team not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    postTeamMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PostTeamMessageBody"];
+            };
+        };
+        responses: {
+            /** @description Created team message */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamMessageResponse"];
+                };
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
             /** @description Team not found */

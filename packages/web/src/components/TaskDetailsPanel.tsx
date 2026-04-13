@@ -30,6 +30,7 @@ interface Props {
   runLog: RunLogEntry[];
   onPlan(): void;
   onSendPlanFeedback(text: string): Promise<unknown>;
+  onSendTeamMessage?(text: string): Promise<unknown>;
   onStart(): void;
   onRequestReview(): void;
   onStop(): void;
@@ -270,6 +271,7 @@ export function TaskDetailsPanel({
   runLog,
   onPlan,
   onSendPlanFeedback,
+  onSendTeamMessage,
   onStart,
   onRequestReview,
   onStop,
@@ -478,6 +480,7 @@ export function TaskDetailsPanel({
                   messages={teamMessages}
                   loading={teamMessagesLoading}
                   error={teamMessagesError}
+                  onSendMessage={onSendTeamMessage}
                 />
               </SidebarSection>
             </>

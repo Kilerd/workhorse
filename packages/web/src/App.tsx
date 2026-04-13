@@ -31,7 +31,12 @@ import { queryClient } from "@/lib/query";
 import { applyTheme, getPreferredTheme, type ThemeMode } from "@/lib/theme";
 import { Button } from "@/components/ui/button";
 import { prepareLiveLogEntries } from "@/components/live-log-entries";
-import { teamQueryKeys, useTeam, useTeamMessages } from "@/hooks/useTeams";
+import {
+  teamQueryKeys,
+  usePostTeamMessage,
+  useTeam,
+  useTeamMessages
+} from "@/hooks/useTeams";
 
 export default function App() {
   return <ReactAppShell />;
@@ -458,11 +463,13 @@ function TaskDetailsRoute({
   }, [board.selectedTask?.id, board.setTaskSelection, taskId]);
 
   const task = taskId ? allTasks.find((entry) => entry.id === taskId) ?? null : null;
+  const teamThreadTaskId = task ? task.parentTaskId ?? task.id : null;
   const team = useTeam(task?.teamId ?? null);
   const teamMessages = useTeamMessages(
     task?.teamId ?? null,
-    task ? task.parentTaskId ?? task.id : undefined
+    teamThreadTaskId ?? undefined
   );
+  const postTeamMessage = usePostTeamMessage(task?.teamId ?? null, teamThreadTaskId);
   const isSelectedTaskActive = task ? board.selectedTask?.id === task.id : false;
   const runs = isSelectedTaskActive ? board.selectedTaskRunsQuery.data ?? [] : [];
   const activeRunId = isSelectedTaskActive ? board.activeRunId : null;
@@ -539,6 +546,7 @@ function TaskDetailsRoute({
         runLog={runLog}
         onPlan={() => board.planTask(task.id)}
         onSendPlanFeedback={(text) => board.sendPlanFeedback({ taskId: task.id, text })}
+        onSendTeamMessage={(text) => postTeamMessage.mutateAsync(text)}
         onStart={() => board.startTask(task.id)}
         onRequestReview={() => board.requestTaskReview(task.id)}
         onStop={() => board.stopTask(task.id)}

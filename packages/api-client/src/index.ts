@@ -19,6 +19,7 @@ import type {
   PlanFeedbackBody,
   PlanFeedbackData,
   PlanTaskData,
+  PostTeamMessageBody,
   RequestTaskReviewData,
   RunLogData,
   SettingsData,
@@ -29,6 +30,7 @@ import type {
   TaskDiffData,
   TaskInputBody,
   TaskInputData,
+  TeamMessageData,
   UpdateTeamBody,
   UpdateSettingsBody,
   UpdateTaskBody,
@@ -99,6 +101,10 @@ export function createApiClient(baseUrl: string) {
   const listTeamMessages = fetcher
     .path("/api/teams/{teamId}/messages")
     .method("get")
+    .create();
+  const postTeamMessage = fetcher
+    .path("/api/teams/{teamId}/messages")
+    .method("post")
     .create();
 
   const listTasks = fetcher.path("/api/tasks").method("get").create();
@@ -232,6 +238,11 @@ export function createApiClient(baseUrl: string) {
       query: ListTeamMessagesQuery = {}
     ): Promise<TeamMessagesData> =>
       unwrap((await listTeamMessages({ teamId, ...query })).data),
+    postTeamMessage: async (
+      teamId: GetTeamParams["teamId"],
+      body: PostTeamMessageBody
+    ): Promise<TeamMessageData> =>
+      unwrap((await postTeamMessage({ teamId, ...body })).data),
     listTasks: async (workspaceId?: string): Promise<ListTasksData> =>
       unwrap((await listTasks(workspaceId ? { workspaceId } : {})).data),
     createTask: async (body: CreateTaskBody): Promise<TaskData> =>

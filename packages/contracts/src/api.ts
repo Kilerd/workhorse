@@ -410,6 +410,11 @@ export interface ListTeamMessagesQuery {
   parentTaskId?: string;
 }
 
+export interface PostTeamMessageBody {
+  parentTaskId: string;
+  content: string;
+}
+
 export interface ListTeamsData {
   items: AgentTeam[];
 }
@@ -422,10 +427,15 @@ export interface TeamMessagesData {
   items: TeamMessage[];
 }
 
+export interface TeamMessageData {
+  item: TeamMessage;
+}
+
 export type TeamsResponse = ApiSuccess<ListTeamsData>;
 export type AgentTeamResponse = ApiSuccess<AgentTeamData>;
 export type DeleteTeamResponse = ApiSuccess<DeleteResult>;
 export type TeamMessagesResponse = ApiSuccess<TeamMessagesData>;
+export type TeamMessageResponse = ApiSuccess<TeamMessageData>;
 
 export type HttpMethod = "get" | "post" | "put" | "patch" | "delete";
 
@@ -516,10 +526,12 @@ export type SchemaName =
   | "DeleteTeamParams"
   | "ListTeamMessagesParams"
   | "ListTeamMessagesQuery"
+  | "PostTeamMessageBody"
   | "TeamsResponse"
   | "AgentTeamResponse"
   | "DeleteTeamResponse"
-  | "TeamMessagesResponse";
+  | "TeamMessagesResponse"
+  | "TeamMessageResponse";
 
 export const endpointRegistry: EndpointSpec[] = [
   {
@@ -1246,6 +1258,32 @@ export const endpointRegistry: EndpointSpec[] = [
         status: 200,
         description: "Team message collection",
         schema: "TeamMessagesResponse"
+      },
+      {
+        status: 404,
+        description: "Team not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "postTeamMessage",
+    method: "post",
+    path: "/api/teams/{teamId}/messages",
+    summary: "Post a human message into a team task thread",
+    tag: "Teams",
+    paramsSchema: "ListTeamMessagesParams",
+    bodySchema: "PostTeamMessageBody",
+    responses: [
+      {
+        status: 201,
+        description: "Created team message",
+        schema: "TeamMessageResponse"
+      },
+      {
+        status: 400,
+        description: "Validation error",
+        schema: "ApiError"
       },
       {
         status: 404,
