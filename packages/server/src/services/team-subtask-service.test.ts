@@ -79,6 +79,12 @@ describe("buildSubtaskArtifactPayload", () => {
     expect(parsed.pr_url).toBeNull();
   });
 
+  it("always includes test_results field as null", () => {
+    const payload = buildSubtaskArtifactPayload({ diff: "" });
+    const parsed = JSON.parse(payload) as { test_results: null };
+    expect(parsed.test_results).toBeNull();
+  });
+
   it("returns empty diff_summary for empty diff", () => {
     const payload = buildSubtaskArtifactPayload({ diff: "" });
     const parsed = JSON.parse(payload) as { diff_summary: string };

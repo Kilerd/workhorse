@@ -614,7 +614,9 @@ export class BoardService {
         });
       }
 
-      // B-type: artifact message — best-effort, skip on git errors
+      // B-type: artifact message — best-effort, skip on git errors.
+      // We read worktree.path from the original `task` argument passed to this method.
+      // The updateState above only changes the column, not the worktree path, so this is safe.
       try {
         const worktreePath = task.worktree.path;
         const diff =
@@ -735,6 +737,11 @@ export class BoardService {
       action: "updated",
       taskId: updatedParent.id,
       task: updatedParent
+    });
+    this.events.publish({
+      type: "task.blocked",
+      taskId: updatedParent.id,
+      blockedBy: failedSubtasks.map((t) => t.id)
     });
     this.events.publish(
       buildTeamAgentMessageEvent({
@@ -896,7 +903,7 @@ export class BoardService {
             workspace,
             baseRef: workspace.isGitRepo ? parentTask.worktree.baseRef : undefined,
             branchName: workspace.isGitRepo
-              ? deriveTeamSubtaskBranchName(team.id, draft.title)
+              ? deriveTeamSubtaskBranchName(team.id, taskId, draft.title)
               : undefined
           }),
           teamId: team.id,

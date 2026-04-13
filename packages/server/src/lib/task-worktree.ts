@@ -22,8 +22,8 @@ export function deriveTaskBranchName(taskId: string, title: string): string {
   return `task/${branchSegmentWithTaskId(taskId, title)}`;
 }
 
-export function deriveTeamSubtaskBranchName(teamId: string, title: string): string {
-  return `team/${teamId}/${slugifySegment(title, teamId)}`;
+export function deriveTeamSubtaskBranchName(teamId: string, taskId: string, title: string): string {
+  return `team/${teamId}/${taskId}-${slugifySegment(title, taskId)}`;
 }
 
 interface BranchSegmentOptions {

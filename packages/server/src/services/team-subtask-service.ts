@@ -21,6 +21,7 @@ export function buildSubtaskArtifactPayload(params: SubtaskArtifactParams): stri
   const artifact = {
     files_changed: filesChanged,
     diff_summary: diffSummary,
+    test_results: null,
     pr_url: params.pullRequestUrl ?? null
   };
   return truncateTeamMessagePayload(JSON.stringify(artifact));
