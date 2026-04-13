@@ -90,6 +90,7 @@ import {
   buildSubtaskArtifactPayload,
   buildSubtaskStatusPayload
 } from "./team-subtask-service.js";
+import { TeamPrService, type PrCreator } from "./team-pr-service.js";
 
 interface BoardServiceDependencies {
   gitWorktrees?: GitWorktreeService;
@@ -98,6 +99,7 @@ interface BoardServiceDependencies {
   taskIdentityGenerator?: TaskIdentityGenerator;
   workspaceRootPicker?: WorkspaceRootPicker;
   runners?: Record<string, RunnerAdapter>;
+  prCreator?: PrCreator;
 }
 
 export type { GitReviewMonitorResult } from "./pr-monitor-service.js";
@@ -145,6 +147,8 @@ export class BoardService {
   private readonly scheduler: TaskScheduler;
 
   private readonly prMonitor: PrMonitorService;
+
+  private readonly teamPrService: TeamPrService;
 
   private readonly aiReview: AiReviewService;
 
@@ -233,6 +237,11 @@ export class BoardService {
       isTaskActive: (taskId) => this.runLifecycle.isActive(taskId),
       topOrder: (column, excludingId) => this.topOrder(column, excludingId)
     });
+    this.teamPrService = new TeamPrService(
+      this.store,
+      this.events,
+      dependencies.prCreator
+    );
   }
 
   private requireTask(taskId: string, source?: Task[]): Task {
@@ -663,6 +672,12 @@ export class BoardService {
           taskId: doneTask.id,
           task: doneTask
         });
+        // Best-effort PR creation for "independent" strategy teams
+        void this.teamPrService
+          .createSubtaskPullRequest(doneTask, team)
+          .catch((err) => {
+            console.error("TeamPrService.createSubtaskPullRequest failed", err);
+          });
       }
     }
 
