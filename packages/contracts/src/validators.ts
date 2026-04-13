@@ -29,6 +29,8 @@ import type {
   PlanFeedbackBody,
   PlanFeedbackParams,
   PlanFeedbackResponse,
+  PostTeamMessageBody,
+  PostTeamMessageParams,
   PlanTaskParams,
   PlanTaskResponse,
   RequestTaskReviewParams,
@@ -41,6 +43,7 @@ import type {
   TaskDiffParams,
   TaskDiffResponse,
   TeamMessagesResponse,
+  TeamMessageResponse,
   TeamsResponse,
   RunLogParams,
   RunLogResponse,
@@ -134,6 +137,10 @@ export const validateListTeamMessagesParams =
   typia.createValidate<ListTeamMessagesParams>();
 export const validateListTeamMessagesQuery =
   typia.createValidate<ListTeamMessagesQuery>();
+export const validatePostTeamMessageParams =
+  typia.createValidate<PostTeamMessageParams>();
+export const validatePostTeamMessageBody =
+  typia.createValidate<PostTeamMessageBody>();
 
 export const schemaRegistry = {
   ApiError: () => typia.json.schema<ApiError>(),
@@ -206,9 +213,12 @@ export const schemaRegistry = {
   DeleteTeamParams: () => typia.json.schema<DeleteTeamParams>(),
   ListTeamMessagesParams: () => typia.json.schema<ListTeamMessagesParams>(),
   ListTeamMessagesQuery: () => typia.json.schema<ListTeamMessagesQuery>(),
+  PostTeamMessageParams: () => typia.json.schema<PostTeamMessageParams>(),
+  PostTeamMessageBody: () => typia.json.schema<PostTeamMessageBody>(),
   ListTeamsQuery: () => typia.json.schema<ListTeamsQuery>(),
   TeamsResponse: () => typia.json.schema<TeamsResponse>(),
   AgentTeamResponse: () => typia.json.schema<AgentTeamResponse>(),
   DeleteTeamResponse: () => typia.json.schema<DeleteTeamResponse>(),
-  TeamMessagesResponse: () => typia.json.schema<TeamMessagesResponse>()
+  TeamMessagesResponse: () => typia.json.schema<TeamMessagesResponse>(),
+  TeamMessageResponse: () => typia.json.schema<TeamMessageResponse>()
 };

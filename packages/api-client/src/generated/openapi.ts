@@ -448,7 +448,8 @@ export interface paths {
         /** List messages for a team */
         get: operations["listTeamMessages"];
         put?: never;
-        post?: never;
+        /** Post a human message into a team task thread */
+        post: operations["postTeamMessage"];
         delete?: never;
         options?: never;
         head?: never;
@@ -576,7 +577,7 @@ export interface components {
             prompt: string;
             agent?: string;
             model?: string;
-            permissionMode?: "plan" | "acceptEdits" | "bypassPermissions" | "default" | "dontAsk";
+            permissionMode?: "plan" | "default" | "acceptEdits" | "bypassPermissions" | "dontAsk";
         };
         CodexRunnerConfig: {
             /**
@@ -939,7 +940,7 @@ export interface components {
             metadata?: components["schemas"]["Recordstringstring"];
         };
         RunLogStream: "stdout" | "stderr" | "system";
-        RunLogKind: "system" | "text" | "user" | "agent" | "tool_call" | "tool_output" | "plan" | "status";
+        RunLogKind: "text" | "status" | "plan" | "system" | "user" | "agent" | "tool_call" | "tool_output";
         HealthResponse: {
             /** @enum {unknown} */
             ok: true;
@@ -1084,6 +1085,13 @@ export interface components {
         ListTeamMessagesQuery: {
             parentTaskId?: string;
         };
+        PostTeamMessageParams: {
+            teamId: string;
+        };
+        PostTeamMessageBody: {
+            parentTaskId: string;
+            content: string;
+        };
         ListTeamsQuery: {
             workspaceId?: string;
         };
@@ -1115,6 +1123,14 @@ export interface components {
         };
         TeamMessagesData: {
             items: components["schemas"]["TeamMessage"][];
+        };
+        TeamMessageResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["TeamMessageData"];
+        };
+        TeamMessageData: {
+            item: components["schemas"]["TeamMessage"];
         };
     };
     responses: never;
@@ -2277,6 +2293,50 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TeamMessagesResponse"];
+                };
+            };
+            /** @description Team not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    postTeamMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PostTeamMessageBody"];
+            };
+        };
+        responses: {
+            /** @description Created team message */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamMessageResponse"];
+                };
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
             /** @description Team not found */

@@ -264,6 +264,73 @@ describe("team execution integration", () => {
     });
   });
 
+  it("posts a human team message and publishes the existing team.agent.message event", async () => {
+    const codexRunner = new ScriptedCodexRunner([]);
+    const { events, service, workspace } = await createRuntime(codexRunner);
+    const team = service.createTeam(makeTeam(workspace.id));
+    const parentTask = await service.createTask({
+      title: "Review coordinator proposal",
+      description: "Collect feedback before execution starts.",
+      workspaceId: workspace.id,
+      teamId: team.id,
+      column: "todo",
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "echo should-be-overridden"
+      }
+    });
+
+    const message = service.postHumanTeamMessage(
+      team.id,
+      parentTask.id,
+      "Please split the rollout into API and UI subtasks."
+    );
+
+    expect(message).toMatchObject({
+      teamId: team.id,
+      parentTaskId: parentTask.id,
+      taskId: parentTask.id,
+      agentName: "User",
+      senderType: "human",
+      messageType: "feedback",
+      content: "Please split the rollout into API and UI subtasks."
+    });
+    expect(service.listTeamMessages(team.id, parentTask.id)).toEqual([message]);
+    expect(events.published).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "team.agent.message",
+          teamId: team.id,
+          parentTaskId: parentTask.id,
+          fromAgentId: "human",
+          messageType: "feedback",
+          payload: "Please split the rollout into API and UI subtasks."
+        })
+      ])
+    );
+  });
+
+  it("rejects posting a human team message to a non-parent task thread", async () => {
+    const codexRunner = new ScriptedCodexRunner([]);
+    const { service, workspace } = await createRuntime(codexRunner);
+    const team = service.createTeam(makeTeam(workspace.id));
+    const unrelatedTask = await service.createTask({
+      title: "Standalone task",
+      workspaceId: workspace.id,
+      column: "todo",
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "echo standalone"
+      }
+    });
+
+    expect(() =>
+      service.postHumanTeamMessage(team.id, unrelatedTask.id, "Need a human check-in.")
+    ).toThrowError(/parentTaskId must reference a parent task/);
+  });
+
   it("creates subtasks, persists team messages, and keeps the parent task running", async () => {
     const coordinatorOutput = JSON.stringify([
       {

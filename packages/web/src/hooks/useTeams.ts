@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AgentTeam, TeamMessage } from "@workhorse/contracts";
 
 import { api } from "@/lib/api";
@@ -46,5 +46,35 @@ export function useTeamMessages(teamId: string | null, parentTaskId?: string) {
       return response.items;
     },
     enabled: Boolean(teamId)
+  });
+}
+
+export function usePostTeamMessage(
+  teamId: string | null,
+  parentTaskId: string | null
+) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (content: string) => {
+      if (!teamId || !parentTaskId) {
+        throw new Error("Team message context is unavailable.");
+      }
+
+      const response = await api.postTeamMessage(teamId, {
+        parentTaskId,
+        content
+      });
+      return response.item;
+    },
+    onSuccess: async () => {
+      if (!teamId || !parentTaskId) {
+        return;
+      }
+
+      await queryClient.invalidateQueries({
+        queryKey: teamQueryKeys.messages(teamId, parentTaskId)
+      });
+    }
   });
 }

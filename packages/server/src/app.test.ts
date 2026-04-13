@@ -337,6 +337,144 @@ describe("workhorse runtime", () => {
     });
   });
 
+  it("posts a human team message over HTTP and returns the created message", async () => {
+    const { app, service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+    const team = service.createTeam({
+      name: "Delivery Team",
+      workspaceId: workspace.id,
+      agents: [
+        {
+          id: "agent-coordinator",
+          agentName: "Coordinator",
+          role: "coordinator",
+          runnerConfig: {
+            type: "codex",
+            prompt: "Coordinate the work."
+          }
+        },
+        {
+          id: "agent-worker",
+          agentName: "Worker",
+          role: "worker",
+          runnerConfig: {
+            type: "codex",
+            prompt: "Implement the assigned task."
+          }
+        }
+      ]
+    });
+    const task = await service.createTask({
+      title: "Coordinate rollout",
+      workspaceId: workspace.id,
+      teamId: team.id,
+      column: "todo",
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "echo should-be-overridden"
+      }
+    });
+
+    const response = await app.request(`/api/teams/${team.id}/messages`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        parentTaskId: task.id,
+        content: "Please wait for human approval before creating subtasks."
+      })
+    });
+
+    expect(response.status).toBe(201);
+    const payload = await response.json();
+    expect(payload.ok).toBe(true);
+    expect(payload.data.item).toMatchObject({
+      teamId: team.id,
+      parentTaskId: task.id,
+      taskId: task.id,
+      agentName: "User",
+      senderType: "human",
+      messageType: "feedback",
+      content: "Please wait for human approval before creating subtasks."
+    });
+
+    const listResponse = await app.request(
+      `/api/teams/${team.id}/messages?parentTaskId=${encodeURIComponent(task.id)}`
+    );
+    expect(listResponse.status).toBe(200);
+    const listPayload = await listResponse.json();
+    expect(listPayload.data.items).toHaveLength(1);
+    expect(listPayload.data.items[0]?.senderType).toBe("human");
+  });
+
+  it("rejects posting a human team message to a non-parent task thread", async () => {
+    const { app, service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+    const team = service.createTeam({
+      name: "Delivery Team",
+      workspaceId: workspace.id,
+      agents: [
+        {
+          id: "agent-coordinator",
+          agentName: "Coordinator",
+          role: "coordinator",
+          runnerConfig: {
+            type: "codex",
+            prompt: "Coordinate the work."
+          }
+        }
+      ]
+    });
+    const unrelatedTask = await service.createTask({
+      title: "Standalone task",
+      workspaceId: workspace.id,
+      column: "todo",
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "echo standalone"
+      }
+    });
+
+    const response = await app.request(`/api/teams/${team.id}/messages`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        parentTaskId: unrelatedTask.id,
+        content: "Need more context here."
+      })
+    });
+
+    expect(response.status).toBe(400);
+    const payload = await response.json();
+    expect(payload.ok).toBe(false);
+    expect(payload.error.code).toBe("INVALID_PARENT_TASK");
+  });
+
+  it("returns 404 when posting a human team message for a missing team", async () => {
+    const { app } = await createRuntime();
+
+    const response = await app.request("/api/teams/team-missing/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        parentTaskId: "task-parent",
+        content: "Need a human checkpoint."
+      })
+    });
+
+    expect(response.status).toBe(404);
+    const payload = await response.json();
+    expect(payload.ok).toBe(false);
+    expect(payload.error.code).toBe("TEAM_NOT_FOUND");
+  });
+
   it("reports review monitor timing in health responses", async () => {
     const { app } = await createRuntime({ reviewMonitorIntervalMs: 15_000 });
 

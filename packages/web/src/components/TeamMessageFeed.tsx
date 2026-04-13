@@ -1,14 +1,16 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { TeamMessage } from "@workhorse/contracts";
 
 import { formatRelativeTime, titleCase } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
 interface Props {
   messages: TeamMessage[];
   loading?: boolean;
   error?: string | null;
+  onSendMessage?(content: string): Promise<unknown>;
 }
 
 interface ArtifactPayload {
@@ -17,6 +19,8 @@ interface ArtifactPayload {
   pr_url?: string | null;
   test_results?: string | null;
 }
+
+const MAX_HUMAN_TEAM_MESSAGE_LENGTH = 10_240;
 
 function isSafeUrl(url: string): boolean {
   try {
@@ -60,7 +64,15 @@ function senderTone(senderType: TeamMessage["senderType"]) {
   }
 }
 
-export function TeamMessageFeed({ messages, loading = false, error = null }: Props) {
+export function TeamMessageFeed({
+  messages,
+  loading = false,
+  error = null,
+  onSendMessage
+}: Props) {
+  const [draft, setDraft] = useState("");
+  const [submitState, setSubmitState] = useState<"idle" | "sending" | "failed">("idle");
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const orderedMessages = useMemo(
     () =>
       [...messages].sort(
@@ -68,6 +80,27 @@ export function TeamMessageFeed({ messages, loading = false, error = null }: Pro
       ),
     [messages]
   );
+
+  async function handleSendMessage() {
+    const content = draft.trim();
+    if (!content || !onSendMessage) {
+      return;
+    }
+
+    setSubmitState("sending");
+    setSubmitError(null);
+
+    try {
+      await onSendMessage(content);
+      setDraft("");
+      setSubmitState("idle");
+    } catch (nextError) {
+      setSubmitState("failed");
+      setSubmitError(
+        nextError instanceof Error ? nextError.message : "Unable to send team message."
+      );
+    }
+  }
 
   return (
     <section className="grid gap-3">
@@ -102,7 +135,12 @@ export function TeamMessageFeed({ messages, loading = false, error = null }: Pro
             return (
               <article
                 key={message.id}
-                className={cn("grid gap-2 rounded-none border p-3", messageTone(message))}
+                className={cn(
+                  "grid gap-2 rounded-none border p-3",
+                  messageTone(message),
+                  message.senderType === "human" &&
+                    "ml-auto w-full max-w-[min(34rem,92%)] justify-self-end"
+                )}
               >
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span
@@ -198,15 +236,57 @@ export function TeamMessageFeed({ messages, loading = false, error = null }: Pro
             Human reply
           </span>
           <span className="text-[0.68rem] text-[var(--muted)]">
-            {titleCase("coming soon")}
+            {titleCase(onSendMessage ? "feedback message" : "unavailable")}
           </span>
         </div>
-        <Textarea
-          rows={3}
-          disabled
-          title="Coming soon"
-          placeholder="Coming soon"
-        />
+        <form
+          className="grid gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleSendMessage();
+          }}
+        >
+          <Textarea
+            rows={3}
+            value={draft}
+            maxLength={MAX_HUMAN_TEAM_MESSAGE_LENGTH}
+            onChange={(event) => {
+              setDraft(event.target.value);
+              if (submitState === "failed") {
+                setSubmitState("idle");
+                setSubmitError(null);
+              }
+            }}
+            onKeyDown={(event) => {
+              if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                event.preventDefault();
+                void handleSendMessage();
+              }
+            }}
+            disabled={!onSendMessage || submitState === "sending"}
+            placeholder={
+              onSendMessage
+                ? "Leave feedback for the coordinator or running agents..."
+                : "Team message input is unavailable."
+            }
+            className="min-h-20 resize-y"
+          />
+          <div className="flex flex-wrap items-center justify-between gap-2 text-[0.68rem] text-[var(--muted)]">
+            <span>
+              Press Ctrl/Cmd+Enter to send. v1 records the message only. {draft.length}/
+              {MAX_HUMAN_TEAM_MESSAGE_LENGTH}
+            </span>
+            <Button
+              type="submit"
+              disabled={!onSendMessage || submitState === "sending" || draft.trim().length === 0}
+            >
+              {submitState === "sending" ? "Sending..." : "Send"}
+            </Button>
+          </div>
+          {submitError ? (
+            <div className="text-[0.72rem] text-[var(--danger)]">{submitError}</div>
+          ) : null}
+        </form>
       </div>
     </section>
   );

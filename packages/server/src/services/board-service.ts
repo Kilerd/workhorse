@@ -1945,6 +1945,58 @@ export class BoardService {
     return this.store.listTeamMessages(teamId, parentTaskId);
   }
 
+  public postHumanTeamMessage(
+    teamId: string,
+    parentTaskId: string,
+    content: string
+  ): TeamMessage {
+    const team = this.getTeam(teamId);
+    const parentTask = this.requireTask(parentTaskId);
+    if (parentTask.teamId !== team.id || parentTask.parentTaskId) {
+      throw new AppError(
+        400,
+        "INVALID_PARENT_TASK",
+        "parentTaskId must reference a parent task in the selected team"
+      );
+    }
+
+    const trimmedContent = content.trim();
+    if (!trimmedContent) {
+      throw new AppError(
+        400,
+        "INVALID_TEAM_MESSAGE",
+        "Team message content cannot be blank"
+      );
+    }
+    const finalContent = truncateTeamMessagePayload(trimmedContent);
+
+    const item: TeamMessage = {
+      id: createId(),
+      teamId: team.id,
+      parentTaskId: parentTask.id,
+      // Human feedback is stored on the shared parent thread, even when authored
+      // from a subtask details panel that is rendering the same conversation.
+      taskId: parentTask.id,
+      agentName: "User",
+      senderType: "human",
+      messageType: "feedback",
+      content: finalContent,
+      createdAt: new Date().toISOString()
+    };
+
+    this.store.appendTeamMessage(item);
+    this.events.publish(
+      buildTeamAgentMessageEvent({
+        teamId: team.id,
+        parentTaskId: parentTask.id,
+        fromAgentId: "human",
+        messageType: "feedback",
+        payload: finalContent
+      })
+    );
+    return item;
+  }
+
   private nextOrder(column: Task["column"]): number {
     const columnTasks = this.store
       .listTasks()
