@@ -336,8 +336,7 @@ describe("team execution integration", () => {
     ).toThrowError(/parentTaskId must reference a parent task/);
   });
 
-  // 15s timeout: two sequential phases (coordinator run → proposal, then approve → subtask run)
-  it("saves a coordinator proposal on run finish, then creates subtasks on approval", async () => {
+  it("creates subtasks, persists team messages, and keeps the parent task running", async () => {
     const coordinatorOutput = JSON.stringify([
       {
         title: "Implement data model",
@@ -375,16 +374,12 @@ describe("team execution integration", () => {
 
     const started = await service.startTask(parentTask.id);
     const run = await waitForRunToFinish(service, parentTask.id);
-
-    // After coordinator run: proposal is created, parent stays in "review", no subtasks yet.
-    // saveProposal runs in afterRunFinished (end of handleExit chain), so poll via waitFor.
-    // Once proposals exist, we know the full async chain completed (task column already "review").
-    const proposals = await waitFor(() => {
-      const items = service.listProposals(team.id, { parentTaskId: parentTask.id });
-      return items.length > 0 ? items : undefined;
-    });
-    const proposal = proposals[0]!;
-    const reviewParent = service.getTask(parentTask.id);
+    const finalParent = await waitForTask(service, parentTask.id, (task) => task.column === "running");
+    const subtasks = service
+      .listTasks({})
+      .filter((task) => task.parentTaskId === parentTask.id)
+      .sort((left, right) => left.order - right.order);
+    const messages = service.listTeamMessages(team.id, parentTask.id);
 
     expect(started.run.metadata).toMatchObject({
       trigger: "team_coordinator",
@@ -401,25 +396,6 @@ describe("team execution integration", () => {
       "Plan and delegate the implementation."
     );
     expect(run.status).toBe("succeeded");
-    expect(reviewParent.column).toBe("review");
-    expect(service.listTasks({}).filter((task) => task.parentTaskId === parentTask.id)).toHaveLength(0);
-    expect(proposal.status).toBe("pending");
-    expect(proposal.drafts).toHaveLength(2);
-    expect(events.published).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ type: "team.proposal.created", teamId: team.id, parentTaskId: parentTask.id })
-      ])
-    );
-
-    // Approve the proposal: subtasks created and parent moved to "running" synchronously.
-    await service.approveProposal(team.id, proposal.id);
-    const finalParent = service.getTask(parentTask.id);
-    const subtasks = service
-      .listTasks({})
-      .filter((task) => task.parentTaskId === parentTask.id)
-      .sort((left, right) => left.order - right.order);
-    const messages = service.listTeamMessages(team.id, parentTask.id);
-
     expect(finalParent.column).toBe("running");
     expect(subtasks).toHaveLength(2);
     expect(subtasks[0]).toMatchObject({
@@ -440,11 +416,19 @@ describe("team execution integration", () => {
     });
     expect(events.published).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ type: "team.agent.message", teamId: team.id, parentTaskId: parentTask.id }),
-        expect.objectContaining({ type: "team.task.created", teamId: team.id, parentTaskId: parentTask.id })
+        expect.objectContaining({
+          type: "team.agent.message",
+          teamId: team.id,
+          parentTaskId: parentTask.id
+        }),
+        expect.objectContaining({
+          type: "team.task.created",
+          teamId: team.id,
+          parentTaskId: parentTask.id
+        })
       ])
     );
-  }, 15_000);
+  });
 
   it("injects team context and historical messages into subtask prompts", async () => {
     const coordinatorOutput = JSON.stringify([
@@ -482,17 +466,6 @@ describe("team execution integration", () => {
 
     await service.startTask(parentTask.id);
     await waitForRunToFinish(service, parentTask.id);
-
-    // Approve the proposal before subtasks are created.
-    // Re-enable the scheduler so it auto-starts the subtask after approval.
-    const settings = service.getSettings();
-    await service.updateSettings({ ...settings, scheduler: { maxConcurrent: 3 } });
-    const proposals = await waitFor(() => {
-      const items = service.listProposals(team.id, { parentTaskId: parentTask.id });
-      return items.length > 0 ? items : undefined;
-    });
-    await service.approveProposal(team.id, proposals[0]!.id);
-
     const subtask = await waitFor(() =>
       service.listTasks({}).find((task) => task.parentTaskId === parentTask.id)
     );
@@ -516,7 +489,7 @@ describe("team execution integration", () => {
     expect(subtaskPrompt).toContain("Coordinator created subtasks:");
     expect(subtaskPrompt).toContain("Title: Implement runtime hook");
     expect(subtaskPrompt).toContain("Implement the assigned subtask and report concrete results.");
-  }, 15_000);
+  });
 
   it("keeps succeeded subtasks in review when autoApproveSubtasks is disabled", async () => {
     const coordinatorOutput = JSON.stringify([
@@ -554,6 +527,11 @@ describe("team execution integration", () => {
 
     await service.startTask(parentTask.id);
     await waitForRunToFinish(service, parentTask.id);
+    const proposals = await waitFor(() => {
+      const items = service.listProposals(team.id, { parentTaskId: parentTask.id });
+      return items.length > 0 ? items : undefined;
+    });
+    await service.approveProposal(team.id, proposals[0]!.id);
     const subtask = await waitFor(() =>
       service.listTasks({}).find((task) => task.parentTaskId === parentTask.id)
     );
@@ -565,7 +543,7 @@ describe("team execution integration", () => {
     expect(reviewSubtask.lastRunStatus).toBe("succeeded");
     expect(reviewSubtask.rejected).toBe(false);
     expect(parent.column).toBe("running");
-  });
+  }, 15_000);
 
   it("auto-approves succeeded subtasks when autoApproveSubtasks is enabled", async () => {
     const coordinatorOutput = JSON.stringify([
@@ -605,6 +583,11 @@ describe("team execution integration", () => {
 
     await service.startTask(parentTask.id);
     await waitForRunToFinish(service, parentTask.id);
+    const proposals = await waitFor(() => {
+      const items = service.listProposals(team.id, { parentTaskId: parentTask.id });
+      return items.length > 0 ? items : undefined;
+    });
+    await service.approveProposal(team.id, proposals[0]!.id);
     const subtask = await waitFor(() =>
       service.listTasks({}).find((task) => task.parentTaskId === parentTask.id)
     );
@@ -615,7 +598,7 @@ describe("team execution integration", () => {
     expect(doneSubtask.lastRunStatus).toBe("succeeded");
     expect(doneSubtask.rejected).toBe(false);
     expect(parent.column).toBe("review");
-  });
+  }, 15_000);
 
   it("auto-rejects failed subtasks when autoApproveSubtasks is enabled", async () => {
     const coordinatorOutput = JSON.stringify([
@@ -655,6 +638,11 @@ describe("team execution integration", () => {
 
     await service.startTask(parentTask.id);
     await waitForRunToFinish(service, parentTask.id);
+    const proposals = await waitFor(() => {
+      const items = service.listProposals(team.id, { parentTaskId: parentTask.id });
+      return items.length > 0 ? items : undefined;
+    });
+    await service.approveProposal(team.id, proposals[0]!.id);
     const subtask = await waitFor(() =>
       service.listTasks({}).find((task) => task.parentTaskId === parentTask.id)
     );
@@ -665,7 +653,7 @@ describe("team execution integration", () => {
     expect(doneSubtask.lastRunStatus).toBe("failed");
     expect(doneSubtask.rejected).toBe(true);
     expect(parent.column).toBe("review");
-  });
+  }, 15_000);
 
   it("waits for human approve/reject decisions before aggregating the parent task", async () => {
     const coordinatorOutput = JSON.stringify([
@@ -713,6 +701,11 @@ describe("team execution integration", () => {
 
     await service.startTask(parentTask.id);
     await waitForRunToFinish(service, parentTask.id);
+    const proposals = await waitFor(() => {
+      const items = service.listProposals(team.id, { parentTaskId: parentTask.id });
+      return items.length > 0 ? items : undefined;
+    });
+    await service.approveProposal(team.id, proposals[0]!.id);
     const subtasks = await waitFor(() => {
       const items = service
         .listTasks({})
@@ -739,7 +732,7 @@ describe("team execution integration", () => {
     expect(parent.column).toBe("review");
     expect(messages.some((message) => message.content.includes("No longer needed"))).toBe(true);
     expect(messages.at(-1)?.content).toContain("All subtasks reached a final decision");
-  });
+  }, 15_000);
 
   it("retries review subtasks by moving them back to todo and rerunning them", async () => {
     const coordinatorOutput = JSON.stringify([
@@ -781,6 +774,11 @@ describe("team execution integration", () => {
 
     await service.startTask(parentTask.id);
     await waitForRunToFinish(service, parentTask.id);
+    const retryProposals = await waitFor(() => {
+      const items = service.listProposals(team.id, { parentTaskId: parentTask.id });
+      return items.length > 0 ? items : undefined;
+    });
+    await service.approveProposal(team.id, retryProposals[0]!.id);
     const subtask = await waitFor(() =>
       service.listTasks({}).find((task) => task.parentTaskId === parentTask.id)
     );
@@ -800,7 +798,7 @@ describe("team execution integration", () => {
     const messages = service.listTeamMessages(team.id, parentTask.id);
     expect(runs).toHaveLength(2);
     expect(messages.some((message) => message.content.includes("requested retry"))).toBe(true);
-  });
+  }, 15_000);
 
   it("leaves the parent task in review when coordinator output is invalid", async () => {
     const codexRunner = new ScriptedCodexRunner([
@@ -840,7 +838,7 @@ describe("team execution integration", () => {
     );
   });
 
-  it("returns the parent task to review if proposal event publication fails", async () => {
+  it("returns the parent task to review if post-commit event publication fails", async () => {
     const coordinatorOutput = JSON.stringify([
       {
         title: "Implement data model",
@@ -855,7 +853,7 @@ describe("team execution integration", () => {
         exit: { status: "succeeded", exitCode: 0 }
       }
     ]);
-    const events = new RecordingEventBus("team.proposal.created");
+    const events = new RecordingEventBus("team.agent.message");
     const { service, workspace } = await createRuntime(codexRunner, { events });
     const team = service.createTeam(makeTeam(workspace.id));
     const parentTask = await service.createTask({
@@ -873,10 +871,11 @@ describe("team execution integration", () => {
     const started = await service.startTask(parentTask.id);
     await waitForRunToFinish(service, parentTask.id);
     const reviewTask = await waitForTask(service, parentTask.id, (task) => task.column === "review");
+    const subtasks = service.listTasks({}).filter((task) => task.parentTaskId === parentTask.id);
     const log = await service.getRunLog(started.run.id);
 
     expect(reviewTask.column).toBe("review");
-    expect(service.listTasks({}).filter((task) => task.parentTaskId === parentTask.id)).toHaveLength(0);
+    expect(subtasks).toHaveLength(1);
     expect(log).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
