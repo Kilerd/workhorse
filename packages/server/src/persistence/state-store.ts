@@ -838,19 +838,21 @@ export class StateStore {
     agentId: string,
     role: AgentRole
   ): WorkspaceAgent {
-    if (role === "coordinator") {
-      this.ensureSingleCoordinator(workspaceId);
-    }
-    const agent = this.getAgent(agentId);
-    if (!agent) {
-      throw new AppError(404, "AGENT_NOT_FOUND", `Agent not found: ${agentId}`);
-    }
-    const now = new Date().toISOString();
-    this.db
-      .insert(schema.workspaceAgents)
-      .values({ workspaceId, agentId, role, createdAt: now })
-      .run();
-    return { ...agent, role };
+    return this.sqlite.transaction(() => {
+      if (role === "coordinator") {
+        this.ensureSingleCoordinator(workspaceId);
+      }
+      const agent = this.getAgent(agentId);
+      if (!agent) {
+        throw new AppError(404, "AGENT_NOT_FOUND", `Agent not found: ${agentId}`);
+      }
+      const now = new Date().toISOString();
+      this.db
+        .insert(schema.workspaceAgents)
+        .values({ workspaceId, agentId, role, createdAt: now })
+        .run();
+      return { ...agent, role };
+    })();
   }
 
   public unmountAgentFromWorkspace(workspaceId: string, agentId: string): boolean {
@@ -871,29 +873,35 @@ export class StateStore {
     agentId: string,
     role: AgentRole
   ): WorkspaceAgent | null {
-    if (role === "coordinator") {
-      this.ensureSingleCoordinator(workspaceId, agentId);
-    }
-    const result = this.db
-      .update(schema.workspaceAgents)
-      .set({ role })
-      .where(
-        and(
-          eq(schema.workspaceAgents.workspaceId, workspaceId),
-          eq(schema.workspaceAgents.agentId, agentId)
+    return this.sqlite.transaction(() => {
+      if (role === "coordinator") {
+        this.ensureSingleCoordinator(workspaceId, agentId);
+      }
+      const result = this.db
+        .update(schema.workspaceAgents)
+        .set({ role })
+        .where(
+          and(
+            eq(schema.workspaceAgents.workspaceId, workspaceId),
+            eq(schema.workspaceAgents.agentId, agentId)
+          )
         )
-      )
-      .run();
-    if (result.changes === 0) {
-      return null;
-    }
-    return this.getWorkspaceAgent(workspaceId, agentId);
+        .run();
+      if (result.changes === 0) {
+        return null;
+      }
+      return this.getWorkspaceAgent(workspaceId, agentId);
+    })();
   }
 
   // -------------------------------------------------------------------------
   // Workspace coordination config (Phase 4)
   // -------------------------------------------------------------------------
 
+  // Updates both DB and the in-memory state cache. Workspace objects follow the
+  // existing pattern of being kept in memory (unlike agents, which are pure-DB)
+  // because many hot-path reads go through this.state.workspaces without a DB
+  // round-trip (e.g. listWorkspaces, requireTask workspace lookup).
   public updateWorkspaceConfig(
     workspaceId: string,
     config: Partial<Pick<Workspace, "prStrategy" | "autoApproveSubtasks">>
@@ -1106,9 +1114,11 @@ export class StateStore {
       CREATE INDEX IF NOT EXISTS idx_team_messages_team_parent_created_at
         ON team_messages (team_id, parent_task_id, created_at);
 
+      -- team_id is nullable: Phase 4 workspace-scoped proposals set team_id=null
+      -- and workspace_id instead. team-scoped proposals (legacy) keep team_id set.
       CREATE TABLE IF NOT EXISTS coordinator_proposals (
         id TEXT PRIMARY KEY,
-        team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+        team_id TEXT REFERENCES teams(id) ON DELETE CASCADE,
         parent_task_id TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'pending',
         drafts TEXT NOT NULL,
@@ -1140,7 +1150,11 @@ export class StateStore {
       CREATE INDEX IF NOT EXISTS idx_workspace_agents_workspace_id
         ON workspace_agents (workspace_id);
 
-      -- task_messages: workspace-level agent communication thread (no team_id)
+      -- task_messages: workspace-level agent communication thread (no team_id).
+      -- This table is the long-term replacement for team_messages. The old
+      -- team_messages table is intentionally kept intact in this PR; the
+      -- create+copy+drop migration (dropping team_id) will happen in PR-E
+      -- once all service-layer consumers have been migrated off team_messages.
       CREATE TABLE IF NOT EXISTS task_messages (
         id TEXT PRIMARY KEY,
         parent_task_id TEXT NOT NULL,

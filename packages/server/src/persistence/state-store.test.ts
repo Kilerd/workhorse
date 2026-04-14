@@ -494,6 +494,14 @@ describe("StateStore — Account Agents (Phase 4)", () => {
     expect(store.getAgent("agent-a")).toBeNull();
     expect(store.deleteAgent("agent-a")).toBe(false);
   });
+
+  it("throws on duplicate agent id (PK conflict)", async () => {
+    const store = new StateStore(":memory:");
+    await store.load();
+
+    store.createAgent(makeAgent());
+    expect(() => store.createAgent(makeAgent())).toThrow();
+  });
 });
 
 async function storeWithWorkspace(): Promise<StateStore> {
@@ -611,6 +619,30 @@ describe("StateStore — Workspace Agent Mounting (Phase 4)", () => {
     expect(store.listWorkspaceAgents(WS)).toHaveLength(1);
 
     store.deleteAgent("agent-a");
+    expect(store.listWorkspaceAgents(WS)).toHaveLength(0);
+  });
+
+  it("throws on duplicate mount of same agent to same workspace (PK conflict)", async () => {
+    const store = await storeWithWorkspace();
+
+    store.createAgent(makeAgent());
+    store.mountAgentToWorkspace(WS, "agent-a", "worker");
+
+    expect(() => store.mountAgentToWorkspace(WS, "agent-a", "worker")).toThrow();
+  });
+
+  it("cascades workspace_agents deletion when workspace is deleted", async () => {
+    const store = await storeWithWorkspace();
+
+    store.createAgent(makeAgent());
+    store.mountAgentToWorkspace(WS, "agent-a", "worker");
+    expect(store.listWorkspaceAgents(WS)).toHaveLength(1);
+
+    // Removing the workspace via setWorkspaces+save deletes the workspace row,
+    // which should cascade to workspace_agents.
+    store.setWorkspaces([]);
+    await store.save();
+
     expect(store.listWorkspaceAgents(WS)).toHaveLength(0);
   });
 });
