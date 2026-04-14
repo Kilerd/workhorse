@@ -38,7 +38,9 @@ export interface CoordinatorPromptInput {
 }
 
 export interface SubtaskPromptInput {
-  teamName: string;
+  /** @deprecated Use workspaceName instead. */
+  teamName?: string;
+  workspaceName?: string;
   parentTaskTitle: string;
   agents: TeamAgentContext[];
   messages: TeamMessageContext[];
@@ -233,7 +235,10 @@ export function parseCoordinatorSubtasks(output: string): CoordinatorSubtaskDraf
 }
 
 export function buildSubtaskPrompt(input: SubtaskPromptInput): string {
-  const teamName = ensureTrimmedValue(input.teamName, "teamName");
+  const teamName = ensureTrimmedValue(
+    input.workspaceName ?? input.teamName ?? "",
+    "workspaceName"
+  );
   const parentTaskTitle = ensureTrimmedValue(input.parentTaskTitle, "parentTaskTitle");
   const subtaskTitle = ensureTrimmedValue(input.subtaskTitle, "subtaskTitle");
   const subtaskDescription = ensureTrimmedValue(

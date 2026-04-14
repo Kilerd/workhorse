@@ -56,6 +56,10 @@ import type {
   PlanTaskResponse,
   RejectProposalParams,
   RequestTaskReviewParams,
+  WorkspaceListProposalsParams,
+  WorkspaceGetProposalParams,
+  WorkspaceApproveProposalParams,
+  WorkspaceRejectProposalParams,
   RequestTaskReviewResponse,
   RejectTaskBody,
   RejectTaskParams,
@@ -201,6 +205,15 @@ export const validateApproveProposalParams =
   typia.createValidate<ApproveProposalParams>();
 export const validateRejectProposalParams =
   typia.createValidate<RejectProposalParams>();
+
+export const validateWorkspaceListProposalsParams =
+  typia.createValidate<WorkspaceListProposalsParams>();
+export const validateWorkspaceGetProposalParams =
+  typia.createValidate<WorkspaceGetProposalParams>();
+export const validateWorkspaceApproveProposalParams =
+  typia.createValidate<WorkspaceApproveProposalParams>();
+export const validateWorkspaceRejectProposalParams =
+  typia.createValidate<WorkspaceRejectProposalParams>();
 
 export const validateCreateAgentBody = typia.createValidate<CreateAgentBody>();
 export const validateUpdateAgentBody = typia.createValidate<UpdateAgentBody>();

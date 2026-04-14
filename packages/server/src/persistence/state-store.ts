@@ -674,6 +674,31 @@ export class StateStore {
     return rows.map(rowToProposal);
   }
 
+  public listProposalsByWorkspace(
+    workspaceId: string,
+    parentTaskId?: string
+  ): CoordinatorProposal[] {
+    const rows = parentTaskId
+      ? this.db
+          .select()
+          .from(schema.coordinatorProposals)
+          .where(
+            and(
+              eq(schema.coordinatorProposals.workspaceId, workspaceId),
+              eq(schema.coordinatorProposals.parentTaskId, parentTaskId)
+            )
+          )
+          .orderBy(asc(schema.coordinatorProposals.createdAt))
+          .all()
+      : this.db
+          .select()
+          .from(schema.coordinatorProposals)
+          .where(eq(schema.coordinatorProposals.workspaceId, workspaceId))
+          .orderBy(asc(schema.coordinatorProposals.createdAt))
+          .all();
+    return rows.map(rowToProposal);
+  }
+
   public getProposal(proposalId: string): CoordinatorProposal | null {
     const row = this.db
       .select()

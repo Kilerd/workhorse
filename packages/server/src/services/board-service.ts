@@ -19,6 +19,7 @@ import type {
   StartTaskBody,
   TaskInputBody,
   Task,
+  TaskMessage,
   TaskPullRequest,
   TaskWorktree,
   TeamAgent,
@@ -27,6 +28,7 @@ import type {
   UpdateTaskBody,
   UpdateTeamBody,
   UpdateWorkspaceBody,
+  WorkspaceAgent,
   WorkspaceGitRef,
   Workspace
 } from "@workhorse/contracts";
@@ -301,16 +303,27 @@ export class BoardService {
     StartTaskOptions,
     "runnerConfigOverride" | "runMetadata"
   > | undefined {
-    if (!task.teamId) {
+    if (task.teamId) {
+      const team = this.getTeam(task.teamId);
+      return task.parentTaskId
+        ? this.buildSubtaskStartOptions(task, team)
+        : this.buildCoordinatorStartOptions(task, team);
+    }
+
+    if (task.parentTaskId) {
+      // Workspace-agent subtask path (parentTaskId set, no teamId)
+      const workspace = this.requireWorkspace(task.workspaceId);
+      const agents = this.store.listWorkspaceAgents(task.workspaceId);
+      return this.buildSubtaskStartOptionsWs(task, agents, workspace);
+    }
+
+    // Check if workspace has a coordinator agent → workspace coordinator path
+    const agents = this.store.listWorkspaceAgents(task.workspaceId);
+    const coordinator = agents.find((a) => a.role === "coordinator");
+    if (!coordinator) {
       return undefined;
     }
-
-    const team = this.getTeam(task.teamId);
-    if (task.parentTaskId) {
-      return this.buildSubtaskStartOptions(task, team);
-    }
-
-    return this.buildCoordinatorStartOptions(task, team);
+    return this.buildCoordinatorStartOptionsWs(task, agents);
   }
 
   private buildCoordinatorStartOptions(
@@ -375,6 +388,107 @@ export class BoardService {
         parentTaskId
       }
     };
+  }
+
+  private buildCoordinatorStartOptionsWs(
+    task: Task,
+    agents: WorkspaceAgent[]
+  ): Pick<StartTaskOptions, "runnerConfigOverride" | "runMetadata"> {
+    const coordinator = this.resolveCoordinator(agents);
+    const userPromptParts = [
+      this.extractRunnerPrompt(coordinator.runnerConfig),
+      this.resolveUserTaskPrompt(task)
+    ].filter((value): value is string => Boolean(value?.trim()));
+    const prompt = buildCoordinatorPrompt({
+      agents: this.buildAgentContexts(agents),
+      userPrompt: userPromptParts.join("\n\n")
+    });
+
+    return {
+      runnerConfigOverride: this.withRunnerPrompt(coordinator.runnerConfig, prompt),
+      runMetadata: {
+        trigger: "team_coordinator",
+        workspaceId: task.workspaceId,
+        teamAgentId: coordinator.id,
+        parentTaskId: task.id
+      }
+    };
+  }
+
+  private buildSubtaskStartOptionsWs(
+    task: Task,
+    agents: WorkspaceAgent[],
+    workspace: Workspace
+  ): Pick<StartTaskOptions, "runnerConfigOverride" | "runMetadata"> {
+    const parentTaskId = ensure(
+      task.parentTaskId,
+      400,
+      "TEAM_TASK_INVALID",
+      "Subtask is missing parentTaskId"
+    );
+    const assignedAgent = this.resolveAssignedAgent(agents, task);
+    const parentTask = this.requireTask(parentTaskId);
+    const prompt = buildSubtaskPrompt({
+      workspaceName: workspace.name,
+      parentTaskTitle: parentTask.title,
+      agents: this.buildAgentContexts(agents),
+      messages: this.store.listTaskMessages(parentTaskId).map((message) => ({
+        fromAgentId: message.agentName,
+        messageType: message.messageType,
+        payload: message.content
+      })),
+      subtaskTitle: task.title,
+      subtaskDescription: task.description,
+      userPrompt:
+        this.extractRunnerPrompt(assignedAgent.runnerConfig) ??
+        "Complete the assigned subtask and report concrete results."
+    });
+
+    return {
+      runnerConfigOverride: this.withRunnerPrompt(assignedAgent.runnerConfig, prompt),
+      runMetadata: {
+        trigger: "team_subtask",
+        workspaceId: task.workspaceId,
+        teamAgentId: assignedAgent.id,
+        parentTaskId
+      }
+    };
+  }
+
+  private buildAgentContexts(agents: WorkspaceAgent[]): TeamAgentContext[] {
+    return agents.map((agent) => ({
+      id: agent.id,
+      name: agent.name,
+      role: agent.role,
+      runnerType: agent.runnerConfig.type,
+      description: agent.description
+    }));
+  }
+
+  private resolveCoordinator(agents: WorkspaceAgent[]): WorkspaceAgent {
+    const coordinator = agents.find((a) => a.role === "coordinator");
+    return ensure(
+      coordinator,
+      400,
+      "TEAM_COORDINATOR_MISSING",
+      "Workspace must have exactly one coordinator agent"
+    );
+  }
+
+  private resolveAssignedAgent(agents: WorkspaceAgent[], task: Task): WorkspaceAgent {
+    const teamAgentId = ensure(
+      task.teamAgentId,
+      400,
+      "TEAM_TASK_INVALID",
+      "Subtask is missing teamAgentId"
+    );
+    const agent = agents.find((a) => a.id === teamAgentId);
+    return ensure(
+      agent,
+      404,
+      "TEAM_AGENT_NOT_FOUND",
+      `Assigned workspace agent not found: ${teamAgentId}`
+    );
   }
 
   private buildTeamAgentContexts(team: AgentTeam): TeamAgentContext[] {
@@ -444,7 +558,9 @@ export class BoardService {
   }
 
   private async handleTeamRunFinished(task: Task, run: Run): Promise<void> {
-    if (!task.teamId) {
+    const isWorkspacePath =
+      !task.teamId && Boolean(run.metadata?.workspaceId);
+    if (!task.teamId && !isWorkspacePath) {
       return;
     }
 
@@ -457,56 +573,107 @@ export class BoardService {
       return;
     }
 
-    try {
-      const team = this.getTeam(task.teamId);
-      const output = await this.extractCoordinatorOutput(run.id);
-      const drafts = parseCoordinatorSubtasks(output);
+    if (task.teamId) {
+      // Legacy team path
+      try {
+        const team = this.getTeam(task.teamId);
+        const output = await this.extractCoordinatorOutput(run.id);
+        const drafts = parseCoordinatorSubtasks(output);
 
-      // C1: cancel any existing pending proposal for this parent task so only
-      // the latest coordinator output is ever awaiting approval.
-      const existingPending = this.store
-        .listProposals(team.id, task.id)
-        .find((p) => p.status === "pending");
-      if (existingPending) {
-        this.store.updateProposalStatus(
-          existingPending.id,
-          "rejected",
-          new Date().toISOString()
+        // C1: cancel any existing pending proposal so only the latest is awaiting approval.
+        const existingPending = this.store
+          .listProposals(team.id, task.id)
+          .find((p) => p.status === "pending");
+        if (existingPending) {
+          this.store.updateProposalStatus(
+            existingPending.id,
+            "rejected",
+            new Date().toISOString()
+          );
+        }
+
+        const proposal: CoordinatorProposal = {
+          id: createId(),
+          teamId: team.id,
+          parentTaskId: task.id,
+          status: "pending",
+          drafts,
+          createdAt: new Date().toISOString()
+        };
+        this.store.saveProposal(proposal);
+
+        this.events.publish({
+          type: "team.proposal.created",
+          teamId: team.id,
+          parentTaskId: task.id,
+          proposal
+        });
+      } catch (error) {
+        await this.restoreCoordinatorParentToReview(task.id);
+        const message =
+          error instanceof Error ? error.message : "Coordinator output could not be processed";
+        await this.runLifecycle.appendAndPublishRunOutput(
+          task.id,
+          run.id,
+          createRunLogEntry(run.id, {
+            kind: "system",
+            stream: "system",
+            title: "Coordinator parse error",
+            text: `${message}\n`
+          })
         );
       }
+    } else {
+      // Workspace-agent path
+      const workspaceId = run.metadata!.workspaceId!;
+      try {
+        const output = await this.extractCoordinatorOutput(run.id);
+        const drafts = parseCoordinatorSubtasks(output);
 
-      const proposal: CoordinatorProposal = {
-        id: createId(),
-        teamId: team.id,
-        parentTaskId: task.id,
-        status: "pending",
-        drafts,
-        createdAt: new Date().toISOString()
-      };
-      this.store.saveProposal(proposal);
+        const existingPending = this.store
+          .listProposalsByWorkspace(workspaceId, task.id)
+          .find((p) => p.status === "pending");
+        if (existingPending) {
+          this.store.updateProposalStatus(
+            existingPending.id,
+            "rejected",
+            new Date().toISOString()
+          );
+        }
 
-      // Parent task stays in "review" (already set by run-lifecycle-service).
-      // Publish the proposal event so the UI can prompt the user for approval.
-      this.events.publish({
-        type: "team.proposal.created",
-        teamId: team.id,
-        parentTaskId: task.id,
-        proposal
-      });
-    } catch (error) {
-      await this.restoreCoordinatorParentToReview(task.id);
-      const message =
-        error instanceof Error ? error.message : "Coordinator output could not be processed";
-      await this.runLifecycle.appendAndPublishRunOutput(
-        task.id,
-        run.id,
-        createRunLogEntry(run.id, {
-          kind: "system",
-          stream: "system",
-          title: "Coordinator parse error",
-          text: `${message}\n`
-        })
-      );
+        const proposal: CoordinatorProposal = {
+          id: createId(),
+          teamId: null,
+          workspaceId,
+          parentTaskId: task.id,
+          status: "pending",
+          drafts,
+          createdAt: new Date().toISOString()
+        };
+        this.store.saveProposal(proposal);
+
+        // Use workspaceId in teamId field for event routing
+        this.events.publish({
+          type: "team.proposal.created",
+          teamId: workspaceId,
+          parentTaskId: task.id,
+          proposal
+        });
+      } catch (error) {
+        await this.restoreCoordinatorParentToReview(task.id);
+        const message =
+          error instanceof Error ? error.message : "Coordinator output could not be processed";
+        await this.runLifecycle.appendAndPublishRunOutput(
+          task.id,
+          run.id,
+          createRunLogEntry(run.id, {
+            kind: "system",
+            stream: "system",
+            title: "Coordinator parse error",
+            text: `${message}\n`
+          })
+        );
+      }
     }
   }
 
@@ -552,65 +719,88 @@ export class BoardService {
       return;
     }
 
-    const team = this.getTeam(task.teamId!);
-    const agent = this.resolveAssignedTeamAgent(team, task);
     const now = new Date().toISOString();
+    const parentTaskId = task.parentTaskId!;
 
-    // A-type: status message
-    const statusPayload = buildSubtaskStatusPayload(task, run);
-    this.publishTeamThreadMessage({
-      teamId: team.id,
-      parentTaskId: task.parentTaskId!,
-      taskId: task.id,
-      agentName: agent.agentName,
-      fromAgentId: agent.id,
-      senderType: "agent",
-      messageType: "status",
-      payload: statusPayload,
-      createdAt: now
-    });
+    if (task.teamId) {
+      // Legacy team path
+      const team = this.getTeam(task.teamId);
+      const agent = this.resolveAssignedTeamAgent(team, task);
 
-    if (run.status === "succeeded") {
-      // B-type: artifact message — generated before auto-advancing to "done" so that
-      // the aggregation check (triggered by other subtasks) cannot fire before this
-      // artifact message is persisted. Best-effort: skip on git errors.
-      try {
-        const worktreePath = task.worktree.path;
-        const diff =
-          worktreePath && task.worktree.baseRef
-            ? await this.gitWorktrees.getWorktreeDiff(worktreePath, task.worktree.baseRef)
-            : "";
-        const artifactPayload = buildSubtaskArtifactPayload({
-          diff,
-          pullRequestUrl: task.pullRequestUrl
-        });
-        this.publishTeamThreadMessage({
-          teamId: team.id,
-          parentTaskId: task.parentTaskId!,
-          taskId: task.id,
-          agentName: agent.agentName,
-          fromAgentId: agent.id,
-          senderType: "agent",
-          messageType: "artifact",
-          payload: artifactPayload,
-          createdAt: now
-        });
-      } catch {
-        // Best-effort: git diff not critical for team coordination
-      }
+      const statusPayload = buildSubtaskStatusPayload(task, run);
+      this.publishTeamThreadMessage({
+        teamId: team.id,
+        parentTaskId,
+        taskId: task.id,
+        agentName: agent.agentName,
+        fromAgentId: agent.id,
+        senderType: "agent",
+        messageType: "status",
+        payload: statusPayload,
+        createdAt: now
+      });
 
-      if (team.autoApproveSubtasks) {
+      if (run.status === "succeeded") {
+        try {
+          const worktreePath = task.worktree.path;
+          const diff =
+            worktreePath && task.worktree.baseRef
+              ? await this.gitWorktrees.getWorktreeDiff(worktreePath, task.worktree.baseRef)
+              : "";
+          const artifactPayload = buildSubtaskArtifactPayload({
+            diff,
+            pullRequestUrl: task.pullRequestUrl
+          });
+          this.publishTeamThreadMessage({
+            teamId: team.id,
+            parentTaskId,
+            taskId: task.id,
+            agentName: agent.agentName,
+            fromAgentId: agent.id,
+            senderType: "agent",
+            messageType: "artifact",
+            payload: artifactPayload,
+            createdAt: now
+          });
+        } catch {
+          // Best-effort: git diff not critical for team coordination
+        }
+
+        if (team.autoApproveSubtasks) {
+          const doneTask = await this.store.updateState((state) => {
+            const idx = state.tasks.findIndex((t) => t.id === task.id);
+            if (idx === -1) return null;
+            const entry = state.tasks[idx]!;
+            if (entry.column !== "review") return null;
+            entry.column = "done";
+            entry.rejected = false;
+            entry.order = this.nextOrderFromTasks("done", state.tasks);
+            entry.updatedAt = new Date().toISOString();
+            return { ...entry };
+          });
+
+          if (doneTask) {
+            this.events.publish({
+              type: "task.updated",
+              action: "updated",
+              taskId: doneTask.id,
+              task: doneTask
+            });
+            void this.teamPrService
+              .createSubtaskPullRequest(doneTask, team)
+              .catch((err) => {
+                console.error("TeamPrService.createSubtaskPullRequest failed", err);
+              });
+          }
+        }
+      } else if (team.autoApproveSubtasks) {
         const doneTask = await this.store.updateState((state) => {
           const idx = state.tasks.findIndex((t) => t.id === task.id);
-          if (idx === -1) {
-            return null;
-          }
+          if (idx === -1) return null;
           const entry = state.tasks[idx]!;
-          if (entry.column !== "review") {
-            return null;
-          }
+          if (entry.column !== "review") return null;
           entry.column = "done";
-          entry.rejected = false;
+          entry.rejected = true;
           entry.order = this.nextOrderFromTasks("done", state.tasks);
           entry.updatedAt = new Date().toISOString();
           return { ...entry };
@@ -623,54 +813,118 @@ export class BoardService {
             taskId: doneTask.id,
             task: doneTask
           });
-          // Best-effort PR creation for "independent" strategy teams
-          void this.teamPrService
-            .createSubtaskPullRequest(doneTask, team)
-            .catch((err) => {
-              console.error("TeamPrService.createSubtaskPullRequest failed", err);
-            });
         }
       }
-    } else if (team.autoApproveSubtasks) {
-      // Fully automatic teams preserve the old pipeline semantics: failed
-      // subtasks are finalized immediately as rejected results instead of
-      // waiting for a human review decision.
-      const doneTask = await this.store.updateState((state) => {
-        const idx = state.tasks.findIndex((t) => t.id === task.id);
-        if (idx === -1) {
-          return null;
-        }
-        const entry = state.tasks[idx]!;
-        if (entry.column !== "review") {
-          return null;
-        }
-        entry.column = "done";
-        entry.rejected = true;
-        entry.order = this.nextOrderFromTasks("done", state.tasks);
-        entry.updatedAt = new Date().toISOString();
-        return { ...entry };
+
+      await this.checkAndHandleTeamCompletion(parentTaskId, team.id);
+    } else {
+      // Workspace-agent path
+      const workspace = this.requireWorkspace(task.workspaceId);
+      const agents = this.store.listWorkspaceAgents(task.workspaceId);
+      const agent = this.resolveAssignedAgent(agents, task);
+
+      const statusPayload = buildSubtaskStatusPayload(task, run);
+      this.publishTeamThreadMessage({
+        workspaceId: task.workspaceId,
+        parentTaskId,
+        taskId: task.id,
+        agentName: agent.name,
+        fromAgentId: agent.id,
+        senderType: "agent",
+        messageType: "status",
+        payload: statusPayload,
+        createdAt: now
       });
 
-      if (doneTask) {
-        this.events.publish({
-          type: "task.updated",
-          action: "updated",
-          taskId: doneTask.id,
-          task: doneTask
-        });
-      }
-    }
+      if (run.status === "succeeded") {
+        try {
+          const worktreePath = task.worktree.path;
+          const diff =
+            worktreePath && task.worktree.baseRef
+              ? await this.gitWorktrees.getWorktreeDiff(worktreePath, task.worktree.baseRef)
+              : "";
+          const artifactPayload = buildSubtaskArtifactPayload({
+            diff,
+            pullRequestUrl: task.pullRequestUrl
+          });
+          this.publishTeamThreadMessage({
+            workspaceId: task.workspaceId,
+            parentTaskId,
+            taskId: task.id,
+            agentName: agent.name,
+            fromAgentId: agent.id,
+            senderType: "agent",
+            messageType: "artifact",
+            payload: artifactPayload,
+            createdAt: now
+          });
+        } catch {
+          // Best-effort: git diff not critical for workspace coordination
+        }
 
-    await this.checkAndHandleTeamCompletion(task.parentTaskId!, team.id);
+        if (workspace.autoApproveSubtasks) {
+          const doneTask = await this.store.updateState((state) => {
+            const idx = state.tasks.findIndex((t) => t.id === task.id);
+            if (idx === -1) return null;
+            const entry = state.tasks[idx]!;
+            if (entry.column !== "review") return null;
+            entry.column = "done";
+            entry.rejected = false;
+            entry.order = this.nextOrderFromTasks("done", state.tasks);
+            entry.updatedAt = new Date().toISOString();
+            return { ...entry };
+          });
+
+          if (doneTask) {
+            this.events.publish({
+              type: "task.updated",
+              action: "updated",
+              taskId: doneTask.id,
+              task: doneTask
+            });
+            void this.teamPrService
+              .createSubtaskPullRequest(doneTask, { prStrategy: workspace.prStrategy ?? "independent" })
+              .catch((err) => {
+                console.error("TeamPrService.createSubtaskPullRequest failed", err);
+              });
+          }
+        }
+      } else if (workspace.autoApproveSubtasks) {
+        const doneTask = await this.store.updateState((state) => {
+          const idx = state.tasks.findIndex((t) => t.id === task.id);
+          if (idx === -1) return null;
+          const entry = state.tasks[idx]!;
+          if (entry.column !== "review") return null;
+          entry.column = "done";
+          entry.rejected = true;
+          entry.order = this.nextOrderFromTasks("done", state.tasks);
+          entry.updatedAt = new Date().toISOString();
+          return { ...entry };
+        });
+
+        if (doneTask) {
+          this.events.publish({
+            type: "task.updated",
+            action: "updated",
+            taskId: doneTask.id,
+            task: doneTask
+          });
+        }
+      }
+
+      await this.checkAndHandleTeamCompletion(parentTaskId, null);
+    }
   }
 
   private async checkAndHandleTeamCompletion(
     parentTaskId: string,
-    teamId: string
+    teamId: string | null
   ): Promise<void> {
     const result = await this.store.updateState((state) => {
       const subtasks = state.tasks.filter(
-        (t) => t.parentTaskId === parentTaskId && t.teamId === teamId
+        teamId !== null
+          ? (t) => t.parentTaskId === parentTaskId && t.teamId === teamId
+          : (t) => t.parentTaskId === parentTaskId && !t.teamId
       );
       if (subtasks.length === 0) {
         return null;
@@ -723,17 +977,35 @@ export class BoardService {
       })
     ];
     const payload = truncateTeamMessagePayload(summaryLines.join("\n"));
-    this.publishTeamThreadMessage({
-      teamId,
-      parentTaskId,
-      taskId: parentTaskId,
-      agentName: "system",
-      fromAgentId: "system",
-      senderType: "system",
-      messageType: "status",
-      payload,
-      createdAt: now
-    });
+    if (teamId !== null) {
+      this.publishTeamThreadMessage({
+        teamId,
+        parentTaskId,
+        taskId: parentTaskId,
+        agentName: "system",
+        fromAgentId: "system",
+        senderType: "system",
+        messageType: "status",
+        payload,
+        createdAt: now
+      });
+    } else {
+      // Workspace path: use the parent task's workspaceId
+      const parentTask = this.store.listTasks().find((t) => t.id === parentTaskId);
+      if (parentTask) {
+        this.publishTeamThreadMessage({
+          workspaceId: parentTask.workspaceId,
+          parentTaskId,
+          taskId: parentTaskId,
+          agentName: "system",
+          fromAgentId: "system",
+          senderType: "system",
+          messageType: "status",
+          payload,
+          createdAt: now
+        });
+      }
+    }
     this.events.publish({
       type: "task.updated",
       action: "updated",
@@ -743,7 +1015,8 @@ export class BoardService {
   }
 
   private publishTeamThreadMessage(input: {
-    teamId: string;
+    teamId?: string;
+    workspaceId?: string;
     parentTaskId: string;
     taskId?: string;
     agentName: string;
@@ -752,31 +1025,56 @@ export class BoardService {
     messageType: TeamMessage["messageType"];
     payload: string;
     createdAt?: string;
-  }): TeamMessage {
+  }): void {
     const createdAt = input.createdAt ?? new Date().toISOString();
-    const item: TeamMessage = {
-      id: createId(),
-      teamId: input.teamId,
-      parentTaskId: input.parentTaskId,
-      taskId: input.taskId,
-      agentName: input.agentName,
-      senderType: input.senderType,
-      messageType: input.messageType,
-      content: input.payload,
-      createdAt
-    };
 
-    this.store.appendTeamMessage(item);
-    this.events.publish(
-      buildTeamAgentMessageEvent({
-        teamId: input.teamId,
+    if (input.workspaceId) {
+      // Workspace-agent path: write to task_messages
+      const item: TaskMessage = {
+        id: createId(),
         parentTaskId: input.parentTaskId,
-        fromAgentId: input.fromAgentId,
+        taskId: input.taskId,
+        agentName: input.agentName,
+        senderType: input.senderType,
         messageType: input.messageType,
-        payload: input.payload
-      })
-    );
-    return item;
+        content: input.payload,
+        createdAt
+      };
+      this.store.appendTaskMessage(item);
+      this.events.publish(
+        buildTeamAgentMessageEvent({
+          teamId: input.workspaceId,
+          parentTaskId: input.parentTaskId,
+          fromAgentId: input.fromAgentId,
+          messageType: input.messageType,
+          payload: input.payload
+        })
+      );
+    } else {
+      // Legacy team path: write to team_messages
+      const teamId = input.teamId!;
+      const item: TeamMessage = {
+        id: createId(),
+        teamId,
+        parentTaskId: input.parentTaskId,
+        taskId: input.taskId,
+        agentName: input.agentName,
+        senderType: input.senderType,
+        messageType: input.messageType,
+        content: input.payload,
+        createdAt
+      };
+      this.store.appendTeamMessage(item);
+      this.events.publish(
+        buildTeamAgentMessageEvent({
+          teamId,
+          parentTaskId: input.parentTaskId,
+          fromAgentId: input.fromAgentId,
+          messageType: input.messageType,
+          payload: input.payload
+        })
+      );
+    }
   }
 
   private async extractCoordinatorOutput(runId: string): Promise<string> {
@@ -901,10 +1199,13 @@ export class BoardService {
     });
   }
 
-  private buildCoordinatorSummary(subtasks: Task[], team: AgentTeam): string {
+  private buildCoordinatorSummary(
+    subtasks: Task[],
+    resolveAgentName: (subtask: Task) => string
+  ): string {
     const lines = ["Coordinator created subtasks:"];
     for (const subtask of subtasks) {
-      const agentName = this.resolveAssignedTeamAgent(team, subtask).agentName;
+      const agentName = resolveAgentName(subtask);
       const dependencySummary =
         subtask.dependencies.length > 0
           ? ` (depends on ${subtask.dependencies.length} task${subtask.dependencies.length === 1 ? "" : "s"})`
@@ -912,6 +1213,116 @@ export class BoardService {
       lines.push(`- ${subtask.title} -> ${agentName}${dependencySummary}`);
     }
     return lines.join("\n");
+  }
+
+  private async createCoordinatorSubtasksWs(
+    parentTask: Task,
+    agents: WorkspaceAgent[],
+    workspace: Workspace,
+    drafts: ReturnType<typeof parseCoordinatorSubtasks>
+  ): Promise<{ parentTask: Task; subtasks: Task[] }> {
+    const existingTasks = this.store.listTasks();
+    if (existingTasks.some((task) => task.parentTaskId === parentTask.id)) {
+      throw new CoordinatorSubtaskParseError(
+        "Parent task already has subtasks; refusing to create duplicates"
+      );
+    }
+
+    const agentBuckets = new Map<string, WorkspaceAgent[]>();
+    for (const agent of agents) {
+      const bucket = agentBuckets.get(agent.name) ?? [];
+      bucket.push(agent);
+      agentBuckets.set(agent.name, bucket);
+    }
+
+    const titleToId = new Map<string, string>();
+    const draftAssignments = drafts.map((draft) => {
+      const matches = agentBuckets.get(draft.assignedAgent) ?? [];
+      if (matches.length === 0) {
+        throw new CoordinatorSubtaskParseError(
+          `Coordinator assigned unknown agent "${draft.assignedAgent}"`
+        );
+      }
+      if (matches.length > 1) {
+        throw new CoordinatorSubtaskParseError(
+          `Coordinator assigned ambiguous agent "${draft.assignedAgent}"`
+        );
+      }
+      if (titleToId.has(draft.title)) {
+        throw new CoordinatorSubtaskParseError(
+          `Coordinator emitted duplicate subtask title "${draft.title}"`
+        );
+      }
+      const taskId = createId();
+      titleToId.set(draft.title, taskId);
+      return {
+        draft,
+        agent: matches[0]!,
+        taskId
+      };
+    });
+
+    const createdAt = new Date().toISOString();
+    return this.store.updateState((state) => {
+      const parentIndex = state.tasks.findIndex((task) => task.id === parentTask.id);
+      if (parentIndex === -1) {
+        throw new AppError(404, "TASK_NOT_FOUND", "Parent coordinator task not found");
+      }
+
+      const plannedSubtasks = draftAssignments.map(({ draft, agent, taskId }, index) => {
+        const dependencyIds = draft.dependencies.map((dependencyTitle) => {
+          const dependencyId = titleToId.get(dependencyTitle);
+          if (!dependencyId) {
+            throw new CoordinatorSubtaskParseError(
+              `Coordinator referenced unknown dependency "${dependencyTitle}"`
+            );
+          }
+          return dependencyId;
+        });
+
+        return {
+          id: taskId,
+          title: draft.title,
+          description: draft.description,
+          workspaceId: workspace.id,
+          column: "todo",
+          order: this.nextOrderFromTasks("todo", state.tasks, index),
+          runnerType: agent.runnerConfig.type,
+          runnerConfig: agent.runnerConfig,
+          dependencies: dependencyIds,
+          worktree: createTaskWorktree(taskId, draft.title, {
+            workspace,
+            baseRef: workspace.isGitRepo ? parentTask.worktree.baseRef : undefined,
+            branchName: workspace.isGitRepo
+              ? deriveTeamSubtaskBranchName(workspace.id, taskId, draft.title)
+              : undefined
+          }),
+          parentTaskId: parentTask.id,
+          teamAgentId: agent.id,
+          rejected: false,
+          createdAt,
+          updatedAt: createdAt
+        } satisfies Task;
+      });
+
+      const cycle = DependencyGraph.fromTasks([...state.tasks, ...plannedSubtasks]).detectCycle();
+      if (cycle) {
+        throw new CoordinatorSubtaskParseError(
+          `Coordinator emitted circular subtask dependencies: ${cycle.join(" -> ")}`
+        );
+      }
+
+      state.tasks.push(...plannedSubtasks);
+      const parent = state.tasks[parentIndex]!;
+      parent.column = "running";
+      parent.order = this.topOrderFromTasks("running", state.tasks, parent.id);
+      parent.updatedAt = createdAt;
+
+      return {
+        parentTask: { ...parent },
+        subtasks: plannedSubtasks.map((task) => ({ ...task }))
+      };
+    });
   }
 
   private nextOrderFromTasks(
@@ -1164,14 +1575,19 @@ export class BoardService {
     if (!title) {
       throw new AppError(400, "INVALID_TASK", "Task title is required");
     }
-    const coordinator = team?.agents.find((agent) => agent.role === "coordinator");
-    if (team && !coordinator) {
+    const teamCoordinator = team?.agents.find((agent) => agent.role === "coordinator");
+    if (team && !teamCoordinator) {
       throw new AppError(
         400,
         "INVALID_TEAM",
         "Team must have exactly 1 coordinator"
       );
     }
+    // When no team is specified, check if the workspace has a coordinator agent.
+    const wsCoordinator = !team
+      ? this.store.listWorkspaceAgents(workspace.id).find((a) => a.role === "coordinator")
+      : undefined;
+    const coordinator = teamCoordinator ?? wsCoordinator;
     const runnerType = coordinator?.runnerConfig.type ?? input.runnerType;
     const runnerConfig = coordinator?.runnerConfig ?? input.runnerConfig;
     this.ensureRunnerConfig(runnerType, runnerConfig);
@@ -2032,7 +2448,7 @@ export class BoardService {
     // Approve is the explicit human decision that a succeeded review result
     // should count as complete work for parent aggregation.
     this.publishTeamThreadMessage({
-      teamId: team.id,
+      ...(team ? { teamId: team.id } : { workspaceId: task.workspaceId }),
       parentTaskId: parentTask.id,
       taskId: approvedTask.id,
       agentName: "User",
@@ -2041,7 +2457,7 @@ export class BoardService {
       messageType: "status",
       payload: truncateTeamMessagePayload(`User approved subtask "${approvedTask.title}".`)
     });
-    await this.checkAndHandleTeamCompletion(parentTask.id, team.id);
+    await this.checkAndHandleTeamCompletion(parentTask.id, team?.id ?? null);
     return approvedTask;
   }
 
@@ -2077,11 +2493,8 @@ export class BoardService {
       taskId: rejectedTask.id,
       task: rejectedTask
     });
-    // Reject is also a terminal decision: even a succeeded run can be
-    // discarded intentionally, while still allowing parent aggregation to
-    // continue once every subtask reaches a final outcome.
     this.publishTeamThreadMessage({
-      teamId: team.id,
+      ...(team ? { teamId: team.id } : { workspaceId: task.workspaceId }),
       parentTaskId: parentTask.id,
       taskId: rejectedTask.id,
       agentName: "User",
@@ -2094,7 +2507,7 @@ export class BoardService {
           : `User rejected subtask "${rejectedTask.title}".`
       )
     });
-    await this.checkAndHandleTeamCompletion(parentTask.id, team.id);
+    await this.checkAndHandleTeamCompletion(parentTask.id, team?.id ?? null);
     return rejectedTask;
   }
 
@@ -2131,7 +2544,7 @@ export class BoardService {
       task: queuedTask
     });
     this.publishTeamThreadMessage({
-      teamId: team.id,
+      ...(team ? { teamId: team.id } : { workspaceId: task.workspaceId }),
       parentTaskId: parentTask.id,
       taskId: queuedTask.id,
       agentName: "User",
@@ -2148,7 +2561,7 @@ export class BoardService {
   }
 
   public async cancelSubtask(teamId: string, taskId: string): Promise<Task> {
-    const { task, team, parentTask } = this.requireTeamSubtask(taskId, teamId);
+    const { task, team, parentTask } = this.requireTeamSubtask(taskId, teamId ?? undefined);
 
     const cancellation = await this.store.updateState((state) => {
       const taskIndex = state.tasks.findIndex((entry) => entry.id === task.id);
@@ -2189,7 +2602,7 @@ export class BoardService {
       task: cancellation.task
     });
     this.publishTeamThreadMessage({
-      teamId: team.id,
+      ...(team ? { teamId: team.id } : { workspaceId: task.workspaceId }),
       parentTaskId: parentTask.id,
       taskId: cancellation.task.id,
       agentName: "User",
@@ -2199,7 +2612,7 @@ export class BoardService {
       payload: truncateTeamMessagePayload(`User cancelled subtask "${cancellation.task.title}".`)
     });
 
-    await this.checkAndHandleTeamCompletion(parentTask.id, team.id);
+    await this.checkAndHandleTeamCompletion(parentTask.id, team?.id ?? null);
 
     if (cancellation.shouldStopRun) {
       void this.runLifecycle.stopRun(taskId).catch(() => {
@@ -2215,37 +2628,49 @@ export class BoardService {
     teamId?: string
   ): {
     task: Task;
-    team: AgentTeam;
+    team: AgentTeam | null;
     parentTask: Task;
   } {
     const task = this.requireTask(taskId);
-    if (!task.teamId || !task.parentTaskId) {
+    if (!task.parentTaskId) {
       throw new AppError(409, "TASK_NOT_TEAM_SUBTASK", "Task is not a team subtask");
     }
-    if (teamId && task.teamId !== teamId) {
-      throw new AppError(
-        409,
-        "INVALID_TEAM_TASK",
-        "Task does not belong to the selected team"
-      );
+
+    if (task.teamId) {
+      if (teamId && task.teamId !== teamId) {
+        throw new AppError(
+          409,
+          "INVALID_TEAM_TASK",
+          "Task does not belong to the selected team"
+        );
+      }
+      const team = this.getTeam(task.teamId);
+      const parentTask = this.requireTask(task.parentTaskId);
+      if (parentTask.teamId !== team.id || parentTask.parentTaskId) {
+        throw new AppError(
+          409,
+          "INVALID_PARENT_TASK",
+          "parentTaskId must reference a parent task owned by the same team"
+        );
+      }
+      return { task, team, parentTask };
     }
 
-    const team = this.getTeam(task.teamId);
+    // Workspace-agent subtask (no teamId)
     const parentTask = this.requireTask(task.parentTaskId);
-    if (parentTask.teamId !== team.id || parentTask.parentTaskId) {
+    if (parentTask.parentTaskId) {
       throw new AppError(
         409,
         "INVALID_PARENT_TASK",
-        "parentTaskId must reference a parent task owned by the same team"
+        "parentTaskId must reference a parent coordinator task"
       );
     }
-
-    return { task, team, parentTask };
+    return { task, team: null, parentTask };
   }
 
   private requireReviewableTeamSubtask(taskId: string): {
     task: Task;
-    team: AgentTeam;
+    team: AgentTeam | null;
     parentTask: Task;
   } {
     const { task, team, parentTask } = this.requireTeamSubtask(taskId);
@@ -2320,7 +2745,10 @@ export class BoardService {
       parentTaskId: parentTask.id,
       fromAgentId: coordinator.id,
       messageType: "context",
-      payload: this.buildCoordinatorSummary(subtasks, team)
+      payload: this.buildCoordinatorSummary(
+        subtasks,
+        (subtask) => this.resolveAssignedTeamAgent(team, subtask).agentName
+      )
     });
     this.store.appendTeamMessage({
       id: createId(),
@@ -2388,6 +2816,136 @@ export class BoardService {
       });
     }
     // Parent task remains in "review" so the user can re-run the coordinator.
+  }
+
+  // -------------------------------------------------------------------------
+  // Workspace-scoped Coordinator Proposals (Phase 4)
+  // -------------------------------------------------------------------------
+
+  public listProposalsByWorkspace(
+    workspaceId: string,
+    query: { parentTaskId?: string }
+  ): CoordinatorProposal[] {
+    this.requireWorkspace(workspaceId);
+    return this.store.listProposalsByWorkspace(workspaceId, query.parentTaskId);
+  }
+
+  public getProposalByWorkspace(
+    workspaceId: string,
+    proposalId: string
+  ): CoordinatorProposal {
+    this.requireWorkspace(workspaceId);
+    const proposal = this.store.getProposal(proposalId);
+    if (!proposal || proposal.workspaceId !== workspaceId) {
+      throw new AppError(404, "PROPOSAL_NOT_FOUND", "Coordinator proposal not found");
+    }
+    return proposal;
+  }
+
+  public async approveProposalByWorkspace(
+    workspaceId: string,
+    proposalId: string
+  ): Promise<void> {
+    const proposal = this.getProposalByWorkspace(workspaceId, proposalId);
+
+    const now = new Date().toISOString();
+    const claimed = this.store.updateProposalStatusCAS(proposalId, "pending", "approved", now);
+    if (!claimed) {
+      throw new AppError(409, "PROPOSAL_ALREADY_DECIDED", "Proposal has already been approved or rejected");
+    }
+
+    const parentTask = this.requireTask(proposal.parentTaskId);
+    const workspace = this.requireWorkspace(workspaceId);
+    const agents = this.store.listWorkspaceAgents(workspaceId);
+
+    let updatedParent: Task;
+    let subtasks: Task[];
+    try {
+      ({ parentTask: updatedParent, subtasks } = await this.createCoordinatorSubtasksWs(
+        parentTask,
+        agents,
+        workspace,
+        proposal.drafts
+      ));
+    } catch (error) {
+      this.store.updateProposalStatus(proposalId, "pending", null);
+      throw error;
+    }
+
+    const coordinator = this.resolveCoordinator(agents);
+    const summaryPayload = this.buildCoordinatorSummary(
+      subtasks,
+      (subtask) => this.resolveAssignedAgent(agents, subtask).name
+    );
+    const messageEvent = buildTeamAgentMessageEvent({
+      teamId: workspaceId,
+      parentTaskId: parentTask.id,
+      fromAgentId: coordinator.id,
+      messageType: "context",
+      payload: summaryPayload
+    });
+    this.store.appendTaskMessage({
+      id: createId(),
+      parentTaskId: parentTask.id,
+      taskId: parentTask.id,
+      agentName: coordinator.name,
+      senderType: "agent",
+      messageType: messageEvent.messageType,
+      content: messageEvent.payload,
+      createdAt: new Date().toISOString()
+    });
+
+    this.events.publish({
+      type: "task.updated",
+      action: "updated",
+      taskId: updatedParent.id,
+      task: updatedParent
+    });
+    for (const subtask of subtasks) {
+      this.events.publish({
+        type: "task.updated",
+        action: "created",
+        taskId: subtask.id,
+        task: subtask
+      });
+    }
+    this.events.publish(messageEvent);
+    this.events.publish(
+      buildTeamTaskCreatedEvent({
+        teamId: workspaceId,
+        parentTaskId: parentTask.id,
+        subtasks: subtasks.map((subtask) => ({
+          taskId: subtask.id,
+          title: subtask.title,
+          agentName: this.resolveAssignedAgent(agents, subtask).name
+        }))
+      })
+    );
+    this.events.publish({
+      type: "team.proposal.updated",
+      teamId: workspaceId,
+      parentTaskId: parentTask.id,
+      proposal: claimed
+    });
+
+    await this.scheduler.evaluate();
+  }
+
+  public rejectProposalByWorkspace(workspaceId: string, proposalId: string): void {
+    const proposal = this.getProposalByWorkspace(workspaceId, proposalId);
+    if (proposal.status !== "pending") {
+      throw new AppError(409, "PROPOSAL_ALREADY_DECIDED", "Proposal has already been approved or rejected");
+    }
+    const now = new Date().toISOString();
+    const updated = this.store.updateProposalStatus(proposalId, "rejected", now);
+    if (updated) {
+      this.events.publish({
+        type: "team.proposal.updated",
+        teamId: workspaceId,
+        parentTaskId: proposal.parentTaskId,
+        proposal: updated
+      });
+    }
   }
 
   private nextOrder(column: Task["column"]): number {

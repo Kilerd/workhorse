@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
-import type { AgentTeam, Task } from "@workhorse/contracts";
+import type { AgentTeam, Task, TeamPrStrategy } from "@workhorse/contracts";
 
 import type { EventBus } from "../ws/event-bus.js";
 import { normalizeGitHubRepositoryFullName } from "../lib/github.js";
@@ -110,9 +110,13 @@ export class TeamPrService {
    * Push branch and create a GitHub PR for an approved subtask.
    * Only "independent" strategy is supported in v1.
    * Best-effort: failures are reported via team message but never propagate.
+   * @param source Either an AgentTeam (legacy) or a minimal object with prStrategy (workspace path)
    */
-  async createSubtaskPullRequest(task: Task, team: AgentTeam): Promise<string | null> {
-    if (team.prStrategy !== "independent") {
+  async createSubtaskPullRequest(
+    task: Task,
+    source: AgentTeam | { prStrategy: TeamPrStrategy }
+  ): Promise<string | null> {
+    if (source.prStrategy !== "independent") {
       return null;
     }
 
@@ -140,7 +144,7 @@ export class TeamPrService {
     if (pushError) {
       this.appendTeamStatusMessage(
         task,
-        team,
+        source,
         `Failed to push branch for subtask "${task.title}": ${pushError}`
       );
       return null;
@@ -150,7 +154,7 @@ export class TeamPrService {
     if (!repoFullName) {
       this.appendTeamStatusMessage(
         task,
-        team,
+        source,
         `Failed to create PR for subtask "${task.title}": could not determine GitHub repository`
       );
       return null;
@@ -169,7 +173,7 @@ export class TeamPrService {
       const message = err instanceof Error ? err.message : String(err);
       this.appendTeamStatusMessage(
         task,
-        team,
+        source,
         `Failed to create PR for subtask "${task.title}": ${message}`
       );
       return null;
@@ -196,33 +200,61 @@ export class TeamPrService {
 
     this.appendTeamStatusMessage(
       task,
-      team,
+      source,
       `PR created for subtask "${task.title}": ${prUrl}`
     );
     return prUrl;
   }
 
-  private appendTeamStatusMessage(task: Task, team: AgentTeam, content: string): void {
+  private appendTeamStatusMessage(
+    task: Task,
+    source: AgentTeam | { prStrategy: TeamPrStrategy },
+    content: string
+  ): void {
     const now = new Date().toISOString();
     const truncated = truncateTeamMessagePayload(content);
-    this.store.appendTeamMessage({
-      id: createId(),
-      teamId: team.id,
-      parentTaskId: task.parentTaskId!,
-      taskId: task.id,
-      agentName: "system",
-      senderType: "system",
-      messageType: "status",
-      content: truncated,
-      createdAt: now
-    });
-    this.events.publish({
-      type: "team.agent.message",
-      teamId: team.id,
-      parentTaskId: task.parentTaskId!,
-      fromAgentId: "system",
-      messageType: "status",
-      payload: truncated
-    });
+    // Dispatch to team_messages (legacy) or task_messages (workspace-agent path)
+    if ("id" in source) {
+      // AgentTeam has an id field
+      this.store.appendTeamMessage({
+        id: createId(),
+        teamId: source.id,
+        parentTaskId: task.parentTaskId!,
+        taskId: task.id,
+        agentName: "system",
+        senderType: "system",
+        messageType: "status",
+        content: truncated,
+        createdAt: now
+      });
+      this.events.publish({
+        type: "team.agent.message",
+        teamId: source.id,
+        parentTaskId: task.parentTaskId!,
+        fromAgentId: "system",
+        messageType: "status",
+        payload: truncated
+      });
+    } else {
+      // Workspace-agent path: use task_messages keyed by workspaceId
+      this.store.appendTaskMessage({
+        id: createId(),
+        parentTaskId: task.parentTaskId!,
+        taskId: task.id,
+        agentName: "system",
+        senderType: "system",
+        messageType: "status",
+        content: truncated,
+        createdAt: now
+      });
+      this.events.publish({
+        type: "team.agent.message",
+        teamId: task.workspaceId,
+        parentTaskId: task.parentTaskId!,
+        fromAgentId: "system",
+        messageType: "status",
+        payload: truncated
+      });
+    }
   }
 }
