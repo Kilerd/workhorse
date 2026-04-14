@@ -2382,7 +2382,7 @@ export class BoardService {
     if (updated) {
       this.events.publish({
         type: "team.proposal.updated",
-        teamId: proposal.teamId,
+        teamId: teamId,
         parentTaskId: proposal.parentTaskId,
         proposal: updated
       });

@@ -142,6 +142,10 @@ export interface Workspace {
   isGitRepo: boolean;
   codexSettings: WorkspaceCodexSettings;
   promptTemplates?: WorkspacePromptTemplates;
+  /** PR creation strategy for workspace-level agent coordination. */
+  prStrategy?: TeamPrStrategy;
+  /** When true, succeeded subtasks skip manual human approval. */
+  autoApproveSubtasks?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -292,6 +296,45 @@ export interface AgentTeam {
   updatedAt: string;
 }
 
+// === Account-level Agents ===
+
+/**
+ * An account-level agent definition. Agents are created once and can be
+ * mounted to multiple workspaces with different roles.
+ */
+export interface AccountAgent {
+  id: string;
+  name: string;
+  description?: string;
+  runnerConfig: RunnerConfig;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * An AccountAgent with the role it was assigned when mounted to a workspace.
+ * Returned by listWorkspaceAgents().
+ */
+export interface WorkspaceAgent extends AccountAgent {
+  role: AgentRole;
+}
+
+// === Task Messages (workspace-level agent communication) ===
+
+/** A message in a task's coordination thread, not tied to any team entity. */
+export interface TaskMessage {
+  id: string;
+  /** The parent coordinator task that owns this execution thread. */
+  parentTaskId: string;
+  /** The specific subtask this message is associated with (if any). */
+  taskId?: string;
+  agentName: string;
+  senderType: TeamMessageSenderType;
+  messageType: TeamMessageType;
+  content: string;
+  createdAt: string;
+}
+
 // === Coordinator Proposals ===
 
 export type CoordinatorProposalStatus = "pending" | "approved" | "rejected";
@@ -310,7 +353,10 @@ export interface CoordinatorProposalDraft {
  */
 export interface CoordinatorProposal {
   id: string;
-  teamId: string;
+  /** Legacy: team-scoped proposals. Null for workspace-scoped proposals. */
+  teamId: string | null;
+  /** Set for workspace-scoped proposals (new model). */
+  workspaceId?: string;
   parentTaskId: string;
   status: CoordinatorProposalStatus;
   drafts: CoordinatorProposalDraft[];
