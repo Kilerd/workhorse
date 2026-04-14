@@ -251,6 +251,9 @@ export type AgentRole = "coordinator" | "worker";
 
 export type TeamPrStrategy = "independent" | "stacked" | "single";
 
+/**
+ * @deprecated Use AccountAgent / WorkspaceAgent from the Phase 4 agent model.
+ */
 export interface TeamAgent {
   /** Unique agent identifier within the team (nanoid). */
   id: string;
@@ -263,6 +266,9 @@ export type TeamMessageSenderType = "agent" | "human" | "system";
 
 export type TeamMessageType = "status" | "artifact" | "context" | "feedback";
 
+/**
+ * @deprecated Use TaskMessage from the Phase 4 agent model.
+ */
 export interface TeamMessage {
   id: string;
   teamId: string;
@@ -280,6 +286,9 @@ export interface TeamMessage {
   createdAt: string;
 }
 
+/**
+ * @deprecated Use workspace-mounted agents (AccountAgent / WorkspaceAgent) from the Phase 4 agent model.
+ */
 export interface AgentTeam {
   id: string;
   name: string;

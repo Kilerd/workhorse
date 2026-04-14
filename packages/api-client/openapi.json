@@ -1813,6 +1813,590 @@
           }
         }
       }
+    },
+    "/api/agents": {
+      "get": {
+        "operationId": "listAgents",
+        "summary": "List all account-level agents",
+        "tags": [
+          "Agents"
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent collection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListAgentsResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createAgent",
+        "summary": "Create a new account-level agent",
+        "tags": [
+          "Agents"
+        ],
+        "responses": {
+          "201": {
+            "description": "Created agent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgentBody"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agents/{agentId}": {
+      "get": {
+        "operationId": "getAgent",
+        "summary": "Get an agent by ID",
+        "tags": [
+          "Agents"
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "agentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "updateAgent",
+        "summary": "Update an agent",
+        "tags": [
+          "Agents"
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated agent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "agentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAgentBody"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteAgent",
+        "summary": "Delete an agent",
+        "tags": [
+          "Agents"
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted agent id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteAgentResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "agentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/workspaces/{workspaceId}/agents": {
+      "get": {
+        "operationId": "listWorkspaceAgents",
+        "summary": "List agents mounted to a workspace",
+        "tags": [
+          "Agents"
+        ],
+        "responses": {
+          "200": {
+            "description": "Workspace agent collection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListWorkspaceAgentsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Workspace not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "operationId": "mountAgent",
+        "summary": "Mount an agent to a workspace",
+        "tags": [
+          "Agents"
+        ],
+        "responses": {
+          "201": {
+            "description": "Mounted workspace agent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceAgentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Workspace or agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MountAgentBody"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces/{workspaceId}/agents/{agentId}": {
+      "delete": {
+        "operationId": "unmountAgent",
+        "summary": "Unmount an agent from a workspace",
+        "tags": [
+          "Agents"
+        ],
+        "responses": {
+          "200": {
+            "description": "Unmounted agent id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteAgentResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Workspace agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "agentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "updateAgentRole",
+        "summary": "Update the role of a workspace-mounted agent",
+        "tags": [
+          "Agents"
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated workspace agent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceAgentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Workspace agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "agentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAgentRoleBody"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces/{workspaceId}/config": {
+      "patch": {
+        "operationId": "updateWorkspaceConfig",
+        "summary": "Update workspace agent coordination config",
+        "tags": [
+          "Agents"
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Workspace not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWorkspaceConfigBody"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces/{workspaceId}/task-messages": {
+      "get": {
+        "operationId": "listTaskMessages",
+        "summary": "List task coordination messages for a workspace",
+        "tags": [
+          "Agents"
+        ],
+        "responses": {
+          "200": {
+            "description": "Task message collection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskMessagesResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Workspace not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "parentTaskId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "operationId": "postTaskMessage",
+        "summary": "Post a coordination message into a task thread",
+        "tags": [
+          "Agents"
+        ],
+        "responses": {
+          "201": {
+            "description": "Created task message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskMessageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Workspace not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostTaskMessageBody"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1961,6 +2545,30 @@
           },
           "promptTemplates": {
             "$ref": "#/components/schemas/WorkspacePromptTemplates"
+          },
+          "prStrategy": {
+            "oneOf": [
+              {
+                "enum": [
+                  "independent"
+                ]
+              },
+              {
+                "enum": [
+                  "stacked"
+                ]
+              },
+              {
+                "enum": [
+                  "single"
+                ]
+              }
+            ],
+            "description": "PR creation strategy for workspace-level agent coordination."
+          },
+          "autoApproveSubtasks": {
+            "type": "boolean",
+            "description": "When true, succeeded subtasks skip manual human approval."
           },
           "createdAt": {
             "type": "string"
@@ -2272,11 +2880,6 @@
         "oneOf": [
           {
             "enum": [
-              "review"
-            ]
-          },
-          {
-            "enum": [
               "backlog"
             ]
           },
@@ -2293,6 +2896,11 @@
           {
             "enum": [
               "running"
+            ]
+          },
+          {
+            "enum": [
+              "review"
             ]
           },
           {
@@ -2390,17 +2998,17 @@
               },
               {
                 "enum": [
+                  "default"
+                ]
+              },
+              {
+                "enum": [
                   "acceptEdits"
                 ]
               },
               {
                 "enum": [
                   "bypassPermissions"
-                ]
-              },
-              {
-                "enum": [
-                  "default"
                 ]
               },
               {
@@ -2804,11 +3412,6 @@
             "oneOf": [
               {
                 "enum": [
-                  "review"
-                ]
-              },
-              {
-                "enum": [
                   "backlog"
                 ]
               },
@@ -2825,6 +3428,11 @@
               {
                 "enum": [
                   "running"
+                ]
+              },
+              {
+                "enum": [
+                  "review"
                 ]
               },
               {
@@ -2944,11 +3552,6 @@
             "oneOf": [
               {
                 "enum": [
-                  "review"
-                ]
-              },
-              {
-                "enum": [
                   "backlog"
                 ]
               },
@@ -2965,6 +3568,11 @@
               {
                 "enum": [
                   "running"
+                ]
+              },
+              {
+                "enum": [
+                  "review"
                 ]
               },
               {
@@ -3898,17 +4506,17 @@
         "oneOf": [
           {
             "enum": [
+              "system"
+            ]
+          },
+          {
+            "enum": [
               "stdout"
             ]
           },
           {
             "enum": [
               "stderr"
-            ]
-          },
-          {
-            "enum": [
-              "system"
             ]
           }
         ]
@@ -3917,12 +4525,17 @@
         "oneOf": [
           {
             "enum": [
-              "plan"
+              "agent"
             ]
           },
           {
             "enum": [
               "system"
+            ]
+          },
+          {
+            "enum": [
+              "status"
             ]
           },
           {
@@ -3932,12 +4545,12 @@
           },
           {
             "enum": [
-              "user"
+              "plan"
             ]
           },
           {
             "enum": [
-              "agent"
+              "user"
             ]
           },
           {
@@ -3948,11 +4561,6 @@
           {
             "enum": [
               "tool_output"
-            ]
-          },
-          {
-            "enum": [
-              "status"
             ]
           }
         ]
@@ -4411,17 +5019,17 @@
         "oneOf": [
           {
             "enum": [
-              "system"
-            ]
-          },
-          {
-            "enum": [
               "agent"
             ]
           },
           {
             "enum": [
               "human"
+            ]
+          },
+          {
+            "enum": [
+              "system"
             ]
           }
         ]
@@ -4795,6 +5403,507 @@
         "properties": {
           "item": {
             "$ref": "#/components/schemas/TeamMessage"
+          }
+        },
+        "required": [
+          "item"
+        ]
+      },
+      "AccountAgent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "runnerConfig": {
+            "$ref": "#/components/schemas/RunnerConfig"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "runnerConfig",
+          "createdAt",
+          "updatedAt"
+        ],
+        "description": "An account-level agent definition. Agents are created once and can be\nmounted to multiple workspaces with different roles."
+      },
+      "WorkspaceAgent": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/AgentRole"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "runnerConfig": {
+            "$ref": "#/components/schemas/RunnerConfig"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "id",
+          "name",
+          "runnerConfig",
+          "createdAt",
+          "updatedAt"
+        ],
+        "description": "An AccountAgent with the role it was assigned when mounted to a workspace.\nReturned by listWorkspaceAgents()."
+      },
+      "TaskMessage": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "parentTaskId": {
+            "type": "string",
+            "description": "The parent coordinator task that owns this execution thread."
+          },
+          "taskId": {
+            "type": "string",
+            "description": "The specific subtask this message is associated with (if any)."
+          },
+          "agentName": {
+            "type": "string"
+          },
+          "senderType": {
+            "$ref": "#/components/schemas/TeamMessageSenderType"
+          },
+          "messageType": {
+            "$ref": "#/components/schemas/TeamMessageType"
+          },
+          "content": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "parentTaskId",
+          "agentName",
+          "senderType",
+          "messageType",
+          "content",
+          "createdAt"
+        ],
+        "description": "A message in a task's coordination thread, not tied to any team entity."
+      },
+      "CreateAgentBody": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "runnerConfig": {
+            "$ref": "#/components/schemas/RunnerConfig"
+          }
+        },
+        "required": [
+          "name",
+          "runnerConfig"
+        ]
+      },
+      "UpdateAgentBody": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "runnerConfig": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ShellRunnerConfig"
+              },
+              {
+                "$ref": "#/components/schemas/ClaudeRunnerConfig"
+              },
+              {
+                "$ref": "#/components/schemas/CodexRunnerConfig"
+              }
+            ],
+            "discriminator": {
+              "propertyName": "type",
+              "mapping": {
+                "shell": "#/components/schemas/ShellRunnerConfig",
+                "claude": "#/components/schemas/ClaudeRunnerConfig",
+                "codex": "#/components/schemas/CodexRunnerConfig"
+              }
+            }
+          }
+        },
+        "required": []
+      },
+      "AgentParams": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "agentId"
+        ]
+      },
+      "ListWorkspaceAgentsParams": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId"
+        ]
+      },
+      "MountAgentBody": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/AgentRole"
+          }
+        },
+        "required": [
+          "agentId",
+          "role"
+        ]
+      },
+      "WorkspaceAgentParams": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          },
+          "agentId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId",
+          "agentId"
+        ]
+      },
+      "UpdateAgentRoleBody": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/AgentRole"
+          }
+        },
+        "required": [
+          "role"
+        ]
+      },
+      "UpdateWorkspaceConfigBody": {
+        "type": "object",
+        "properties": {
+          "prStrategy": {
+            "oneOf": [
+              {
+                "enum": [
+                  "independent"
+                ]
+              },
+              {
+                "enum": [
+                  "stacked"
+                ]
+              },
+              {
+                "enum": [
+                  "single"
+                ]
+              }
+            ]
+          },
+          "autoApproveSubtasks": {
+            "type": "boolean"
+          }
+        },
+        "required": []
+      },
+      "UpdateWorkspaceConfigParams": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId"
+        ]
+      },
+      "ListTaskMessagesParams": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId"
+        ]
+      },
+      "ListTaskMessagesQuery": {
+        "type": "object",
+        "properties": {
+          "parentTaskId": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "PostTaskMessageBody": {
+        "type": "object",
+        "properties": {
+          "parentTaskId": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 10240
+          }
+        },
+        "required": [
+          "parentTaskId",
+          "content"
+        ]
+      },
+      "PostTaskMessageParams": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId"
+        ]
+      },
+      "AgentResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/AgentData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "AgentData": {
+        "type": "object",
+        "properties": {
+          "agent": {
+            "$ref": "#/components/schemas/AccountAgent"
+          }
+        },
+        "required": [
+          "agent"
+        ]
+      },
+      "ListAgentsResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/ListAgentsData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "ListAgentsData": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountAgent"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "DeleteAgentResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/DeleteResult"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "WorkspaceAgentResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/WorkspaceAgentData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "WorkspaceAgentData": {
+        "type": "object",
+        "properties": {
+          "agent": {
+            "$ref": "#/components/schemas/WorkspaceAgent"
+          }
+        },
+        "required": [
+          "agent"
+        ]
+      },
+      "ListWorkspaceAgentsResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/ListWorkspaceAgentsData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "ListWorkspaceAgentsData": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceAgent"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "TaskMessagesResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/TaskMessagesData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "TaskMessagesData": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskMessage"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "TaskMessageResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/TaskMessageData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "TaskMessageData": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/TaskMessage"
           }
         },
         "required": [

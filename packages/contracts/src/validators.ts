@@ -1,16 +1,21 @@
 import typia from "typia";
 
 import type {
+  AgentData,
+  AgentParams,
+  AgentResponse,
   AgentTeamResponse,
   ApproveTaskParams,
   ApiError,
   ApproveProposalParams,
   CancelSubtaskParams,
+  CreateAgentBody,
   CreateTaskBody,
   CreateTeamBody,
   CreateWorkspaceBody,
   CleanupTaskWorktreeParams,
   CleanupTaskWorktreeResponse,
+  DeleteAgentResponse,
   DeleteTaskParams,
   DeleteTaskResponse,
   DeleteTeamParams,
@@ -21,11 +26,19 @@ import type {
   GetTaskDependenciesParams,
   GetTeamParams,
   HealthResponse,
+  ListAgentsData,
+  ListAgentsResponse,
   ListProposalsParams,
   ListProposalsQuery,
+  ListTaskMessagesParams,
+  ListTaskMessagesQuery,
   ListTeamMessagesQuery,
   ListTeamMessagesParams,
   ListTeamsQuery,
+  ListWorkspaceAgentsData,
+  ListWorkspaceAgentsParams,
+  ListWorkspaceAgentsResponse,
+  MountAgentBody,
   PickWorkspaceRootResponse,
   ListWorkspaceGitRefsParams,
   WorkspaceGitStatusParams,
@@ -35,6 +48,8 @@ import type {
   PlanFeedbackBody,
   PlanFeedbackParams,
   PlanFeedbackResponse,
+  PostTaskMessageBody,
+  PostTaskMessageParams,
   PostTeamMessageBody,
   PostTeamMessageParams,
   PlanTaskParams,
@@ -51,6 +66,10 @@ import type {
   TaskDependenciesResponse,
   TaskDiffParams,
   TaskDiffResponse,
+  TaskMessageData,
+  TaskMessageResponse,
+  TaskMessagesData,
+  TaskMessagesResponse,
   TeamMessagesResponse,
   TeamMessageResponse,
   TeamsResponse,
@@ -69,13 +88,20 @@ import type {
   TaskInputResponse,
   TaskResponse,
   TasksResponse,
+  UpdateAgentBody,
+  UpdateAgentRoleBody,
   UpdateTaskBody,
   UpdateTaskParams,
   UpdateSettingsBody,
   UpdateTeamBody,
   UpdateTeamParams,
   UpdateWorkspaceBody,
+  UpdateWorkspaceConfigBody,
+  UpdateWorkspaceConfigParams,
   UpdateWorkspaceParams,
+  WorkspaceAgentData,
+  WorkspaceAgentParams,
+  WorkspaceAgentResponse,
   WorkspaceGitRefsResponse,
   WorkspaceGitStatusResponse,
   WorkspaceGitPullResponse,
@@ -83,13 +109,16 @@ import type {
   WorkspacesResponse
 } from "./api.js";
 import type {
+  AccountAgent,
   AgentTeam,
   GlobalSettings,
   Run,
   Task,
+  TaskMessage,
   TaskWorktree,
   TeamMessage,
   Workspace,
+  WorkspaceAgent,
   WorkspaceGitRef
 } from "./domain.js";
 
@@ -172,6 +201,29 @@ export const validateApproveProposalParams =
   typia.createValidate<ApproveProposalParams>();
 export const validateRejectProposalParams =
   typia.createValidate<RejectProposalParams>();
+
+export const validateCreateAgentBody = typia.createValidate<CreateAgentBody>();
+export const validateUpdateAgentBody = typia.createValidate<UpdateAgentBody>();
+export const validateAgentParams = typia.createValidate<AgentParams>();
+export const validateListWorkspaceAgentsParams =
+  typia.createValidate<ListWorkspaceAgentsParams>();
+export const validateMountAgentBody = typia.createValidate<MountAgentBody>();
+export const validateWorkspaceAgentParams =
+  typia.createValidate<WorkspaceAgentParams>();
+export const validateUpdateAgentRoleBody =
+  typia.createValidate<UpdateAgentRoleBody>();
+export const validateUpdateWorkspaceConfigBody =
+  typia.createValidate<UpdateWorkspaceConfigBody>();
+export const validateUpdateWorkspaceConfigParams =
+  typia.createValidate<UpdateWorkspaceConfigParams>();
+export const validateListTaskMessagesParams =
+  typia.createValidate<ListTaskMessagesParams>();
+export const validateListTaskMessagesQuery =
+  typia.createValidate<ListTaskMessagesQuery>();
+export const validatePostTaskMessageBody =
+  typia.createValidate<PostTaskMessageBody>();
+export const validatePostTaskMessageParams =
+  typia.createValidate<PostTaskMessageParams>();
 
 export const schemaRegistry = {
   ApiError: () => typia.json.schema<ApiError>(),
@@ -256,5 +308,28 @@ export const schemaRegistry = {
   AgentTeamResponse: () => typia.json.schema<AgentTeamResponse>(),
   DeleteTeamResponse: () => typia.json.schema<DeleteTeamResponse>(),
   TeamMessagesResponse: () => typia.json.schema<TeamMessagesResponse>(),
-  TeamMessageResponse: () => typia.json.schema<TeamMessageResponse>()
+  TeamMessageResponse: () => typia.json.schema<TeamMessageResponse>(),
+  AccountAgent: () => typia.json.schema<AccountAgent>(),
+  WorkspaceAgent: () => typia.json.schema<WorkspaceAgent>(),
+  TaskMessage: () => typia.json.schema<TaskMessage>(),
+  CreateAgentBody: () => typia.json.schema<CreateAgentBody>(),
+  UpdateAgentBody: () => typia.json.schema<UpdateAgentBody>(),
+  AgentParams: () => typia.json.schema<AgentParams>(),
+  ListWorkspaceAgentsParams: () => typia.json.schema<ListWorkspaceAgentsParams>(),
+  MountAgentBody: () => typia.json.schema<MountAgentBody>(),
+  WorkspaceAgentParams: () => typia.json.schema<WorkspaceAgentParams>(),
+  UpdateAgentRoleBody: () => typia.json.schema<UpdateAgentRoleBody>(),
+  UpdateWorkspaceConfigBody: () => typia.json.schema<UpdateWorkspaceConfigBody>(),
+  UpdateWorkspaceConfigParams: () => typia.json.schema<UpdateWorkspaceConfigParams>(),
+  ListTaskMessagesParams: () => typia.json.schema<ListTaskMessagesParams>(),
+  ListTaskMessagesQuery: () => typia.json.schema<ListTaskMessagesQuery>(),
+  PostTaskMessageBody: () => typia.json.schema<PostTaskMessageBody>(),
+  PostTaskMessageParams: () => typia.json.schema<PostTaskMessageParams>(),
+  AgentResponse: () => typia.json.schema<AgentResponse>(),
+  ListAgentsResponse: () => typia.json.schema<ListAgentsResponse>(),
+  DeleteAgentResponse: () => typia.json.schema<DeleteAgentResponse>(),
+  WorkspaceAgentResponse: () => typia.json.schema<WorkspaceAgentResponse>(),
+  ListWorkspaceAgentsResponse: () => typia.json.schema<ListWorkspaceAgentsResponse>(),
+  TaskMessagesResponse: () => typia.json.schema<TaskMessagesResponse>(),
+  TaskMessageResponse: () => typia.json.schema<TaskMessageResponse>()
 };
