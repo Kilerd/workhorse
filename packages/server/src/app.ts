@@ -664,7 +664,7 @@ export function createApp(
       "Invalid create agent body"
     );
     const agent = service.createAgent(body);
-    return c.json(ok({ agent }));
+    return c.json(ok({ agent }), 201);
   });
 
   app.get("/api/agents/:agentId", (c) => {
@@ -725,7 +725,7 @@ export function createApp(
       "Invalid mount agent body"
     );
     const agent = service.mountAgent(params.workspaceId, body);
-    return c.json(ok({ agent }));
+    return c.json(ok({ agent }), 201);
   });
 
   app.patch("/api/workspaces/:workspaceId/agents/:agentId", async (c) => {
