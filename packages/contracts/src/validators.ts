@@ -39,6 +39,7 @@ import type {
   ListWorkspaceAgentsParams,
   ListWorkspaceAgentsResponse,
   MountAgentBody,
+  MountAgentParams,
   PickWorkspaceRootResponse,
   ListWorkspaceGitRefsParams,
   WorkspaceGitStatusParams,
@@ -208,6 +209,7 @@ export const validateAgentParams = typia.createValidate<AgentParams>();
 export const validateListWorkspaceAgentsParams =
   typia.createValidate<ListWorkspaceAgentsParams>();
 export const validateMountAgentBody = typia.createValidate<MountAgentBody>();
+export const validateMountAgentParams = typia.createValidate<MountAgentParams>();
 export const validateWorkspaceAgentParams =
   typia.createValidate<WorkspaceAgentParams>();
 export const validateUpdateAgentRoleBody =
@@ -317,6 +319,7 @@ export const schemaRegistry = {
   AgentParams: () => typia.json.schema<AgentParams>(),
   ListWorkspaceAgentsParams: () => typia.json.schema<ListWorkspaceAgentsParams>(),
   MountAgentBody: () => typia.json.schema<MountAgentBody>(),
+  MountAgentParams: () => typia.json.schema<MountAgentParams>(),
   WorkspaceAgentParams: () => typia.json.schema<WorkspaceAgentParams>(),
   UpdateAgentRoleBody: () => typia.json.schema<UpdateAgentRoleBody>(),
   UpdateWorkspaceConfigBody: () => typia.json.schema<UpdateWorkspaceConfigBody>(),

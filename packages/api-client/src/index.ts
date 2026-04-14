@@ -1,7 +1,7 @@
 import { Fetcher, type Middleware } from "openapi-typescript-fetch";
 
 import type {
-  AccountAgent,
+  AgentData,
   AgentTeamData,
   CleanupTaskWorktreeData,
   CoordinatorProposal,
@@ -40,7 +40,7 @@ import type {
   TaskDiffData,
   TaskInputBody,
   TaskInputData,
-  TaskMessage,
+  TaskMessageData,
   TaskMessagesData,
   TeamMessageData,
   UpdateAgentBody,
@@ -391,19 +391,19 @@ export function createApiClient(baseUrl: string) {
       ),
     listAgents: async (): Promise<ListAgentsData> =>
       unwrap(await requestJson("/api/agents")),
-    createAgent: async (body: CreateAgentBody): Promise<{ agent: AccountAgent }> =>
+    createAgent: async (body: CreateAgentBody): Promise<AgentData> =>
       unwrap(
         await requestJson("/api/agents", {
           method: "POST",
           body: JSON.stringify(body)
         })
       ),
-    getAgent: async (agentId: string): Promise<{ agent: AccountAgent }> =>
+    getAgent: async (agentId: string): Promise<AgentData> =>
       unwrap(await requestJson(`/api/agents/${encodeURIComponent(agentId)}`)),
     updateAgent: async (
       agentId: string,
       body: UpdateAgentBody
-    ): Promise<{ agent: AccountAgent }> =>
+    ): Promise<AgentData> =>
       unwrap(
         await requestJson(`/api/agents/${encodeURIComponent(agentId)}`, {
           method: "PATCH",
@@ -479,7 +479,7 @@ export function createApiClient(baseUrl: string) {
     postTaskMessage: async (
       workspaceId: string,
       body: PostTaskMessageBody
-    ): Promise<{ item: TaskMessage }> =>
+    ): Promise<TaskMessageData> =>
       unwrap(
         await requestJson(
           `/api/workspaces/${encodeURIComponent(workspaceId)}/task-messages`,

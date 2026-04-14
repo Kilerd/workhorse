@@ -1395,6 +1395,9 @@ export interface components {
             agentId: string;
             role: components["schemas"]["AgentRole"];
         };
+        MountAgentParams: {
+            workspaceId: string;
+        };
         WorkspaceAgentParams: {
             workspaceId: string;
             agentId: string;

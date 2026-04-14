@@ -528,6 +528,10 @@ export interface ListWorkspaceAgentsParams {
   workspaceId: string;
 }
 
+export interface MountAgentParams {
+  workspaceId: string;
+}
+
 export interface MountAgentBody {
   agentId: string;
   role: AgentRole;
@@ -708,6 +712,7 @@ export type SchemaName =
   | "UpdateAgentBody"
   | "AgentParams"
   | "ListWorkspaceAgentsParams"
+  | "MountAgentParams"
   | "MountAgentBody"
   | "WorkspaceAgentParams"
   | "UpdateAgentRoleBody"
@@ -1717,7 +1722,7 @@ export const endpointRegistry: EndpointSpec[] = [
     path: "/api/workspaces/{workspaceId}/agents",
     summary: "Mount an agent to a workspace",
     tag: "Agents",
-    paramsSchema: "ListWorkspaceAgentsParams",
+    paramsSchema: "MountAgentParams",
     bodySchema: "MountAgentBody",
     responses: [
       {

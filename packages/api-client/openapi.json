@@ -5604,6 +5604,17 @@
           "role"
         ]
       },
+      "MountAgentParams": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId"
+        ]
+      },
       "WorkspaceAgentParams": {
         "type": "object",
         "properties": {
