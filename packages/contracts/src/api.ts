@@ -506,6 +506,27 @@ export interface ListProposalsData {
 export type ProposalResponse = ApiSuccess<ProposalData>;
 export type ListProposalsResponse = ApiSuccess<ListProposalsData>;
 
+// === Workspace-scoped Coordinator Proposals (Phase 4) ===
+
+export interface WorkspaceListProposalsParams {
+  workspaceId: string;
+}
+
+export interface WorkspaceGetProposalParams {
+  workspaceId: string;
+  proposalId: string;
+}
+
+export interface WorkspaceApproveProposalParams {
+  workspaceId: string;
+  proposalId: string;
+}
+
+export interface WorkspaceRejectProposalParams {
+  workspaceId: string;
+  proposalId: string;
+}
+
 // === Account-level Agents (Phase 4) ===
 
 export interface CreateAgentBody {

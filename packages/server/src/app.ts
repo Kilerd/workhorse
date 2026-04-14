@@ -50,7 +50,11 @@ import {
   validateUpdateWorkspaceBody,
   validateUpdateWorkspaceParams,
   validateWorkspaceGitStatusParams,
-  validateWorkspaceGitPullParams
+  validateWorkspaceGitPullParams,
+  validateWorkspaceListProposalsParams,
+  validateWorkspaceGetProposalParams,
+  validateWorkspaceApproveProposalParams,
+  validateWorkspaceRejectProposalParams
 } from "@workhorse/contracts";
 import type {
   ListTeamMessagesParams,
@@ -582,6 +586,54 @@ export function createApp(
     );
     service.rejectProposal(params.teamId, params.proposalId);
     const proposal = service.getProposal(params.teamId, params.proposalId);
+    return c.json(ok({ proposal }));
+  });
+
+  // Workspace-scoped coordinator proposal routes (Phase 4)
+  app.get("/api/workspaces/:workspaceId/proposals", (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateWorkspaceListProposalsParams,
+      "Invalid workspace params"
+    );
+    const query = validateOrThrow(
+      queryObject(c.req.url),
+      validateListProposalsQuery,
+      "Invalid proposals query"
+    );
+    const items = service.listProposalsByWorkspace(params.workspaceId, query);
+    return c.json(ok({ items }));
+  });
+
+  app.get("/api/workspaces/:workspaceId/proposals/:proposalId", (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateWorkspaceGetProposalParams,
+      "Invalid proposal params"
+    );
+    const proposal = service.getProposalByWorkspace(params.workspaceId, params.proposalId);
+    return c.json(ok({ proposal }));
+  });
+
+  app.post("/api/workspaces/:workspaceId/proposals/:proposalId/approve", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateWorkspaceApproveProposalParams,
+      "Invalid proposal params"
+    );
+    await service.approveProposalByWorkspace(params.workspaceId, params.proposalId);
+    const proposal = service.getProposalByWorkspace(params.workspaceId, params.proposalId);
+    return c.json(ok({ proposal }));
+  });
+
+  app.post("/api/workspaces/:workspaceId/proposals/:proposalId/reject", (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateWorkspaceRejectProposalParams,
+      "Invalid proposal params"
+    );
+    service.rejectProposalByWorkspace(params.workspaceId, params.proposalId);
+    const proposal = service.getProposalByWorkspace(params.workspaceId, params.proposalId);
     return c.json(ok({ proposal }));
   });
 
