@@ -214,8 +214,8 @@ export class TeamPrService {
     const now = new Date().toISOString();
     const truncated = truncateTeamMessagePayload(content);
     // Dispatch to team_messages (legacy) or task_messages (workspace-agent path)
-    if ("id" in source) {
-      // AgentTeam has an id field
+    if ("agents" in source) {
+      // AgentTeam has an agents field (more stable discriminant than "id")
       this.store.appendTeamMessage({
         id: createId(),
         teamId: source.id,
@@ -247,6 +247,7 @@ export class TeamPrService {
         content: truncated,
         createdAt: now
       });
+      // HACK: reuse teamId field for workspaceId until PR-D event rename
       this.events.publish({
         type: "team.agent.message",
         teamId: task.workspaceId,

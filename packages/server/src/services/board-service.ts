@@ -625,7 +625,12 @@ export class BoardService {
       }
     } else {
       // Workspace-agent path
-      const workspaceId = run.metadata!.workspaceId!;
+      const workspaceId = ensure(
+        run.metadata?.workspaceId,
+        500,
+        "MISSING_WORKSPACE_ID",
+        "Run metadata missing workspaceId in workspace coordinator path"
+      );
       try {
         const output = await this.extractCoordinatorOutput(run.id);
         const drafts = parseCoordinatorSubtasks(output);
@@ -652,7 +657,7 @@ export class BoardService {
         };
         this.store.saveProposal(proposal);
 
-        // Use workspaceId in teamId field for event routing
+        // HACK: reuse teamId field for workspaceId until PR-D event rename
         this.events.publish({
           type: "team.proposal.created",
           teamId: workspaceId,
@@ -991,20 +996,18 @@ export class BoardService {
       });
     } else {
       // Workspace path: use the parent task's workspaceId
-      const parentTask = this.store.listTasks().find((t) => t.id === parentTaskId);
-      if (parentTask) {
-        this.publishTeamThreadMessage({
-          workspaceId: parentTask.workspaceId,
-          parentTaskId,
-          taskId: parentTaskId,
-          agentName: "system",
-          fromAgentId: "system",
-          senderType: "system",
-          messageType: "status",
-          payload,
-          createdAt: now
-        });
-      }
+      const parentTask = this.requireTask(parentTaskId);
+      this.publishTeamThreadMessage({
+        workspaceId: parentTask.workspaceId,
+        parentTaskId,
+        taskId: parentTaskId,
+        agentName: "system",
+        fromAgentId: "system",
+        senderType: "system",
+        messageType: "status",
+        payload,
+        createdAt: now
+      });
     }
     this.events.publish({
       type: "task.updated",
@@ -1041,6 +1044,7 @@ export class BoardService {
         createdAt
       };
       this.store.appendTaskMessage(item);
+      // HACK: reuse teamId field for workspaceId until PR-D event rename
       this.events.publish(
         buildTeamAgentMessageEvent({
           teamId: input.workspaceId,
@@ -2877,6 +2881,7 @@ export class BoardService {
       subtasks,
       (subtask) => this.resolveAssignedAgent(agents, subtask).name
     );
+    // HACK: reuse teamId field for workspaceId until PR-D event rename
     const messageEvent = buildTeamAgentMessageEvent({
       teamId: workspaceId,
       parentTaskId: parentTask.id,
@@ -2910,6 +2915,7 @@ export class BoardService {
       });
     }
     this.events.publish(messageEvent);
+    // HACK: reuse teamId field for workspaceId until PR-D event rename
     this.events.publish(
       buildTeamTaskCreatedEvent({
         teamId: workspaceId,
@@ -2921,6 +2927,7 @@ export class BoardService {
         }))
       })
     );
+    // HACK: reuse teamId field for workspaceId until PR-D event rename
     this.events.publish({
       type: "team.proposal.updated",
       teamId: workspaceId,
@@ -2939,6 +2946,7 @@ export class BoardService {
     const now = new Date().toISOString();
     const updated = this.store.updateProposalStatus(proposalId, "rejected", now);
     if (updated) {
+      // HACK: reuse teamId field for workspaceId until PR-D event rename
       this.events.publish({
         type: "team.proposal.updated",
         teamId: workspaceId,
