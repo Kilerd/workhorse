@@ -1,26 +1,33 @@
 import { Fetcher, type Middleware } from "openapi-typescript-fetch";
 
 import type {
+  AccountAgent,
   AgentTeamData,
   CleanupTaskWorktreeData,
   CoordinatorProposal,
+  CreateAgentBody,
   CreateTeamBody,
   CreateTaskBody,
   CreateWorkspaceBody,
   DeleteResult,
   GetTeamParams,
   HealthData,
+  ListAgentsData,
   ListProposalsQuery,
+  ListTaskMessagesQuery,
+  ListWorkspaceAgentsData,
   TeamMessagesData,
   ListTeamMessagesQuery,
   ListTeamsData,
   ListRunsData,
   ListTasksData,
   ListWorkspacesData,
+  MountAgentBody,
   PickWorkspaceRootData,
   PlanFeedbackBody,
   PlanFeedbackData,
   PlanTaskData,
+  PostTaskMessageBody,
   PostTeamMessageBody,
   RejectTaskBody,
   RequestTaskReviewData,
@@ -33,11 +40,17 @@ import type {
   TaskDiffData,
   TaskInputBody,
   TaskInputData,
+  TaskMessage,
+  TaskMessagesData,
   TeamMessageData,
+  UpdateAgentBody,
+  UpdateAgentRoleBody,
   UpdateTeamBody,
   UpdateSettingsBody,
   UpdateTaskBody,
   UpdateWorkspaceBody,
+  UpdateWorkspaceConfigBody,
+  WorkspaceAgentData,
   WorkspaceData,
   WorkspaceGitRefsData,
   WorkspaceGitStatusData,
@@ -374,6 +387,103 @@ export function createApiClient(baseUrl: string) {
         await requestJson(
           `/api/teams/${encodeURIComponent(teamId)}/proposals/${encodeURIComponent(proposalId)}/reject`,
           { method: "POST" }
+        )
+      ),
+    listAgents: async (): Promise<ListAgentsData> =>
+      unwrap(await requestJson("/api/agents")),
+    createAgent: async (body: CreateAgentBody): Promise<{ agent: AccountAgent }> =>
+      unwrap(
+        await requestJson("/api/agents", {
+          method: "POST",
+          body: JSON.stringify(body)
+        })
+      ),
+    getAgent: async (agentId: string): Promise<{ agent: AccountAgent }> =>
+      unwrap(await requestJson(`/api/agents/${encodeURIComponent(agentId)}`)),
+    updateAgent: async (
+      agentId: string,
+      body: UpdateAgentBody
+    ): Promise<{ agent: AccountAgent }> =>
+      unwrap(
+        await requestJson(`/api/agents/${encodeURIComponent(agentId)}`, {
+          method: "PATCH",
+          body: JSON.stringify(body)
+        })
+      ),
+    deleteAgent: async (agentId: string): Promise<DeleteResult> =>
+      unwrap(
+        await requestJson(`/api/agents/${encodeURIComponent(agentId)}`, {
+          method: "DELETE"
+        })
+      ),
+    listWorkspaceAgents: async (workspaceId: string): Promise<ListWorkspaceAgentsData> =>
+      unwrap(
+        await requestJson(
+          `/api/workspaces/${encodeURIComponent(workspaceId)}/agents`
+        )
+      ),
+    mountAgent: async (
+      workspaceId: string,
+      body: MountAgentBody
+    ): Promise<WorkspaceAgentData> =>
+      unwrap(
+        await requestJson(
+          `/api/workspaces/${encodeURIComponent(workspaceId)}/agents`,
+          { method: "POST", body: JSON.stringify(body) }
+        )
+      ),
+    unmountAgent: async (
+      workspaceId: string,
+      agentId: string
+    ): Promise<DeleteResult> =>
+      unwrap(
+        await requestJson(
+          `/api/workspaces/${encodeURIComponent(workspaceId)}/agents/${encodeURIComponent(agentId)}`,
+          { method: "DELETE" }
+        )
+      ),
+    updateAgentRole: async (
+      workspaceId: string,
+      agentId: string,
+      body: UpdateAgentRoleBody
+    ): Promise<WorkspaceAgentData> =>
+      unwrap(
+        await requestJson(
+          `/api/workspaces/${encodeURIComponent(workspaceId)}/agents/${encodeURIComponent(agentId)}`,
+          { method: "PATCH", body: JSON.stringify(body) }
+        )
+      ),
+    updateWorkspaceConfig: async (
+      workspaceId: string,
+      body: UpdateWorkspaceConfigBody
+    ): Promise<WorkspaceData> =>
+      unwrap(
+        await requestJson(
+          `/api/workspaces/${encodeURIComponent(workspaceId)}/config`,
+          { method: "PATCH", body: JSON.stringify(body) }
+        )
+      ),
+    listTaskMessages: async (
+      workspaceId: string,
+      query: ListTaskMessagesQuery = {}
+    ): Promise<TaskMessagesData> => {
+      const qs = query.parentTaskId
+        ? `?parentTaskId=${encodeURIComponent(query.parentTaskId)}`
+        : "";
+      return unwrap(
+        await requestJson(
+          `/api/workspaces/${encodeURIComponent(workspaceId)}/task-messages${qs}`
+        )
+      );
+    },
+    postTaskMessage: async (
+      workspaceId: string,
+      body: PostTaskMessageBody
+    ): Promise<{ item: TaskMessage }> =>
+      unwrap(
+        await requestJson(
+          `/api/workspaces/${encodeURIComponent(workspaceId)}/task-messages`,
+          { method: "POST", body: JSON.stringify(body) }
         )
       )
   };

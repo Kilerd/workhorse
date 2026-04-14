@@ -524,6 +524,114 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all account-level agents */
+        get: operations["listAgents"];
+        put?: never;
+        /** Create a new account-level agent */
+        post: operations["createAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/{agentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get an agent by ID */
+        get: operations["getAgent"];
+        put?: never;
+        post?: never;
+        /** Delete an agent */
+        delete: operations["deleteAgent"];
+        options?: never;
+        head?: never;
+        /** Update an agent */
+        patch: operations["updateAgent"];
+        trace?: never;
+    };
+    "/api/workspaces/{workspaceId}/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List agents mounted to a workspace */
+        get: operations["listWorkspaceAgents"];
+        put?: never;
+        /** Mount an agent to a workspace */
+        post: operations["mountAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{workspaceId}/agents/{agentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Unmount an agent from a workspace */
+        delete: operations["unmountAgent"];
+        options?: never;
+        head?: never;
+        /** Update the role of a workspace-mounted agent */
+        patch: operations["updateAgentRole"];
+        trace?: never;
+    };
+    "/api/workspaces/{workspaceId}/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update workspace agent coordination config */
+        patch: operations["updateWorkspaceConfig"];
+        trace?: never;
+    };
+    "/api/workspaces/{workspaceId}/task-messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List task coordination messages for a workspace */
+        get: operations["listTaskMessages"];
+        put?: never;
+        /** Post a coordination message into a task thread */
+        post: operations["postTaskMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -569,6 +677,10 @@ export interface components {
             isGitRepo: boolean;
             codexSettings: components["schemas"]["WorkspaceCodexSettings"];
             promptTemplates?: components["schemas"]["WorkspacePromptTemplates"];
+            /** @description PR creation strategy for workspace-level agent coordination. */
+            prStrategy?: "independent" | "stacked" | "single";
+            /** @description When true, succeeded subtasks skip manual human approval. */
+            autoApproveSubtasks?: boolean;
             createdAt: string;
             updatedAt: string;
         };
@@ -630,7 +742,7 @@ export interface components {
             createdAt: string;
             updatedAt: string;
         };
-        TaskColumn: "review" | "backlog" | "todo" | "blocked" | "running" | "done" | "archived";
+        TaskColumn: "backlog" | "todo" | "blocked" | "running" | "review" | "done" | "archived";
         RunnerType: "claude" | "codex" | "shell";
         RunnerConfig: components["schemas"]["ShellRunnerConfig"] | components["schemas"]["ClaudeRunnerConfig"] | components["schemas"]["CodexRunnerConfig"];
         ShellRunnerConfig: {
@@ -650,7 +762,7 @@ export interface components {
             prompt: string;
             agent?: string;
             model?: string;
-            permissionMode?: "plan" | "acceptEdits" | "bypassPermissions" | "default" | "dontAsk";
+            permissionMode?: "plan" | "default" | "acceptEdits" | "bypassPermissions" | "dontAsk";
         };
         CodexRunnerConfig: {
             /**
@@ -757,7 +869,7 @@ export interface components {
             workspaceId: string;
             teamId?: string;
             worktreeBaseRef?: string;
-            column?: "review" | "backlog" | "todo" | "blocked" | "running" | "done" | "archived";
+            column?: "backlog" | "todo" | "blocked" | "running" | "review" | "done" | "archived";
             order?: number;
             runnerType: components["schemas"]["RunnerType"];
             runnerConfig: components["schemas"]["RunnerConfig"];
@@ -786,7 +898,7 @@ export interface components {
             description?: string;
             workspaceId?: string;
             worktreeBaseRef?: string;
-            column?: "review" | "backlog" | "todo" | "blocked" | "running" | "done" | "archived";
+            column?: "backlog" | "todo" | "blocked" | "running" | "review" | "done" | "archived";
             order?: number;
             runnerType?: "claude" | "codex" | "shell";
             runnerConfig?: components["schemas"]["ShellRunnerConfig"] | components["schemas"]["ClaudeRunnerConfig"] | components["schemas"]["CodexRunnerConfig"];
@@ -1028,8 +1140,8 @@ export interface components {
             source?: string;
             metadata?: components["schemas"]["Recordstringstring"];
         };
-        RunLogStream: "stdout" | "stderr" | "system";
-        RunLogKind: "plan" | "system" | "text" | "user" | "agent" | "tool_call" | "tool_output" | "status";
+        RunLogStream: "system" | "stdout" | "stderr";
+        RunLogKind: "agent" | "system" | "status" | "text" | "plan" | "user" | "tool_call" | "tool_output";
         HealthResponse: {
             /** @enum {unknown} */
             ok: true;
@@ -1136,7 +1248,7 @@ export interface components {
             content: string;
             createdAt: string;
         };
-        TeamMessageSenderType: "system" | "agent" | "human";
+        TeamMessageSenderType: "agent" | "human" | "system";
         TeamMessageType: "status" | "artifact" | "context" | "feedback";
         CreateTeamBody: {
             name: string;
@@ -1224,6 +1336,144 @@ export interface components {
         };
         TeamMessageData: {
             item: components["schemas"]["TeamMessage"];
+        };
+        /**
+         * @description An account-level agent definition. Agents are created once and can be
+         *     mounted to multiple workspaces with different roles.
+         */
+        AccountAgent: {
+            id: string;
+            name: string;
+            description?: string;
+            runnerConfig: components["schemas"]["RunnerConfig"];
+            createdAt: string;
+            updatedAt: string;
+        };
+        /**
+         * @description An AccountAgent with the role it was assigned when mounted to a workspace.
+         *     Returned by listWorkspaceAgents().
+         */
+        WorkspaceAgent: {
+            role: components["schemas"]["AgentRole"];
+            id: string;
+            name: string;
+            description?: string;
+            runnerConfig: components["schemas"]["RunnerConfig"];
+            createdAt: string;
+            updatedAt: string;
+        };
+        /** @description A message in a task's coordination thread, not tied to any team entity. */
+        TaskMessage: {
+            id: string;
+            /** @description The parent coordinator task that owns this execution thread. */
+            parentTaskId: string;
+            /** @description The specific subtask this message is associated with (if any). */
+            taskId?: string;
+            agentName: string;
+            senderType: components["schemas"]["TeamMessageSenderType"];
+            messageType: components["schemas"]["TeamMessageType"];
+            content: string;
+            createdAt: string;
+        };
+        CreateAgentBody: {
+            name: string;
+            description?: string;
+            runnerConfig: components["schemas"]["RunnerConfig"];
+        };
+        UpdateAgentBody: {
+            name?: string;
+            description?: string;
+            runnerConfig?: components["schemas"]["ShellRunnerConfig"] | components["schemas"]["ClaudeRunnerConfig"] | components["schemas"]["CodexRunnerConfig"];
+        };
+        AgentParams: {
+            agentId: string;
+        };
+        ListWorkspaceAgentsParams: {
+            workspaceId: string;
+        };
+        MountAgentBody: {
+            agentId: string;
+            role: components["schemas"]["AgentRole"];
+        };
+        WorkspaceAgentParams: {
+            workspaceId: string;
+            agentId: string;
+        };
+        UpdateAgentRoleBody: {
+            role: components["schemas"]["AgentRole"];
+        };
+        UpdateWorkspaceConfigBody: {
+            prStrategy?: "independent" | "stacked" | "single";
+            autoApproveSubtasks?: boolean;
+        };
+        UpdateWorkspaceConfigParams: {
+            workspaceId: string;
+        };
+        ListTaskMessagesParams: {
+            workspaceId: string;
+        };
+        ListTaskMessagesQuery: {
+            parentTaskId?: string;
+        };
+        PostTaskMessageBody: {
+            parentTaskId: string;
+            content: string;
+        };
+        PostTaskMessageParams: {
+            workspaceId: string;
+        };
+        AgentResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["AgentData"];
+        };
+        AgentData: {
+            agent: components["schemas"]["AccountAgent"];
+        };
+        ListAgentsResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["ListAgentsData"];
+        };
+        ListAgentsData: {
+            items: components["schemas"]["AccountAgent"][];
+        };
+        DeleteAgentResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["DeleteResult"];
+        };
+        WorkspaceAgentResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["WorkspaceAgentData"];
+        };
+        WorkspaceAgentData: {
+            agent: components["schemas"]["WorkspaceAgent"];
+        };
+        ListWorkspaceAgentsResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["ListWorkspaceAgentsData"];
+        };
+        ListWorkspaceAgentsData: {
+            items: components["schemas"]["WorkspaceAgent"][];
+        };
+        TaskMessagesResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["TaskMessagesData"];
+        };
+        TaskMessagesData: {
+            items: components["schemas"]["TaskMessage"][];
+        };
+        TaskMessageResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["TaskMessageData"];
+        };
+        TaskMessageData: {
+            item: components["schemas"]["TaskMessage"];
         };
     };
     responses: never;
@@ -2607,6 +2857,438 @@ export interface operations {
                 };
             };
             /** @description Team not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listAgents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Agent collection */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListAgentsResponse"];
+                };
+            };
+        };
+    };
+    createAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAgentBody"];
+            };
+        };
+        responses: {
+            /** @description Created agent */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentResponse"];
+                };
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Agent */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentResponse"];
+                };
+            };
+            /** @description Agent not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    deleteAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted agent id */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteAgentResponse"];
+                };
+            };
+            /** @description Agent not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAgentBody"];
+            };
+        };
+        responses: {
+            /** @description Updated agent */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentResponse"];
+                };
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Agent not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listWorkspaceAgents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Workspace agent collection */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListWorkspaceAgentsResponse"];
+                };
+            };
+            /** @description Workspace not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    mountAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MountAgentBody"];
+            };
+        };
+        responses: {
+            /** @description Mounted workspace agent */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceAgentResponse"];
+                };
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Workspace or agent not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    unmountAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: string;
+                agentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unmounted agent id */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteAgentResponse"];
+                };
+            };
+            /** @description Workspace agent not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateAgentRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: string;
+                agentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAgentRoleBody"];
+            };
+        };
+        responses: {
+            /** @description Updated workspace agent */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceAgentResponse"];
+                };
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Workspace agent not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    updateWorkspaceConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateWorkspaceConfigBody"];
+            };
+        };
+        responses: {
+            /** @description Updated workspace */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceResponse"];
+                };
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Workspace not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listTaskMessages: {
+        parameters: {
+            query?: {
+                parentTaskId?: string;
+            };
+            header?: never;
+            path: {
+                workspaceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Task message collection */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskMessagesResponse"];
+                };
+            };
+            /** @description Workspace not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    postTaskMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PostTaskMessageBody"];
+            };
+        };
+        responses: {
+            /** @description Created task message */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskMessageResponse"];
+                };
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Workspace not found */
             404: {
                 headers: {
                     [name: string]: unknown;

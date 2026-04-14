@@ -1,6 +1,7 @@
 import type { tags } from "typia";
 
 import type {
+  AccountAgent,
   AgentTeam,
   AgentRole,
   AppState,
@@ -8,7 +9,9 @@ import type {
   GlobalSettings,
   RunnerConfig,
   RunnerType,
+  TaskMessage,
   TeamPrStrategy,
+  WorkspaceAgent,
   WorkspaceCodexSettings,
   WorkspacePromptTemplates,
   Run,
@@ -503,6 +506,100 @@ export interface ListProposalsData {
 export type ProposalResponse = ApiSuccess<ProposalData>;
 export type ListProposalsResponse = ApiSuccess<ListProposalsData>;
 
+// === Account-level Agents (Phase 4) ===
+
+export interface CreateAgentBody {
+  name: string;
+  description?: string;
+  runnerConfig: RunnerConfig;
+}
+
+export interface UpdateAgentBody {
+  name?: string;
+  description?: string;
+  runnerConfig?: RunnerConfig;
+}
+
+export interface AgentParams {
+  agentId: string;
+}
+
+export interface ListWorkspaceAgentsParams {
+  workspaceId: string;
+}
+
+export interface MountAgentBody {
+  agentId: string;
+  role: AgentRole;
+}
+
+export interface WorkspaceAgentParams {
+  workspaceId: string;
+  agentId: string;
+}
+
+export interface UpdateAgentRoleBody {
+  role: AgentRole;
+}
+
+export interface UpdateWorkspaceConfigBody {
+  prStrategy?: TeamPrStrategy;
+  autoApproveSubtasks?: boolean;
+}
+
+export interface UpdateWorkspaceConfigParams {
+  workspaceId: string;
+}
+
+export interface ListTaskMessagesParams {
+  workspaceId: string;
+}
+
+export interface ListTaskMessagesQuery {
+  parentTaskId?: string;
+}
+
+export interface PostTaskMessageBody {
+  parentTaskId: string;
+  content: string & tags.MaxLength<10_240>;
+}
+
+export interface PostTaskMessageParams {
+  workspaceId: string;
+}
+
+export interface AgentData {
+  agent: AccountAgent;
+}
+
+export interface ListAgentsData {
+  items: AccountAgent[];
+}
+
+export interface WorkspaceAgentData {
+  agent: WorkspaceAgent;
+}
+
+export interface ListWorkspaceAgentsData {
+  items: WorkspaceAgent[];
+}
+
+export interface TaskMessagesData {
+  items: TaskMessage[];
+}
+
+export interface TaskMessageData {
+  item: TaskMessage;
+}
+
+export type AgentResponse = ApiSuccess<AgentData>;
+export type ListAgentsResponse = ApiSuccess<ListAgentsData>;
+export type DeleteAgentResponse = ApiSuccess<DeleteResult>;
+export type WorkspaceAgentResponse = ApiSuccess<WorkspaceAgentData>;
+export type ListWorkspaceAgentsResponse = ApiSuccess<ListWorkspaceAgentsData>;
+export type TaskMessagesResponse = ApiSuccess<TaskMessagesData>;
+export type TaskMessageResponse = ApiSuccess<TaskMessageData>;
+
 export type HttpMethod = "get" | "post" | "put" | "patch" | "delete";
 
 export interface EndpointResponseSpec {
@@ -603,7 +700,30 @@ export type SchemaName =
   | "AgentTeamResponse"
   | "DeleteTeamResponse"
   | "TeamMessagesResponse"
-  | "TeamMessageResponse";
+  | "TeamMessageResponse"
+  | "AccountAgent"
+  | "WorkspaceAgent"
+  | "TaskMessage"
+  | "CreateAgentBody"
+  | "UpdateAgentBody"
+  | "AgentParams"
+  | "ListWorkspaceAgentsParams"
+  | "MountAgentBody"
+  | "WorkspaceAgentParams"
+  | "UpdateAgentRoleBody"
+  | "UpdateWorkspaceConfigBody"
+  | "UpdateWorkspaceConfigParams"
+  | "ListTaskMessagesParams"
+  | "ListTaskMessagesQuery"
+  | "PostTaskMessageBody"
+  | "PostTaskMessageParams"
+  | "AgentResponse"
+  | "ListAgentsResponse"
+  | "DeleteAgentResponse"
+  | "WorkspaceAgentResponse"
+  | "ListWorkspaceAgentsResponse"
+  | "TaskMessagesResponse"
+  | "TaskMessageResponse";
 
 export const endpointRegistry: EndpointSpec[] = [
   {
@@ -1466,6 +1586,272 @@ export const endpointRegistry: EndpointSpec[] = [
       {
         status: 404,
         description: "Team not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  // === Account-level Agents (Phase 4) ===
+  {
+    operationId: "listAgents",
+    method: "get",
+    path: "/api/agents",
+    summary: "List all account-level agents",
+    tag: "Agents",
+    responses: [
+      {
+        status: 200,
+        description: "Agent collection",
+        schema: "ListAgentsResponse"
+      }
+    ]
+  },
+  {
+    operationId: "createAgent",
+    method: "post",
+    path: "/api/agents",
+    summary: "Create a new account-level agent",
+    tag: "Agents",
+    bodySchema: "CreateAgentBody",
+    responses: [
+      {
+        status: 201,
+        description: "Created agent",
+        schema: "AgentResponse"
+      },
+      {
+        status: 400,
+        description: "Validation error",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "getAgent",
+    method: "get",
+    path: "/api/agents/{agentId}",
+    summary: "Get an agent by ID",
+    tag: "Agents",
+    paramsSchema: "AgentParams",
+    responses: [
+      {
+        status: 200,
+        description: "Agent",
+        schema: "AgentResponse"
+      },
+      {
+        status: 404,
+        description: "Agent not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "updateAgent",
+    method: "patch",
+    path: "/api/agents/{agentId}",
+    summary: "Update an agent",
+    tag: "Agents",
+    paramsSchema: "AgentParams",
+    bodySchema: "UpdateAgentBody",
+    responses: [
+      {
+        status: 200,
+        description: "Updated agent",
+        schema: "AgentResponse"
+      },
+      {
+        status: 400,
+        description: "Validation error",
+        schema: "ApiError"
+      },
+      {
+        status: 404,
+        description: "Agent not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "deleteAgent",
+    method: "delete",
+    path: "/api/agents/{agentId}",
+    summary: "Delete an agent",
+    tag: "Agents",
+    paramsSchema: "AgentParams",
+    responses: [
+      {
+        status: 200,
+        description: "Deleted agent id",
+        schema: "DeleteAgentResponse"
+      },
+      {
+        status: 404,
+        description: "Agent not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "listWorkspaceAgents",
+    method: "get",
+    path: "/api/workspaces/{workspaceId}/agents",
+    summary: "List agents mounted to a workspace",
+    tag: "Agents",
+    paramsSchema: "ListWorkspaceAgentsParams",
+    responses: [
+      {
+        status: 200,
+        description: "Workspace agent collection",
+        schema: "ListWorkspaceAgentsResponse"
+      },
+      {
+        status: 404,
+        description: "Workspace not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "mountAgent",
+    method: "post",
+    path: "/api/workspaces/{workspaceId}/agents",
+    summary: "Mount an agent to a workspace",
+    tag: "Agents",
+    paramsSchema: "ListWorkspaceAgentsParams",
+    bodySchema: "MountAgentBody",
+    responses: [
+      {
+        status: 201,
+        description: "Mounted workspace agent",
+        schema: "WorkspaceAgentResponse"
+      },
+      {
+        status: 400,
+        description: "Validation error",
+        schema: "ApiError"
+      },
+      {
+        status: 404,
+        description: "Workspace or agent not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "unmountAgent",
+    method: "delete",
+    path: "/api/workspaces/{workspaceId}/agents/{agentId}",
+    summary: "Unmount an agent from a workspace",
+    tag: "Agents",
+    paramsSchema: "WorkspaceAgentParams",
+    responses: [
+      {
+        status: 200,
+        description: "Unmounted agent id",
+        schema: "DeleteAgentResponse"
+      },
+      {
+        status: 404,
+        description: "Workspace agent not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "updateAgentRole",
+    method: "patch",
+    path: "/api/workspaces/{workspaceId}/agents/{agentId}",
+    summary: "Update the role of a workspace-mounted agent",
+    tag: "Agents",
+    paramsSchema: "WorkspaceAgentParams",
+    bodySchema: "UpdateAgentRoleBody",
+    responses: [
+      {
+        status: 200,
+        description: "Updated workspace agent",
+        schema: "WorkspaceAgentResponse"
+      },
+      {
+        status: 400,
+        description: "Validation error",
+        schema: "ApiError"
+      },
+      {
+        status: 404,
+        description: "Workspace agent not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "updateWorkspaceConfig",
+    method: "patch",
+    path: "/api/workspaces/{workspaceId}/config",
+    summary: "Update workspace agent coordination config",
+    tag: "Agents",
+    paramsSchema: "UpdateWorkspaceConfigParams",
+    bodySchema: "UpdateWorkspaceConfigBody",
+    responses: [
+      {
+        status: 200,
+        description: "Updated workspace",
+        schema: "WorkspaceResponse"
+      },
+      {
+        status: 400,
+        description: "Validation error",
+        schema: "ApiError"
+      },
+      {
+        status: 404,
+        description: "Workspace not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "listTaskMessages",
+    method: "get",
+    path: "/api/workspaces/{workspaceId}/task-messages",
+    summary: "List task coordination messages for a workspace",
+    tag: "Agents",
+    paramsSchema: "ListTaskMessagesParams",
+    querySchema: "ListTaskMessagesQuery",
+    responses: [
+      {
+        status: 200,
+        description: "Task message collection",
+        schema: "TaskMessagesResponse"
+      },
+      {
+        status: 404,
+        description: "Workspace not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "postTaskMessage",
+    method: "post",
+    path: "/api/workspaces/{workspaceId}/task-messages",
+    summary: "Post a coordination message into a task thread",
+    tag: "Agents",
+    paramsSchema: "PostTaskMessageParams",
+    bodySchema: "PostTaskMessageBody",
+    responses: [
+      {
+        status: 201,
+        description: "Created task message",
+        schema: "TaskMessageResponse"
+      },
+      {
+        status: 400,
+        description: "Validation error",
+        schema: "ApiError"
+      },
+      {
+        status: 404,
+        description: "Workspace not found",
         schema: "ApiError"
       }
     ]
