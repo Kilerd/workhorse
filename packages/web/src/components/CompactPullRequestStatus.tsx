@@ -18,8 +18,8 @@ interface ReviewCountdown {
 
 const compactPrRowClass = "flex min-w-0 flex-wrap items-center gap-1.5";
 const compactBadgeClass =
-  "inline-flex min-h-[18px] items-center gap-1 whitespace-nowrap rounded-none border px-1.5 font-mono text-[0.6rem] uppercase tracking-[0.08em]";
-const compactStatClass = "inline-flex items-center gap-1 font-mono text-[0.625rem]";
+  "inline-flex min-h-7 items-center gap-1 whitespace-nowrap rounded-full border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em]";
+const compactStatClass = "inline-flex items-center gap-1 font-mono text-[0.7rem]";
 
 export function CompactPullRequestStatus({
   task,
@@ -83,7 +83,7 @@ export function CompactPullRequestStatus({
           <span
             className={cn(
               compactBadgeClass,
-              "border-[rgba(240,113,113,0.26)] bg-[rgba(240,113,113,0.1)] text-[var(--danger)]"
+              "border-[rgba(181,74,74,0.26)] bg-[rgba(181,74,74,0.08)] text-[var(--danger)]"
             )}
           >
             <AlertTriangle className="size-2.5 shrink-0" />
@@ -102,7 +102,7 @@ export function CompactPullRequestStatus({
           <span
             className={cn(
               compactBadgeClass,
-              "border-[rgba(99,216,158,0.26)] bg-[rgba(99,216,158,0.1)] text-[var(--success)]"
+              "border-[rgba(47,117,88,0.26)] bg-[rgba(47,117,88,0.08)] text-[var(--success)]"
             )}
           >
             APPROVED
@@ -112,7 +112,7 @@ export function CompactPullRequestStatus({
           <span
             className={cn(
               compactBadgeClass,
-              "border-[rgba(242,195,92,0.24)] bg-[rgba(242,195,92,0.1)] text-[var(--warning)]"
+              "border-[rgba(166,109,26,0.24)] bg-[rgba(166,109,26,0.08)] text-[var(--warning)]"
             )}
           >
             CHANGES
@@ -147,7 +147,7 @@ export function CompactPullRequestStatus({
             readiness === "success" && "text-[var(--success)]",
             readiness === "danger" && "text-[var(--danger)]",
             readiness === "pending" &&
-              "rounded-full bg-[radial-gradient(circle_at_center,var(--panel)_56%,transparent_60%),conic-gradient(var(--accent-strong)_var(--review-progress),rgba(73,214,196,0.14)_0)] shadow-[inset_0_0_0_1px_rgba(73,214,196,0.2)]"
+              "rounded-full bg-[radial-gradient(circle_at_center,var(--panel)_56%,transparent_60%),conic-gradient(var(--accent-strong)_var(--review-progress),rgba(255,79,0,0.12)_0)] shadow-[inset_0_0_0_1px_rgba(255,79,0,0.2)]"
           )}
           aria-label={reviewIndicatorTitle}
           title={reviewIndicatorTitle}

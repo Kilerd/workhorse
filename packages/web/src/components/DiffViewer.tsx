@@ -98,10 +98,9 @@ function DiffFileCard({ file }: { file: TaskDiffFile }) {
 
   return (
     <div className="border-b border-border">
-      {/* Sticky file header */}
       <button
         type="button"
-        className="sticky top-0 z-10 flex w-full items-center gap-3 border-b border-border bg-[var(--panel)] px-4 py-2 text-left hover:brightness-95"
+        className="sticky top-0 z-10 flex w-full items-center gap-3 border-b border-border bg-[var(--surface-faint)] px-4 py-3 text-left transition-colors hover:bg-[var(--surface-hover)]"
         onClick={() => setCollapsed((prev) => !prev)}
       >
         <span className="font-mono text-[0.64rem] text-[var(--muted)]">
@@ -161,10 +160,10 @@ const lineNumClass =
 function DiffLineRow({ line }: { line: DiffLine }) {
   if (line.type === "hunk") {
     return (
-      <tr className="bg-[rgba(104,199,246,0.13)]">
-        <td className={cn(lineNumClass, "bg-[rgba(104,199,246,0.18)]")} />
-        <td className={cn(lineNumClass, "bg-[rgba(104,199,246,0.18)]")} />
-        <td className="whitespace-pre px-3 text-[rgba(104,199,246,0.9)]">{line.text}</td>
+      <tr className="bg-[rgba(255,79,0,0.08)]">
+        <td className={cn(lineNumClass, "bg-[rgba(255,79,0,0.12)]")} />
+        <td className={cn(lineNumClass, "bg-[rgba(255,79,0,0.12)]")} />
+        <td className="whitespace-pre px-3 text-[var(--accent-strong)]">{line.text}</td>
       </tr>
     );
   }

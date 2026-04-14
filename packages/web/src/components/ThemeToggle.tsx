@@ -56,7 +56,7 @@ export function ThemeToggle({ theme, onToggle }: Props) {
       type="button"
       variant="secondary"
       size="icon"
-      className="grid place-items-center"
+      className="grid place-items-center rounded-full"
       onClick={onToggle}
       aria-label={`Switch to ${nextTheme} mode`}
       title={`Switch to ${nextTheme} mode`}

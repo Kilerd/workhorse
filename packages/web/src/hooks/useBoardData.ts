@@ -525,46 +525,6 @@ export function useBoardData() {
     [startTaskMutation]
   );
 
-  const createTeamMutation = useMutation({
-    mutationFn: async (input: Parameters<typeof api.createTeam>[0]) => {
-      const response = await api.createTeam(input);
-      return response.team;
-    },
-    onSuccess: async (team) => {
-      await queryClient.invalidateQueries({ queryKey: teamQueryKeys.lists() });
-      await queryClient.invalidateQueries({
-        queryKey: teamQueryKeys.detail(team.id)
-      });
-    }
-  });
-
-  const updateTeamMutation = useMutation({
-    mutationFn: async ({
-      teamId,
-      body
-    }: {
-      teamId: string;
-      body: Parameters<typeof api.updateTeam>[1];
-    }) => {
-      const response = await api.updateTeam(teamId, body);
-      return response.team;
-    },
-    onSuccess: async (team) => {
-      await queryClient.invalidateQueries({ queryKey: teamQueryKeys.lists() });
-      await queryClient.invalidateQueries({
-        queryKey: teamQueryKeys.detail(team.id)
-      });
-    }
-  });
-
-  const deleteTeamMutation = useMutation({
-    mutationFn: async (teamId: string) => api.deleteTeam(teamId),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: teamQueryKeys.lists() });
-      await queryClient.invalidateQueries({ queryKey: ["tasks"] });
-    }
-  });
-
   return {
     queryClient,
     healthQuery,
@@ -586,17 +546,14 @@ export function useBoardData() {
     selectedRunId: selection.selectedRunId,
     liveLogByRunId: liveLog.liveLogByRunId,
     workspaceModalOpen: modals.workspaceModalOpen,
-    workspaceSettingsModalOpen: modals.workspaceSettingsModalOpen,
     globalSettingsModalOpen: modals.globalSettingsModalOpen,
     taskModalOpen: modals.taskModalOpen,
-    teamModalOpen: modals.teamModalOpen,
     setWorkspaceModalOpen: modals.setWorkspaceModalOpen,
-    setWorkspaceSettingsModalOpen: modals.setWorkspaceSettingsModalOpen,
     setGlobalSettingsModalOpen: modals.setGlobalSettingsModalOpen,
     setTaskModalOpen: modals.setTaskModalOpen,
-    setTeamModalOpen: modals.setTeamModalOpen,
     sidebarCollapsed: selection.sidebarCollapsed,
     toggleSidebarCollapsed: selection.toggleSidebarCollapsed,
+    setSidebarCollapsed: selection.setSidebarCollapsed,
     setWorkspaceSelection: selection.setWorkspaceSelection,
     setTaskSelection: selection.setTaskSelection,
     setSelectedRunId: selection.setSelectedRunId,
@@ -607,13 +564,6 @@ export function useBoardData() {
     updateWorkspace: updateWorkspaceMutation.mutateAsync,
     createTask: createTaskMutation.mutateAsync,
     isCreatingTask: createTaskMutation.isPending,
-    createTeam: createTeamMutation.mutateAsync,
-    updateTeamData: updateTeamMutation.mutateAsync,
-    deleteTeam: deleteTeamMutation.mutateAsync,
-    isSavingTeam:
-      createTeamMutation.isPending ||
-      updateTeamMutation.isPending ||
-      deleteTeamMutation.isPending,
     startTask,
     stopTask: stopTaskMutation.mutateAsync,
     sendTaskInput: sendTaskInputMutation.mutateAsync,
@@ -654,10 +604,7 @@ export function useBoardData() {
       deleteWorkspaceMutation,
       deleteTaskMutation,
       pullWorkspaceMutation,
-      setTaskDependenciesMutation,
-      createTeamMutation,
-      updateTeamMutation,
-      deleteTeamMutation
+      setTaskDependenciesMutation
     ].some((m) => m.isPending)
   };
 }

@@ -43,11 +43,11 @@ function parseArtifactPayload(content: string): ArtifactPayload | null {
 function messageTone(message: TeamMessage) {
   switch (message.messageType) {
     case "artifact":
-      return "border-[rgba(104,199,246,0.24)] bg-[rgba(104,199,246,0.08)]";
+      return "border-[rgba(79,92,98,0.22)] bg-[rgba(79,92,98,0.04)]";
     case "status":
-      return "border-[rgba(73,214,196,0.26)] bg-[rgba(73,214,196,0.08)]";
+      return "border-[rgba(255,79,0,0.24)] bg-[rgba(255,79,0,0.05)]";
     case "feedback":
-      return "border-[rgba(242,195,92,0.26)] bg-[rgba(242,195,92,0.08)]";
+      return "border-[rgba(166,109,26,0.24)] bg-[rgba(166,109,26,0.05)]";
     default:
       return "border-border bg-[var(--panel)]";
   }
@@ -56,11 +56,11 @@ function messageTone(message: TeamMessage) {
 function senderTone(senderType: TeamMessage["senderType"]) {
   switch (senderType) {
     case "agent":
-      return "border-[rgba(73,214,196,0.24)] bg-[rgba(73,214,196,0.1)] text-[var(--accent-strong)]";
+      return "border-[rgba(255,79,0,0.24)] bg-[rgba(255,79,0,0.08)] text-[var(--accent-strong)]";
     case "system":
-      return "border-[rgba(128,146,152,0.24)] bg-[rgba(128,146,152,0.08)] text-[var(--muted)]";
+      return "border-border bg-[var(--surface-soft)] text-[var(--muted)]";
     default:
-      return "border-[rgba(242,195,92,0.24)] bg-[rgba(242,195,92,0.08)] text-[var(--warning)]";
+      return "border-[rgba(166,109,26,0.24)] bg-[rgba(166,109,26,0.08)] text-[var(--warning)]";
   }
 }
 
@@ -106,10 +106,10 @@ export function TeamMessageFeed({
     <section className="grid gap-3">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="m-0 font-mono text-[0.58rem] uppercase tracking-[0.12em] text-[var(--accent)]">
+          <p className="section-kicker m-0">
             Team Message Feed
           </p>
-          <p className="m-0 mt-1 text-[0.72rem] text-[var(--muted)]">
+          <p className="m-0 mt-1 text-[0.82rem] text-[var(--muted)]">
             Live execution context for the current parent task.
           </p>
         </div>
@@ -120,7 +120,7 @@ export function TeamMessageFeed({
       ) : error ? (
         <div className="text-[0.76rem] text-[var(--danger)]">{error}</div>
       ) : orderedMessages.length === 0 ? (
-        <div className="rounded-none border border-dashed border-border px-3 py-4 text-[0.74rem] text-[var(--muted)]">
+        <div className="rounded-[var(--radius)] border border-dashed border-border px-4 py-5 text-[0.84rem] text-[var(--muted)]">
           No team messages yet for this task thread.
         </div>
       ) : (
@@ -136,7 +136,7 @@ export function TeamMessageFeed({
               <article
                 key={message.id}
                 className={cn(
-                  "grid gap-2 rounded-none border p-3",
+                  "grid gap-3 rounded-[var(--radius)] border p-4",
                   messageTone(message),
                   message.senderType === "human" &&
                     "ml-auto w-full max-w-[min(34rem,92%)] justify-self-end"
@@ -145,28 +145,28 @@ export function TeamMessageFeed({
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span
                     className={cn(
-                      "inline-flex min-h-5 items-center rounded-none border px-1.5 font-mono text-[0.56rem] uppercase tracking-[0.1em]",
+                      "inline-flex min-h-7 items-center rounded-full border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em]",
                       senderTone(message.senderType)
                     )}
                   >
                     {message.senderType} · {message.agentName}
                   </span>
-                  <span className="inline-flex min-h-5 items-center rounded-none border border-border px-1.5 font-mono text-[0.56rem] uppercase tracking-[0.1em] text-[var(--muted)]">
+                  <span className="inline-flex min-h-7 items-center rounded-full border border-border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] text-[var(--muted)]">
                     {message.messageType}
                   </span>
-                  <span className="text-[0.68rem] text-[var(--muted)]">
+                  <span className="text-[0.74rem] text-[var(--muted)]">
                     {formatRelativeTime(message.createdAt)}
                   </span>
                 </div>
 
                 {artifact ? (
-                  <details className="rounded-none border border-border bg-[var(--bg)]">
-                    <summary className="cursor-pointer list-none px-3 py-2 text-[0.74rem] font-medium">
+                  <details className="rounded-[var(--radius)] border border-border bg-[var(--bg)]">
+                    <summary className="cursor-pointer list-none px-4 py-3 text-[0.84rem] font-medium">
                       Artifact payload
                     </summary>
-                    <div className="grid gap-3 border-t border-border px-3 py-3 text-[0.74rem]">
+                    <div className="grid gap-3 border-t border-border px-4 py-4 text-[0.84rem]">
                       <div className="grid gap-1">
-                        <span className="font-mono text-[0.56rem] uppercase tracking-[0.12em] text-[var(--muted)]">
+                        <span className="font-mono text-[0.62rem] uppercase tracking-[0.08em] text-[var(--muted)]">
                           Files changed
                         </span>
                         {artifact.files_changed?.length ? (
@@ -174,7 +174,7 @@ export function TeamMessageFeed({
                             {artifact.files_changed.map((file) => (
                               <code
                                 key={file}
-                                className="rounded-none border border-border px-1.5 py-0.5 text-[0.68rem]"
+                                className="rounded-full border border-border px-2 py-1 text-[0.72rem]"
                               >
                                 {file}
                               </code>
@@ -186,16 +186,16 @@ export function TeamMessageFeed({
                       </div>
 
                       <div className="grid gap-1">
-                        <span className="font-mono text-[0.56rem] uppercase tracking-[0.12em] text-[var(--muted)]">
+                        <span className="font-mono text-[0.62rem] uppercase tracking-[0.08em] text-[var(--muted)]">
                           Diff summary
                         </span>
-                        <pre className="overflow-x-auto whitespace-pre-wrap rounded-none border border-border bg-[var(--panel)] px-2 py-2 font-mono text-[0.66rem]">
+                        <pre className="overflow-x-auto whitespace-pre-wrap rounded-[var(--radius)] border border-border bg-[var(--panel)] px-3 py-3 font-mono text-[0.72rem]">
                           {artifact.diff_summary || "No diff summary"}
                         </pre>
                       </div>
 
                       <div className="grid gap-1">
-                        <span className="font-mono text-[0.56rem] uppercase tracking-[0.12em] text-[var(--muted)]">
+                        <span className="font-mono text-[0.62rem] uppercase tracking-[0.08em] text-[var(--muted)]">
                           Test results
                         </span>
                         <span>{artifact.test_results ?? "Not provided"}</span>
@@ -220,7 +220,7 @@ export function TeamMessageFeed({
                     </div>
                   </details>
                 ) : (
-                  <p className="m-0 whitespace-pre-wrap break-words text-[0.76rem] leading-[1.55] text-foreground">
+                  <p className="m-0 whitespace-pre-wrap break-words text-[0.88rem] leading-[1.65] text-foreground">
                     {message.content}
                   </p>
                 )}
@@ -232,10 +232,10 @@ export function TeamMessageFeed({
 
       <div className="grid gap-1.5">
         <div className="flex items-center justify-between gap-2">
-          <span className="font-mono text-[0.56rem] uppercase tracking-[0.12em] text-[var(--muted)]">
+          <span className="font-mono text-[0.62rem] uppercase tracking-[0.08em] text-[var(--muted)]">
             Human reply
           </span>
-          <span className="text-[0.68rem] text-[var(--muted)]">
+          <span className="text-[0.74rem] text-[var(--muted)]">
             {titleCase(onSendMessage ? "feedback message" : "unavailable")}
           </span>
         </div>

@@ -41,15 +41,15 @@ interface Props {
 }
 
 const boardClass =
-  "grid h-full min-h-0 auto-cols-[minmax(220px,1fr)] grid-flow-col overflow-x-auto overflow-y-hidden bg-[var(--panel)] max-[720px]:auto-cols-[minmax(180px,88vw)]";
+  "grid h-full min-h-0 auto-cols-[minmax(290px,1fr)] grid-flow-col gap-3 overflow-x-auto overflow-y-hidden bg-transparent pr-2 max-[820px]:auto-cols-[minmax(260px,88vw)]";
 const columnClass =
-  "grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-r border-border bg-transparent last:border-r-0";
+  "surface-card-soft grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden";
 const columnHeaderClass =
-  "flex min-h-9 items-center justify-between gap-3 border-b border-border bg-[var(--surface-soft)] px-3 py-2";
+  "flex min-h-0 items-center gap-3 border-b border-border px-3 py-2";
 const columnListClass =
-  "grid min-h-0 content-start gap-2 overflow-x-hidden overflow-y-auto overscroll-contain p-2";
+  "grid min-h-0 content-start gap-2.5 overflow-x-hidden overflow-y-auto overscroll-contain p-3";
 const taskCardClass =
-  "grid gap-0 rounded-none border bg-[var(--panel)] p-4 text-left transition-[border-color,transform,background-color] hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] focus:outline-none";
+  "grid gap-0 rounded-[var(--radius-lg)] border bg-[var(--panel)] p-3 text-left transition-[border-color,transform,background-color] hover:-translate-y-px hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] focus:outline-none";
 function groupTasks(): Record<DisplayTaskColumn, DisplayTask[]> {
   return {
     backlog: [],
@@ -98,28 +98,28 @@ function getTaskRunBadge(task: DisplayTask) {
     return {
       label: "CANCELLED",
       className:
-        "border-[rgba(242,195,92,0.28)] bg-[rgba(242,195,92,0.12)] text-[var(--warning)]"
+        "border-[rgba(166,109,26,0.28)] bg-[rgba(166,109,26,0.08)] text-[var(--warning)]"
     };
   }
 
   if (task.rejected) {
     return {
       label: "REJECTED",
-      className: "border-[rgba(240,113,113,0.28)] bg-[rgba(240,113,113,0.12)] text-[var(--danger)]"
+      className: "border-[rgba(181,74,74,0.28)] bg-[rgba(181,74,74,0.08)] text-[var(--danger)]"
     };
   }
 
   if (task.column === "running") {
     return {
       label: "RUNNING",
-      className: "border-[rgba(242,195,92,0.24)] bg-[rgba(242,195,92,0.1)] text-[var(--warning)]"
+      className: "border-[rgba(255,79,0,0.26)] bg-[rgba(255,79,0,0.08)] text-[var(--accent-strong)]"
     };
   }
 
   if (task.column === "review") {
     return {
       label: "COMPLETED",
-      className: "border-[rgba(99,216,158,0.26)] bg-[rgba(99,216,158,0.1)] text-[var(--success)]"
+      className: "border-[rgba(47,117,88,0.26)] bg-[rgba(47,117,88,0.08)] text-[var(--success)]"
     };
   }
 
@@ -127,26 +127,26 @@ function getTaskRunBadge(task: DisplayTask) {
     if (task.plan) {
       return {
         label: "PLANNED",
-        className: "border-[rgba(73,214,196,0.24)] bg-[rgba(73,214,196,0.1)] text-[var(--accent-strong)]"
+        className: "border-[rgba(255,79,0,0.24)] bg-[rgba(255,79,0,0.08)] text-[var(--accent-strong)]"
       };
     }
     return {
       label: "TODO",
-      className: "border-[rgba(104,199,246,0.24)] bg-[rgba(104,199,246,0.1)] text-[var(--info)]"
+      className: "border-[rgba(79,92,98,0.22)] bg-[rgba(79,92,98,0.06)] text-[var(--info)]"
     };
   }
 
   if (task.column === "blocked") {
     return {
       label: "BLOCKED",
-      className: "border-[rgba(192,132,252,0.28)] bg-[rgba(192,132,252,0.1)] text-[var(--accent)]"
+      className: "border-[rgba(166,109,26,0.28)] bg-[rgba(166,109,26,0.08)] text-[var(--warning)]"
     };
   }
 
   if (task.column === "done") {
     return {
       label: "DONE",
-      className: "border-[rgba(99,216,158,0.26)] bg-[rgba(99,216,158,0.1)] text-[var(--success)]"
+      className: "border-[rgba(47,117,88,0.26)] bg-[rgba(47,117,88,0.08)] text-[var(--success)]"
     };
   }
 
@@ -154,12 +154,12 @@ function getTaskRunBadge(task: DisplayTask) {
     if (task.lastRunId) {
       return {
         label: "PLANNING",
-        className: "border-[rgba(242,195,92,0.24)] bg-[rgba(242,195,92,0.1)] text-[var(--warning)]"
+        className: "border-[rgba(166,109,26,0.24)] bg-[rgba(166,109,26,0.08)] text-[var(--warning)]"
       };
     }
     return {
       label: "BACKLOG",
-      className: "border-[rgba(128,146,152,0.24)] bg-[rgba(128,146,152,0.08)] text-[var(--muted)]"
+      className: "border-border bg-[var(--surface-soft)] text-[var(--muted)]"
     };
   }
 
@@ -193,19 +193,19 @@ function getBlockedByEntries(
 function getTaskCardToneClass(column: DisplayTaskColumn) {
   switch (column) {
     case "backlog":
-      return "border-[rgba(128,146,152,0.28)]";
+      return "border-border";
     case "todo":
-      return "border-[rgba(104,199,246,0.28)]";
+      return "border-[rgba(79,92,98,0.18)]";
     case "blocked":
-      return "border-[rgba(192,132,252,0.3)]";
+      return "border-[rgba(166,109,26,0.22)]";
     case "running":
-      return "border-[rgba(242,195,92,0.32)]";
+      return "border-[rgba(255,79,0,0.28)]";
     case "review":
-      return "border-[rgba(73,214,196,0.34)]";
+      return "border-[rgba(47,117,88,0.28)]";
     case "done":
-      return "border-[rgba(99,216,158,0.3)]";
+      return "border-[rgba(47,117,88,0.18)]";
     case "archived":
-      return "border-[rgba(164,145,145,0.28)]";
+      return "border-border";
   }
 }
 
@@ -306,13 +306,18 @@ export function Board({
         <Droppable droppableId={column.id} key={column.id}>
           {(provided, snapshot) => (
             <article
-              className={cn(columnClass, snapshot.isDraggingOver && "bg-[rgba(73,214,196,0.05)]")}
+              className={cn(
+                columnClass,
+                snapshot.isDraggingOver && "border-[var(--border-strong)] bg-[var(--panel-strong)]"
+              )}
             >
               <div className={columnHeaderClass}>
-                <h2 className="m-0 text-[0.875rem] font-semibold">{column.title}</h2>
-                <span className="text-[0.7rem] text-[var(--muted)]">
-                  {grouped[column.id]!.length} cards
-                </span>
+                <h2 className="m-0 flex items-baseline gap-2 text-[1rem] font-semibold">
+                  <span className="text-[1.25rem] tabular-nums leading-none text-[var(--muted)]">
+                    {grouped[column.id]!.length}
+                  </span>
+                  {column.title}
+                </h2>
               </div>
 
               <div
@@ -366,24 +371,24 @@ export function Board({
                           }}
                         >
                           <div className="flex items-start justify-between gap-2">
-                            <h3 className="m-0 min-w-0 overflow-hidden text-[0.84rem] font-semibold leading-[1.4] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+                            <h3 className="m-0 min-w-0 overflow-hidden text-[1rem] font-semibold leading-[1.35] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
                               {task.title}
                             </h3>
                           </div>
 
                           {task.description ? (
-                            <p className="mt-2 m-0 overflow-hidden text-[0.7rem] leading-[1.55] text-[var(--muted)] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+                            <p className="mt-3 m-0 overflow-hidden text-[0.84rem] leading-[1.6] text-[var(--muted)] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
                               {task.description}
                             </p>
                           ) : null}
 
                           {team ? (
-                            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                              <span className="inline-flex min-h-5 items-center rounded-none border border-[rgba(73,214,196,0.26)] bg-[rgba(73,214,196,0.1)] px-1.5 font-mono text-[0.56rem] uppercase tracking-[0.1em] text-[var(--accent-strong)]">
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              <span className="inline-flex min-h-7 items-center rounded-full border border-[rgba(255,79,0,0.24)] bg-[rgba(255,79,0,0.08)] px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] text-[var(--accent-strong)]">
                                 Team · {team.agents.length} agents
                               </span>
                               {task.parentTaskId ? (
-                                <span className="inline-flex min-h-5 items-center rounded-none border border-[rgba(104,199,246,0.24)] bg-[rgba(104,199,246,0.1)] px-1.5 font-mono text-[0.56rem] uppercase tracking-[0.1em] text-[var(--info)]">
+                                <span className="inline-flex min-h-7 items-center rounded-full border border-[rgba(79,92,98,0.22)] bg-[rgba(79,92,98,0.06)] px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] text-[var(--info)]">
                                   Subtask{teamAgentName ? ` · ${teamAgentName}` : ""}
                                 </span>
                               ) : null}
@@ -391,12 +396,12 @@ export function Board({
                           ) : null}
 
                           {!task.parentTaskId && childTasks.length > 0 ? (
-                            <div className="mt-3 grid gap-2 border-t border-border pt-3">
+                            <div className="mt-4 grid gap-3 border-t border-border pt-4">
                               <div className="flex items-center justify-between gap-2">
-                                <span className="font-mono text-[0.58rem] uppercase tracking-[0.12em] text-[var(--accent)]">
+                                <span className="section-kicker">
                                   Team subtasks
                                 </span>
-                                <span className="text-[0.68rem] text-[var(--muted)]">
+                                <span className="text-[0.74rem] text-[var(--muted)]">
                                   {childTasks.length} total
                                 </span>
                               </div>
@@ -413,7 +418,7 @@ export function Board({
                                 return (
                                   <article
                                     key={childTask.id}
-                                    className="grid gap-2 rounded-none border border-border bg-[var(--surface-soft)] px-2.5 py-2"
+                                    className="grid gap-2 rounded-[var(--radius)] border border-border bg-[var(--surface-soft)] px-3 py-3"
                                   >
                                     <button
                                       type="button"
@@ -424,10 +429,10 @@ export function Board({
                                       }}
                                     >
                                       <div className="flex items-center justify-between gap-2">
-                                        <span className="text-[0.72rem] font-medium leading-[1.35]">
+                                        <span className="text-[0.84rem] font-medium leading-[1.4]">
                                           {childTask.title}
                                         </span>
-                                        <span className="font-mono text-[0.58rem] uppercase tracking-[0.08em] text-[var(--muted)]">
+                                        <span className="font-mono text-[0.62rem] uppercase tracking-[0.08em] text-[var(--muted)]">
                                           {childTask.cancelledAt
                                             ? "Cancelled"
                                             : childTask.rejected
@@ -435,7 +440,7 @@ export function Board({
                                               : titleCase(childTask.column)}
                                         </span>
                                       </div>
-                                      <span className="text-[0.66rem] text-[var(--muted)]">
+                                      <span className="text-[0.74rem] text-[var(--muted)]">
                                         {childAgentName ?? "Unassigned agent"}
                                       </span>
                                     </button>
@@ -501,7 +506,7 @@ export function Board({
                                 );
                               })}
                               {!isActive && childTasks.length > 3 ? (
-                                <span className="text-[0.68rem] text-[var(--muted)]">
+                                <span className="text-[0.74rem] text-[var(--muted)]">
                                   +{childTasks.length - 3} more subtasks
                                 </span>
                               ) : null}
@@ -509,11 +514,11 @@ export function Board({
                           ) : null}
 
                           {showBlockedBy && blockedByEntries.length > 0 ? (
-                            <div className="mt-2 flex flex-wrap gap-1">
+                            <div className="mt-3 flex flex-wrap gap-2">
                               {blockedByEntries.map(({ id, title }) => (
                                 <span
                                   key={id}
-                                  className="inline-flex items-center rounded-none border border-[rgba(192,132,252,0.28)] bg-[rgba(192,132,252,0.1)] px-1.5 py-0.5 font-mono text-[0.58rem] text-[var(--accent)]"
+                                  className="inline-flex items-center rounded-full border border-[rgba(166,109,26,0.24)] bg-[rgba(166,109,26,0.08)] px-2.5 py-1 font-mono text-[0.64rem] text-[var(--warning)]"
                                 >
                                   blocked by: {title}
                                 </span>
@@ -522,7 +527,7 @@ export function Board({
                           ) : null}
 
                           {task.pullRequestUrl && task.pullRequest ? (
-                            <div className="mt-3 border-t border-border pt-3">
+                            <div className="mt-4 border-t border-border pt-4">
                               <CompactPullRequestStatus
                                 task={task}
                                 reviewCountdown={reviewCountdown}
@@ -530,15 +535,15 @@ export function Board({
                             </div>
                           ) : null}
 
-                          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-[0.625rem]">
+                          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-[0.625rem]">
                             <div className="flex min-w-0 flex-wrap items-center gap-2">
-                              <span className="min-w-0 truncate text-[0.66rem] leading-[1.3] text-[var(--muted)]">
+                              <span className="min-w-0 truncate text-[0.72rem] leading-[1.3] text-[var(--muted)]">
                                 {workspaceName}
                               </span>
                               {showColumnBadge ? (
                                 <span
                                   className={cn(
-                                    "inline-flex min-h-[18px] items-center whitespace-nowrap rounded-none border px-1.5 font-mono text-[0.6rem] uppercase tracking-[0.08em]",
+                                    "inline-flex min-h-7 items-center whitespace-nowrap rounded-full border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em]",
                                     taskRunBadge.className
                                   )}
                                 >
@@ -548,7 +553,7 @@ export function Board({
                             </div>
 
                             <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
-                              <span className="whitespace-nowrap text-[0.68rem] leading-[1.3] text-[var(--muted)]">
+                              <span className="whitespace-nowrap text-[0.72rem] leading-[1.3] text-[var(--muted)]">
                                 {formatRelativeTime(task.updatedAt)}
                               </span>
                               {showCardActions ? (

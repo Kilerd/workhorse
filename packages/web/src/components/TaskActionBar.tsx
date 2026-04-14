@@ -36,7 +36,7 @@ export function TaskActionBar({
     <span className={cn("flex flex-wrap gap-1.5", compact && "justify-end gap-1")}>
       {actions.map((action) => {
         const className = compact
-          ? "inline-flex min-h-[20px] items-center rounded-none border border-border bg-background px-2 text-[0.62rem] uppercase tracking-[0.08em] text-foreground transition-[border-color,background-color,transform] hover:-translate-y-px hover:border-[var(--border-strong)]"
+          ? "inline-flex min-h-7 items-center rounded-full border border-border bg-[var(--panel)] px-2.5 text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-foreground transition-[border-color,background-color,transform] hover:-translate-y-px hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)]"
           : buttonVariants({
               variant:
                 action.kind === "danger"

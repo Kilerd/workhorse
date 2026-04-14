@@ -27,6 +27,11 @@ export function useSelectionState() {
     });
   }, []);
 
+  const setSidebarCollapsed = useCallback((value: boolean) => {
+    setSidebarCollapsedRaw(value);
+    writeStoredValue(STORAGE_KEYS.sidebarCollapsed, value);
+  }, []);
+
   const setWorkspaceSelection = useCallback((workspaceId: string | "all") => {
     setSelectedWorkspaceId(workspaceId);
     writeStoredValue(STORAGE_KEYS.selectedWorkspaceId, workspaceId);
@@ -46,6 +51,7 @@ export function useSelectionState() {
     setSelectedRunId,
     setWorkspaceSelection,
     setTaskSelection,
-    toggleSidebarCollapsed
+    toggleSidebarCollapsed,
+    setSidebarCollapsed
   };
 }

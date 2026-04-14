@@ -54,36 +54,34 @@ interface Props {
 
 // --- Style constants ---
 
-const detailPanelClass = "grid min-h-0 gap-0 border-0 bg-[var(--bg)]";
-const emptyStateClass = "grid max-w-[32rem] gap-3 text-center";
-const detailEyebrowClass =
-  "m-0 font-mono text-[0.64rem] uppercase tracking-[0.14em] text-[var(--accent)]";
+const detailPanelClass = "grid min-h-0 gap-0 bg-transparent";
+const emptyStateClass = "surface-card grid max-w-[34rem] gap-4 px-8 py-10 text-center";
+const detailEyebrowClass = "section-kicker m-0";
 
-const fieldLabelClass =
-  "m-0 font-mono text-[0.58rem] uppercase tracking-[0.14em] text-[var(--accent)]";
-const fieldValueClass = "min-w-0 break-words text-[0.82rem] leading-[1.5]";
-const fieldMonoClass = "font-mono text-[0.72rem]";
+const fieldLabelClass = "section-kicker m-0 text-[0.68rem]";
+const fieldValueClass = "min-w-0 break-words text-[0.92rem] leading-[1.6]";
+const fieldMonoClass = "font-mono text-[0.78rem]";
 
 const chipClass =
-  "inline-flex min-h-5 items-center rounded-none border px-1.5 font-mono text-[0.58rem] uppercase tracking-[0.1em]";
+  "inline-flex min-h-8 items-center rounded-full border px-3 font-mono text-[0.68rem] uppercase tracking-[0.08em]";
 
 const actionBtnClass =
-  "inline-flex min-h-7 items-center gap-1.5 rounded-none border border-transparent bg-transparent px-2.5 text-[0.75rem] text-foreground transition-[border-color,background-color,transform] hover:-translate-y-px hover:bg-[var(--surface-soft)]";
+  "inline-flex min-h-11 items-center gap-2 rounded-[var(--radius-lg)] border border-border bg-[var(--panel)] px-4 text-[0.88rem] font-medium text-foreground transition-[border-color,background-color,transform] hover:-translate-y-px hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)]";
 
 type Tone = "muted" | "info" | "warning" | "accent" | "success" | "danger";
 
 function chipTone(tone: Tone) {
   switch (tone) {
     case "info":
-      return "border-[rgba(104,199,246,0.24)] bg-[rgba(104,199,246,0.12)] text-[var(--info)]";
+      return "border-[rgba(79,92,98,0.22)] bg-[rgba(79,92,98,0.06)] text-[var(--info)]";
     case "warning":
-      return "border-[rgba(242,195,92,0.24)] bg-[rgba(242,195,92,0.12)] text-[var(--warning)]";
+      return "border-[rgba(166,109,26,0.24)] bg-[rgba(166,109,26,0.08)] text-[var(--warning)]";
     case "accent":
-      return "border-[rgba(73,214,196,0.24)] bg-[rgba(73,214,196,0.12)] text-[var(--accent-strong)]";
+      return "border-[rgba(255,79,0,0.24)] bg-[rgba(255,79,0,0.08)] text-[var(--accent-strong)]";
     case "success":
-      return "border-[rgba(99,216,158,0.24)] bg-[rgba(99,216,158,0.12)] text-[var(--success)]";
+      return "border-[rgba(47,117,88,0.24)] bg-[rgba(47,117,88,0.08)] text-[var(--success)]";
     case "danger":
-      return "border-[rgba(240,113,113,0.28)] bg-[rgba(240,113,113,0.12)] text-[var(--danger)]";
+      return "border-[rgba(181,74,74,0.28)] bg-[rgba(181,74,74,0.08)] text-[var(--danger)]";
     default:
       return "border-border bg-[var(--surface-soft)] text-[var(--muted)]";
   }
@@ -336,8 +334,8 @@ export function TaskDetailsPanel({
       <aside className={cn(detailPanelClass, "min-h-[60vh] place-items-center", className)}>
         <div className={emptyStateClass}>
           <p className={detailEyebrowClass}>Task details</p>
-          <h2>Select a task</h2>
-          <p className="m-0 text-[var(--muted)]">
+          <h2 className="text-[2.4rem]">Select a task</h2>
+          <p className="m-0 text-[1rem] leading-[1.6] text-[var(--muted)]">
             Task context, run history and live logs will appear here.
           </p>
         </div>
@@ -392,17 +390,14 @@ export function TaskDetailsPanel({
 
   return (
     <aside className={cn(detailPanelClass, className)}>
-      {/* ── 2-col body (no top bar — everything in sidebar) ── */}
-      <div className="flex min-h-0 flex-1 overflow-hidden max-[1040px]:flex-col">
-        {/* Left sidebar */}
-        <div className="flex w-[280px] flex-none flex-col overflow-y-auto border-r border-border bg-[var(--bg)] max-[1040px]:w-full max-[1040px]:border-b max-[1040px]:border-r-0">
-          {/* Header: back + title + badge */}
-          <div className="grid gap-2 border-b border-border px-4 py-3 max-[720px]:px-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 p-3 sm:p-4 lg:flex-row lg:p-5">
+        <div className="flex w-full flex-none flex-col gap-4 overflow-y-auto lg:w-[360px]">
+          <div className="surface-card grid gap-3 px-4 py-4">
             <div className="flex items-center gap-2">
               {onBack ? (
                 <button
                   type="button"
-                  className={cn(actionBtnClass, "hover:border-border")}
+                  className={actionBtnClass}
                   onClick={onBack}
                 >
                   <ArrowLeftIcon />
@@ -433,16 +428,15 @@ export function TaskDetailsPanel({
                   ? "Planning"
                   : task.column === "todo" && task.plan
                     ? "Planned"
-                    : titleCase(task.column)}
+                  : titleCase(task.column)}
               </span>
             </div>
-            <h1 className="m-0 text-[0.92rem] font-semibold leading-[1.2]">
+            <h1 className="m-0 text-[2.25rem] leading-[0.92]">
               {task.title}
             </h1>
           </div>
 
-          {/* Actions */}
-          <div className="flex flex-wrap items-center gap-1.5 border-b border-border px-4 py-2 max-[720px]:px-3">
+          <div className="surface-card flex flex-wrap items-center gap-2 px-3 py-3">
             {isReviewableSubtask || isCancelableSubtask ? (
               <SubtaskReviewActions
                 canApprove={canApproveReviewSubtask}
@@ -487,7 +481,7 @@ export function TaskDetailsPanel({
                 type="button"
                 className={cn(
                   actionBtnClass,
-                  "border-[rgba(73,214,196,0.28)] bg-[rgba(73,214,196,0.1)] text-[var(--accent-strong)] hover:border-[rgba(73,214,196,0.42)] hover:bg-[rgba(73,214,196,0.18)]"
+                  "border-[rgba(255,79,0,0.28)] bg-[rgba(255,79,0,0.08)] text-[var(--accent-strong)] hover:border-[rgba(255,79,0,0.4)] hover:bg-[rgba(255,79,0,0.14)]"
                 )}
                 onClick={onRequestReview}
               >
@@ -498,7 +492,7 @@ export function TaskDetailsPanel({
               type="button"
               className={cn(
                 actionBtnClass,
-                "ml-auto text-[var(--danger)] hover:border-[rgba(240,113,113,0.28)] hover:bg-[rgba(240,113,113,0.1)]"
+                "ml-auto text-[var(--danger)] hover:border-[rgba(181,74,74,0.32)] hover:bg-[rgba(181,74,74,0.08)]"
               )}
               onClick={onDelete}
             >
@@ -506,9 +500,8 @@ export function TaskDetailsPanel({
             </button>
           </div>
 
-          {/* Description */}
           <SidebarSection title="Description">
-            <p className="m-0 text-[0.8rem] leading-[1.55] text-[var(--muted)]">
+            <p className="m-0 text-[0.95rem] leading-[1.65] text-[var(--muted)]">
               {task.description || "No description provided."}
             </p>
           </SidebarSection>
@@ -672,10 +665,8 @@ export function TaskDetailsPanel({
           ) : null}
         </div>
 
-        {/* Right log pane */}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--surface-faint)]">
-          {/* Tabs */}
-          <div className="flex items-center border-b border-border bg-[var(--panel)]">
+        <div className="surface-card flex min-h-[60vh] min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="flex gap-0 overflow-x-auto border-b border-border px-4">
             {phaseTabs.map((tab) => {
               const isActive = !showFilesTab && activePhase === tab.phase;
               const tone = runStatusTone(tab.latestRun);
@@ -684,9 +675,9 @@ export function TaskDetailsPanel({
                   key={tab.phase}
                   type="button"
                   className={cn(
-                    "flex items-center gap-2 border-b-2 px-4 py-2.5 text-[0.75rem] transition-colors",
+                    "flex shrink-0 items-center gap-2 border-b-2 px-3 py-2.5 text-[0.82rem] font-medium transition-colors",
                     isActive
-                      ? "border-[var(--accent)] text-foreground"
+                      ? "border-foreground text-foreground"
                       : "border-transparent text-[var(--muted)] hover:text-foreground"
                   )}
                   onClick={() => {
@@ -694,10 +685,10 @@ export function TaskDetailsPanel({
                     onSelectRun(tab.latestRun.id);
                   }}
                 >
-                  <span className="font-medium">{tab.label}</span>
+                  {tab.label}
                   <span
                     className={cn(
-                      "inline-flex min-h-4 items-center rounded-none border px-1 font-mono text-[0.5rem] uppercase tracking-[0.08em]",
+                      "inline-flex min-h-5 items-center rounded-full border px-1.5 font-mono text-[0.58rem] uppercase tracking-[0.08em]",
                       chipTone(tone)
                     )}
                   >
@@ -708,33 +699,26 @@ export function TaskDetailsPanel({
             })}
 
             {showWorktree ? (
-              <>
-                {phaseTabs.length > 0 ? (
-                  <span className="mx-1 text-[rgba(140,161,160,0.3)]" aria-hidden="true">|</span>
+              <button
+                type="button"
+                className={cn(
+                  "flex shrink-0 items-center gap-2 border-b-2 px-3 py-2.5 text-[0.82rem] font-medium transition-colors",
+                  showFilesTab
+                    ? "border-foreground text-foreground"
+                    : "border-transparent text-[var(--muted)] hover:text-foreground"
+                )}
+                onClick={() => setShowFilesTab(true)}
+              >
+                {diffFiles.length > 0
+                  ? `${diffFiles.length} files changed`
+                  : "Files"}
+                {diffFiles.length > 0 ? (
+                  <>
+                    <span className="font-mono text-[0.58rem] text-[var(--success)]">+{diffAdditions}</span>
+                    <span className="font-mono text-[0.58rem] text-[var(--danger)]">-{diffDeletions}</span>
+                  </>
                 ) : null}
-                <button
-                  type="button"
-                  className={cn(
-                    "flex items-center gap-2 border-b-2 px-4 py-2.5 text-[0.75rem] transition-colors",
-                    showFilesTab
-                      ? "border-[var(--accent)] text-foreground"
-                      : "border-transparent text-[var(--muted)] hover:text-foreground"
-                  )}
-                  onClick={() => setShowFilesTab(true)}
-                >
-                  <span className="font-medium">
-                    {diffFiles.length > 0
-                      ? `${diffFiles.length} files changed`
-                      : "Files"}
-                  </span>
-                  {diffFiles.length > 0 ? (
-                    <>
-                      <span className="font-mono text-[0.58rem] text-[var(--success)]">+{diffAdditions}</span>
-                      <span className="font-mono text-[0.58rem] text-[var(--danger)]">-{diffDeletions}</span>
-                    </>
-                  ) : null}
-                </button>
-              </>
+              </button>
             ) : null}
           </div>
 
@@ -809,7 +793,7 @@ function DependencyPicker({
           return (
             <label
               key={candidate.id}
-              className="flex cursor-pointer items-start gap-2 rounded-none py-0.5 hover:text-foreground"
+              className="flex cursor-pointer items-start gap-2 rounded-[var(--radius)] px-2 py-2 transition-colors hover:bg-[var(--surface-hover)] hover:text-foreground"
             >
               <input
                 type="checkbox"
@@ -824,7 +808,7 @@ function DependencyPicker({
                   timerRef.current = setTimeout(() => onSetDependencies(next), 300);
                 }}
               />
-              <span className="min-w-0 break-words text-[0.76rem] leading-[1.4] text-[var(--muted)]">
+              <span className="min-w-0 break-words text-[0.88rem] leading-[1.5] text-[var(--muted)]">
                 {candidate.title}
               </span>
             </label>
@@ -843,10 +827,10 @@ function SidebarSection({
   children: ReactNode;
 }) {
   return (
-    <div className="border-b border-border px-4 py-3 max-[720px]:px-3">
-      <div className={cn(fieldLabelClass, "mb-2")}>{title}</div>
+    <section className="surface-card px-4 py-4">
+      <div className={cn(fieldLabelClass, "mb-3")}>{title}</div>
       {children}
-    </div>
+    </section>
   );
 }
 
@@ -863,13 +847,13 @@ function SidebarField({
 }) {
   return (
     <div className={cn("grid min-w-0 gap-0.5", className)}>
-      <div className="font-mono text-[0.5rem] uppercase tracking-[0.12em] text-[var(--muted)]">
+      <div className="font-mono text-[0.58rem] uppercase tracking-[0.1em] text-[var(--muted)]">
         {label}
       </div>
       <div
         className={cn(
-          "min-w-0 break-words text-[0.76rem] leading-[1.4]",
-          mono && "font-mono text-[0.68rem]"
+          "min-w-0 break-words text-[0.88rem] leading-[1.55]",
+          mono && "font-mono text-[0.76rem]"
         )}
       >
         {value}

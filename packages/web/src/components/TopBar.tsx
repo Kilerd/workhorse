@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type {
   HealthCodexQuotaData,
   HealthCodexQuotaWindowData,
@@ -8,7 +9,6 @@ import { formatCount, formatRelativeTime } from "@/lib/format";
 import type { ThemeMode } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { ThemeToggle } from "./ThemeToggle";
 
 interface SchedulerStatus {
@@ -19,8 +19,6 @@ interface SchedulerStatus {
 
 interface Props {
   selectedWorkspaceName: string;
-  searchQuery: string;
-  onSearchChange(value: string): void;
   onCreateTask(): void;
   onRefresh(): void;
   theme: ThemeMode;
@@ -71,16 +69,16 @@ function formatQuotaWindowLabel(windowDurationMins?: number): string {
   return `${windowDurationMins}m`;
 }
 
-function getQuotaWindowToneClass(window: HealthCodexQuotaWindowData): string {
+function quotaToneClass(window: HealthCodexQuotaWindowData): string {
   if (window.remainingPercent <= 15) {
-    return "border-[rgba(231,106,106,0.34)] bg-[rgba(231,106,106,0.12)] text-foreground";
+    return "border-[rgba(181,74,74,0.28)] bg-[rgba(181,74,74,0.08)] text-[var(--danger)]";
   }
 
   if (window.remainingPercent <= 35) {
-    return "border-[rgba(233,191,96,0.3)] bg-[rgba(233,191,96,0.14)] text-foreground";
+    return "border-[rgba(166,109,26,0.28)] bg-[rgba(166,109,26,0.08)] text-[var(--warning)]";
   }
 
-  return "border-[rgba(73,214,196,0.26)] bg-[rgba(73,214,196,0.12)] text-foreground";
+  return "border-[rgba(255,79,0,0.22)] bg-[rgba(255,79,0,0.08)] text-[var(--accent-strong)]";
 }
 
 function buildQuotaTitle(
@@ -100,26 +98,53 @@ function buildQuotaTitle(
   return details.join(" • ");
 }
 
-function buildQuotaGroupTitle(
-  quotaWindows: Array<{ window: HealthCodexQuotaWindowData }>,
-  codexQuota?: HealthCodexQuotaData | null
-): string | undefined {
-  if (quotaWindows.length === 0) {
-    return undefined;
+function runtimeDotClass(runtimeStatus: string) {
+  if (runtimeStatus === "ok") {
+    return "bg-[var(--success)]";
   }
 
-  return quotaWindows
-    .map(
-      ({ window }) =>
-        `${formatQuotaWindowLabel(window.windowDurationMins)}: ${buildQuotaTitle(window, codexQuota)}`
-    )
-    .join("\n");
+  if (runtimeStatus === "connecting") {
+    return "bg-[var(--warning)]";
+  }
+
+  return "bg-[var(--danger)]";
+}
+
+function MetaPill({
+  children,
+  tone = "default",
+  title
+}: {
+  children: ReactNode;
+  tone?: "default" | "accent" | "success" | "warning" | "danger";
+  title?: string;
+}) {
+  const toneClass =
+    tone === "accent"
+      ? "border-[rgba(255,79,0,0.22)] bg-[rgba(255,79,0,0.08)] text-[var(--accent-strong)]"
+      : tone === "success"
+        ? "border-[rgba(47,117,88,0.24)] bg-[rgba(47,117,88,0.08)] text-[var(--success)]"
+        : tone === "warning"
+          ? "border-[rgba(166,109,26,0.24)] bg-[rgba(166,109,26,0.08)] text-[var(--warning)]"
+          : tone === "danger"
+            ? "border-[rgba(181,74,74,0.24)] bg-[rgba(181,74,74,0.08)] text-[var(--danger)]"
+            : "border-border bg-[var(--panel)] text-[var(--muted)]";
+
+  return (
+    <span
+      className={cn(
+        "inline-flex min-h-7 items-center gap-1.5 rounded-full border px-2.5 text-[0.72rem] font-medium",
+        toneClass
+      )}
+      title={title}
+    >
+      {children}
+    </span>
+  );
 }
 
 export function TopBar({
   selectedWorkspaceName,
-  searchQuery,
-  onSearchChange,
   onCreateTask,
   onRefresh,
   theme,
@@ -133,10 +158,6 @@ export function TopBar({
   isPulling,
   schedulerStatus
 }: Props) {
-  const metaChipClass =
-    "inline-flex min-h-5 items-center gap-2 whitespace-nowrap rounded-none border border-border bg-[var(--panel)] px-2 text-[0.64rem] uppercase tracking-[0.08em] text-[var(--muted)]";
-  const quotaWindowClass =
-    "inline-flex min-h-4 items-center gap-1 whitespace-nowrap rounded-none border border-transparent px-1.5";
   const quotaWindows = [
     codexQuota?.primary
       ? {
@@ -159,135 +180,60 @@ export function TopBar({
     } => entry !== null
   );
 
+  const hasSchedulerActivity =
+    schedulerStatus &&
+    (schedulerStatus.running > 0 || schedulerStatus.queued > 0 || schedulerStatus.blocked > 0);
+
   return (
-    <header className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 gap-x-4 border-b border-border bg-[var(--panel)] px-4 py-3 max-[1040px]:grid-cols-1">
-      <div className="flex min-w-0 flex-wrap items-center gap-3">
-        <div className="flex flex-wrap gap-2" aria-label="Board summary">
-          <span className={cn(metaChipClass, "text-foreground")}>
+    <header className="border-b border-border bg-background">
+      <div className="grid gap-2 px-3 py-2 sm:px-4 lg:px-5">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <h1 className="m-0 text-[1.35rem] leading-[1] sm:text-[1.5rem]">
             {selectedWorkspaceName}
-          </span>
-          <span
-            className={cn(metaChipClass, "text-foreground")}
-          >
-            <span
-              aria-hidden="true"
-              className={cn(
-                "size-[0.45rem] rounded-full bg-[var(--warning)]",
-                runtimeStatus === "ok" &&
-                  "bg-[var(--success)] shadow-[0_0_0_4px_rgba(99,216,158,0.12)]"
-              )}
-            />
-            {formatRuntimeStatus(runtimeStatus)}
-          </span>
-          {quotaWindows.length > 0 ? (
-            <span
-              className={cn(metaChipClass, "gap-1.5 pr-1 text-foreground")}
-              title={buildQuotaGroupTitle(quotaWindows, codexQuota)}
-            >
-              <span className="whitespace-nowrap text-foreground">Codex</span>
-              <span className="inline-flex items-center gap-1" aria-label="Codex quota windows">
-                {quotaWindows.map(({ key, window }) => (
-                  <span
-                    key={key}
-                    className={cn(quotaWindowClass, getQuotaWindowToneClass(window))}
-                    title={buildQuotaTitle(window, codexQuota)}
-                  >
-                    <span className="text-[var(--muted)]">
-                      {formatQuotaWindowLabel(window.windowDurationMins)}
-                    </span>
-                    <span className="text-foreground">
-                      {window.remainingPercent}%
-                    </span>
-                  </span>
-                ))}
-              </span>
-            </span>
-          ) : null}
-          {codexQuota === null ? (
-            <span className={metaChipClass}>Codex quota unavailable</span>
-          ) : null}
-          <span className={metaChipClass}>{formatCount(boardCount, "task")}</span>
-          {schedulerStatus ? (
-            <span className={metaChipClass}>
-              Running: {schedulerStatus.running} | Queued: {schedulerStatus.queued} | Blocked: {schedulerStatus.blocked}
-            </span>
-          ) : null}
-          <span className={metaChipClass}>Updated {formatRelativeTime(lastSyncedAt)}</span>
-          {gitStatus ? (
-            <>
-              <span className={cn(metaChipClass, "gap-1.5")}>
-                <svg
-                  aria-hidden="true"
-                  width="12"
-                  height="12"
-                  viewBox="0 0 16 16"
-                  fill="currentColor"
-                  className="shrink-0 opacity-60"
-                >
-                  <path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.493 2.493 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Z" />
-                </svg>
-                {gitStatus.branch}
-              </span>
-              {gitStatus.changedFiles + gitStatus.addedFiles + gitStatus.deletedFiles > 0 ? (
-                <span className={metaChipClass}>
-                  {gitStatus.changedFiles + gitStatus.addedFiles + gitStatus.deletedFiles} files
-                  {gitStatus.addedFiles > 0 ? (
-                    <span className="text-[var(--success)]"> +{gitStatus.addedFiles}</span>
-                  ) : null}
-                  {gitStatus.deletedFiles > 0 ? (
-                    <span className="text-[var(--error)]"> -{gitStatus.deletedFiles}</span>
-                  ) : null}
-                </span>
-              ) : null}
-              <span className={metaChipClass}>
-                ↓ {gitStatus.behind}
-              </span>
-              <span className={metaChipClass}>
-                ↑ {gitStatus.ahead}
-              </span>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={onPull}
-                disabled={isPulling}
-                className="h-5 min-h-5 px-2 text-[0.64rem]"
-                title="Pull latest from origin"
+          </h1>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <MetaPill tone={runtimeStatus === "ok" ? "success" : runtimeStatus === "connecting" ? "warning" : "danger"}>
+              <span
+                aria-hidden="true"
+                className={cn("size-2 rounded-full", runtimeDotClass(runtimeStatus))}
+              />
+              <span>{formatRuntimeStatus(runtimeStatus)}</span>
+            </MetaPill>
+            <MetaPill>{formatCount(boardCount, "task")}</MetaPill>
+            {hasSchedulerActivity ? (
+              <MetaPill>
+                {schedulerStatus.running} running / {schedulerStatus.queued} queued / {schedulerStatus.blocked} blocked
+              </MetaPill>
+            ) : null}
+            <MetaPill>Updated {formatRelativeTime(lastSyncedAt)}</MetaPill>
+            {quotaWindows.map(({ key, window }) => (
+              <MetaPill
+                key={key}
+                tone={window.remainingPercent <= 15 ? "danger" : window.remainingPercent <= 35 ? "warning" : "accent"}
+                title={buildQuotaTitle(window, codexQuota)}
               >
-                {isPulling ? "Pulling…" : "↓ Pull"}
+                Codex {formatQuotaWindowLabel(window.windowDurationMins)} {window.remainingPercent}%
+              </MetaPill>
+            ))}
+            {codexQuota === null ? <MetaPill>Codex unavailable</MetaPill> : null}
+          </div>
+
+          <div className="ml-auto flex items-center gap-2">
+            <Button type="button" variant="secondary" size="sm" onClick={onRefresh}>
+              Refresh
+            </Button>
+            {gitStatus ? (
+              <Button type="button" variant="secondary" size="sm" onClick={onPull} disabled={isPulling}>
+                {isPulling ? "Pulling…" : "Pull"}
               </Button>
-            </>
-          ) : null}
+            ) : null}
+            <Button type="button" size="sm" className="px-3" onClick={onCreateTask}>
+              New task
+            </Button>
+            <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+          </div>
         </div>
-      </div>
-
-      <div className="flex min-w-0 flex-wrap items-center justify-end gap-3 max-[1040px]:justify-start">
-        <label className="relative flex items-center max-[1040px]:w-full">
-          <span className="sr-only">Search tasks</span>
-          <Input
-            type="search"
-            value={searchQuery}
-            onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="Search..."
-            className="h-7 min-h-7 w-40 min-w-40 py-0 pr-14 text-[0.75rem] max-[1040px]:w-full max-[1040px]:min-w-0"
-          />
-          {searchQuery ? (
-            <button
-              type="button"
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 border border-transparent bg-transparent text-[0.62rem] uppercase tracking-[0.08em] text-[var(--muted)]"
-              onClick={() => onSearchChange("")}
-            >
-              Clear
-            </button>
-          ) : null}
-        </label>
-
-        <Button type="button" variant="secondary" onClick={onRefresh}>
-          Refresh
-        </Button>
-        <Button type="button" onClick={onCreateTask}>
-          New
-        </Button>
-        <ThemeToggle theme={theme} onToggle={onToggleTheme} />
       </div>
     </header>
   );

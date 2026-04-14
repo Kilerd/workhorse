@@ -1,6 +1,10 @@
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
-import type { AgentTeam, Task, TeamMessage, Workspace } from "@workhorse/contracts";
+import type { AgentTeam, AppState, Run, Task, TeamMessage, Workspace } from "@workhorse/contracts";
 
 import { StateStore } from "./state-store.js";
 
@@ -42,6 +46,21 @@ function makeTask(workspaceId: string): Task {
     },
     createdAt: now,
     updatedAt: now
+  };
+}
+
+function makeRun(taskId: string, overrides: Partial<Run> = {}): Run {
+  const now = new Date().toISOString();
+  return {
+    id: "run-1",
+    taskId,
+    status: "succeeded",
+    runnerType: "shell",
+    command: "true",
+    startedAt: now,
+    endedAt: now,
+    logFile: `/tmp/${taskId}.log`,
+    ...overrides
   };
 }
 
@@ -103,6 +122,67 @@ describe("StateStore", () => {
     const tasks = store.listTasks();
     const loaded2 = tasks.find((t) => t.id === "task-2");
     expect(loaded2?.dependencies).toEqual(["task-1"]);
+  });
+
+  it("prunes runs whose tasks have been removed before saving", async () => {
+    const store = new StateStore(":memory:");
+    await store.load();
+
+    const workspace = makeWorkspace();
+    const task = makeTask(workspace.id);
+    const run = makeRun(task.id);
+    store.setWorkspaces([workspace]);
+    store.setTasks([task]);
+    store.setRuns([run]);
+    await store.save();
+
+    store.setTasks([]);
+    await store.save();
+
+    expect(store.listRuns()).toEqual([]);
+  });
+
+  it("drops orphan runs and dependencies while migrating legacy JSON state", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "workhorse-state-store-"));
+    const workspace = makeWorkspace();
+    const task = {
+      ...makeTask(workspace.id),
+      dependencies: ["task-missing"],
+      lastRunId: "run-orphan",
+      continuationRunId: "run-orphan"
+    } satisfies Task;
+    const legacyState = {
+      schemaVersion: 6,
+      settings: {
+        language: "中文",
+        openRouter: {
+          baseUrl: "https://openrouter.ai/api/v1",
+          token: "",
+          model: ""
+        }
+      },
+      workspaces: [workspace],
+      tasks: [task],
+      runs: [
+        makeRun(task.id, { id: "run-valid" }),
+        makeRun("task-missing", { id: "run-orphan" })
+      ]
+    } satisfies AppState;
+
+    await writeFile(
+      join(dataDir, "state.json"),
+      `${JSON.stringify(legacyState, null, 2)}\n`,
+      "utf8"
+    );
+
+    const store = new StateStore(dataDir);
+    await store.load();
+
+    const snapshot = store.snapshot();
+    expect(snapshot.runs.map((run) => run.id)).toEqual(["run-valid"]);
+    expect(snapshot.tasks[0]?.dependencies).toEqual([]);
+    expect(snapshot.tasks[0]?.lastRunId).toBeUndefined();
+    expect(snapshot.tasks[0]?.continuationRunId).toBeUndefined();
   });
 
   it("persists cancelledAt on tasks", async () => {

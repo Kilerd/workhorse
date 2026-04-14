@@ -14,13 +14,14 @@ import type { RunLogEntry, ServerEvent, Workspace } from "@workhorse/contracts";
 import { Board } from "@/components/Board";
 import { Sidebar } from "@/components/Sidebar";
 import { TaskDetailsPanel } from "@/components/TaskDetailsPanel";
-import { TeamManagementModal } from "@/components/TeamManagementModal";
+import { TeamsPage } from "@/components/TeamsPage";
+import { TeamEditPage } from "@/components/TeamEditPage";
 import {
   GlobalSettingsModal,
   TaskModal,
-  WorkspaceModal,
-  WorkspaceSettingsModal
+  WorkspaceModal
 } from "@/components/WorkspaceModals";
+import { WorkspaceSettingsPage } from "@/components/WorkspaceSettingsPage";
 import { TopBar } from "@/components/TopBar";
 import { useBoardData } from "@/hooks/useBoardData";
 import { api } from "@/lib/api";
@@ -272,13 +273,16 @@ function ReactAppShell() {
 
   function openTask(taskId: string) {
     board.setTaskSelection(taskId);
+    board.setSidebarCollapsed(true);
     navigate(`/tasks/${taskId}`);
   }
 
   const isTaskDetailView = location.pathname.startsWith("/tasks/");
+  const isTeamsView = location.pathname.startsWith("/teams");
+  const isWorkspaceSettingsView = location.pathname === "/workspace-settings";
 
   return (
-    <div className="grid h-screen min-h-screen grid-cols-[auto_1fr] overflow-hidden">
+    <div className={`bg-background text-foreground lg:grid lg:h-screen lg:overflow-hidden ${board.sidebarCollapsed ? "lg:grid-cols-[64px_minmax(0,1fr)]" : "lg:grid-cols-[272px_minmax(0,1fr)]"}`}>
       <Sidebar
         workspaces={workspaces}
         allTasks={allTasks}
@@ -288,88 +292,133 @@ function ReactAppShell() {
         onToggleCollapse={board.toggleSidebarCollapsed}
         onSelectWorkspace={board.setWorkspaceSelection}
         onAddWorkspace={() => board.setWorkspaceModalOpen(true)}
-        onOpenTeams={() => board.setTeamModalOpen(true)}
-        onOpenWorkspaceSettings={() => board.setWorkspaceSettingsModalOpen(true)}
+        onOpenTeams={() => navigate("/teams")}
+        onOpenWorkspaceSettings={() => navigate("/workspace-settings")}
         onOpenGlobalSettings={() => board.setGlobalSettingsModalOpen(true)}
       />
 
       <main
         className={
           isTaskDetailView
-            ? "relative z-[1] grid min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden p-0"
-            : "relative z-[1] grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden p-0"
+            ? "relative z-[1] min-h-screen min-w-0 overflow-hidden lg:min-h-0"
+            : "relative z-[1] grid min-h-screen min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden lg:min-h-0"
         }
       >
-        {isTaskDetailView ? null : <TopBar
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          onCreateTask={() => board.setTaskModalOpen(true)}
-          onRefresh={() => {
-            void queryClient.invalidateQueries({ queryKey: ["workspaces"] });
-            void queryClient.invalidateQueries({ queryKey: ["tasks"] });
-            void queryClient.invalidateQueries({ queryKey: ["settings"] });
-            void queryClient.invalidateQueries({ queryKey: ["health"] });
-            setSyncedAt(new Date().toISOString());
-          }}
-          theme={theme}
-          onToggleTheme={() =>
-            setTheme((current) => (current === "dark" ? "light" : "dark"))
-          }
-          lastSyncedAt={syncedAt}
-          boardCount={boardTasks.length}
-          runtimeStatus={board.healthQuery.data?.status ?? "connecting"}
-          codexQuota={board.healthQuery.data?.codexQuota}
-          gitStatus={board.workspaceGitStatus}
-          onPull={() => {
-            if (board.selectedWorkspaceId !== "all") {
-              void board.pullWorkspace(board.selectedWorkspaceId);
+        {isTaskDetailView || isTeamsView || isWorkspaceSettingsView ? null : (
+          <TopBar
+            onCreateTask={() => board.setTaskModalOpen(true)}
+            onRefresh={() => {
+              void queryClient.invalidateQueries({ queryKey: ["workspaces"] });
+              void queryClient.invalidateQueries({ queryKey: ["tasks"] });
+              void queryClient.invalidateQueries({ queryKey: ["settings"] });
+              void queryClient.invalidateQueries({ queryKey: ["health"] });
+              setSyncedAt(new Date().toISOString());
+            }}
+            theme={theme}
+            onToggleTheme={() =>
+              setTheme((current) => (current === "dark" ? "light" : "dark"))
             }
-          }}
-          isPulling={board.isPulling}
-          selectedWorkspaceName={selectedWorkspaceName}
-          schedulerStatus={board.schedulerStatus}
-        />}
+            lastSyncedAt={syncedAt}
+            boardCount={boardTasks.length}
+            runtimeStatus={board.healthQuery.data?.status ?? "connecting"}
+            codexQuota={board.healthQuery.data?.codexQuota}
+            gitStatus={board.workspaceGitStatus}
+            onPull={() => {
+              if (board.selectedWorkspaceId !== "all") {
+                void board.pullWorkspace(board.selectedWorkspaceId);
+              }
+            }}
+            isPulling={board.isPulling}
+            selectedWorkspaceName={selectedWorkspaceName}
+            schedulerStatus={board.schedulerStatus}
+          />
+        )}
 
         <Routes>
           <Route
             path="/"
             element={
-              <DragDropContext onDragEnd={handleDrop}>
-                <Board
-                  tasks={boardTasks}
-                  allTasks={allTasks}
-                  teams={teams}
-                  workspaces={workspaces}
-                  reviewMonitor={reviewMonitor}
-                  selectedTaskId={board.selectedTask?.id ?? null}
-                  onTaskOpen={openTask}
-                  onPlan={(taskId) => board.planTask(taskId)}
-                  onTaskStart={(taskId) => board.startTask(taskId)}
-                  onTaskStop={(taskId) => board.stopTask(taskId)}
-                  onMoveToTodo={(taskId) => board.moveToTodo(taskId)}
-                  onMarkDone={(taskId) => board.markDone(taskId)}
-                  onArchive={(taskId) => board.archiveTask(taskId)}
-                  onApproveSubtask={(taskId, teamId, parentTaskId) =>
-                    void board.approveTask({ taskId, teamId, parentTaskId })
-                  }
-                  onRejectSubtask={(taskId, teamId, parentTaskId, reason) =>
-                    void board.rejectTask({ taskId, teamId, parentTaskId, reason })
-                  }
-                  onRetrySubtask={(taskId, teamId, parentTaskId) =>
-                    void board.retryTask({ taskId, teamId, parentTaskId })
-                  }
-                  onCancelSubtask={(taskId, teamId, parentTaskId) =>
-                    void board.cancelSubtask({ taskId, teamId, parentTaskId })
-                  }
-                  reviewActionBusy={board.isBusy}
-                />
-              </DragDropContext>
+              <section className="min-h-0 overflow-hidden p-3 lg:p-3">
+                <DragDropContext onDragEnd={handleDrop}>
+                  <Board
+                    tasks={boardTasks}
+                    allTasks={allTasks}
+                    teams={teams}
+                    workspaces={workspaces}
+                    reviewMonitor={reviewMonitor}
+                    selectedTaskId={board.selectedTask?.id ?? null}
+                    onTaskOpen={openTask}
+                    onPlan={(taskId) => board.planTask(taskId)}
+                    onTaskStart={(taskId) => board.startTask(taskId)}
+                    onTaskStop={(taskId) => board.stopTask(taskId)}
+                    onMoveToTodo={(taskId) => board.moveToTodo(taskId)}
+                    onMarkDone={(taskId) => board.markDone(taskId)}
+                    onArchive={(taskId) => board.archiveTask(taskId)}
+                    onApproveSubtask={(taskId, teamId, parentTaskId) =>
+                      void board.approveTask({ taskId, teamId, parentTaskId })
+                    }
+                    onRejectSubtask={(taskId, teamId, parentTaskId, reason) =>
+                      void board.rejectTask({ taskId, teamId, parentTaskId, reason })
+                    }
+                    onRetrySubtask={(taskId, teamId, parentTaskId) =>
+                      void board.retryTask({ taskId, teamId, parentTaskId })
+                    }
+                    onCancelSubtask={(taskId, teamId, parentTaskId) =>
+                      void board.cancelSubtask({ taskId, teamId, parentTaskId })
+                    }
+                    reviewActionBusy={board.isBusy}
+                  />
+                </DragDropContext>
+              </section>
             }
           />
           <Route
             path="/tasks/:taskId"
             element={
               <TaskDetailsRoute board={board} allTasks={allTasks} workspaces={workspaces} />
+            }
+          />
+          <Route
+            path="/teams"
+            element={
+              <TeamsPage
+                teams={teams}
+                workspaces={workspaces}
+                loading={board.teamsQuery.isLoading}
+                error={
+                  board.teamsQuery.error instanceof Error
+                    ? board.teamsQuery.error.message
+                    : null
+                }
+              />
+            }
+          />
+          <Route
+            path="/teams/:teamId"
+            element={
+              <TeamEditPage
+                workspaces={workspaces}
+                selectedWorkspaceId={board.selectedWorkspaceId}
+              />
+            }
+          />
+          <Route
+            path="/workspace-settings"
+            element={
+              <WorkspaceSettingsPage
+                workspace={selectedWorkspace}
+                taskCount={selectedWorkspaceTaskCount}
+                onSubmit={async (values) => {
+                  if (!selectedWorkspace) {
+                    return;
+                  }
+                  await board.updateWorkspace({
+                    workspaceId: selectedWorkspace.id,
+                    body: values
+                  });
+                  navigate("/");
+                }}
+              />
             }
           />
           <Route path="*" element={<Navigate to="/" replace />} />
@@ -383,26 +432,6 @@ function ReactAppShell() {
           void board.createWorkspace(values).then(() => {
             board.setWorkspaceModalOpen(false);
           });
-        }}
-      />
-      <WorkspaceSettingsModal
-        open={board.workspaceSettingsModalOpen}
-        workspace={selectedWorkspace}
-        taskCount={selectedWorkspaceTaskCount}
-        onClose={() => board.setWorkspaceSettingsModalOpen(false)}
-        onSubmit={(values) => {
-          if (!selectedWorkspace) {
-            return;
-          }
-
-          void board
-            .updateWorkspace({
-              workspaceId: selectedWorkspace.id,
-              body: values
-            })
-            .then(() => {
-              board.setWorkspaceSettingsModalOpen(false);
-            });
         }}
       />
       <GlobalSettingsModal
@@ -429,34 +458,6 @@ function ReactAppShell() {
         }}
       />
 
-      <TeamManagementModal
-        open={board.teamModalOpen}
-        teams={teams}
-        workspaces={workspaces}
-        selectedWorkspaceId={board.selectedWorkspaceId}
-        loading={board.teamsQuery.isLoading}
-        error={
-          board.teamsQuery.error instanceof Error
-            ? board.teamsQuery.error.message
-            : null
-        }
-        submitting={board.isSavingTeam}
-        onClose={() => board.setTeamModalOpen(false)}
-        onCreateTeam={(values) => board.createTeam(values)}
-        onUpdateTeam={(teamId, values) =>
-          board.updateTeamData({
-            teamId,
-            body: {
-              name: values.name,
-              description: values.description,
-              prStrategy: values.prStrategy,
-              autoApproveSubtasks: values.autoApproveSubtasks,
-              agents: values.agents
-            }
-          })
-        }
-        onDeleteTeam={(teamId) => board.deleteTeam(teamId)}
-      />
     </div>
   );
 }
@@ -651,13 +652,13 @@ function TaskRouteState({
   onAction
 }: TaskRouteStateProps) {
   return (
-    <section className="flex min-h-[60vh] flex-1 flex-col items-center justify-center bg-[var(--bg)] p-4">
-      <div className="grid max-w-[32rem] gap-3 text-center">
-        <p className="m-0 font-mono text-[0.64rem] uppercase tracking-[0.14em] text-[var(--accent)]">
+    <section className="flex min-h-[60vh] flex-1 flex-col items-center justify-center p-4 sm:p-6">
+      <div className="surface-card grid max-w-[34rem] gap-4 px-8 py-10 text-center">
+        <p className="section-kicker m-0">
           {eyebrow}
         </p>
-        <h2>{title}</h2>
-        <p className="m-0 text-[var(--muted)]">{description}</p>
+        <h2 className="text-[2.6rem]">{title}</h2>
+        <p className="m-0 text-[1rem] leading-[1.6] text-[var(--muted)]">{description}</p>
         <Button
           type="button"
           variant="secondary"

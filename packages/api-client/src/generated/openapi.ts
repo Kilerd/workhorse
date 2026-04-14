@@ -630,7 +630,7 @@ export interface components {
             createdAt: string;
             updatedAt: string;
         };
-        TaskColumn: "backlog" | "todo" | "blocked" | "running" | "review" | "done" | "archived";
+        TaskColumn: "review" | "backlog" | "todo" | "blocked" | "running" | "done" | "archived";
         RunnerType: "claude" | "codex" | "shell";
         RunnerConfig: components["schemas"]["ShellRunnerConfig"] | components["schemas"]["ClaudeRunnerConfig"] | components["schemas"]["CodexRunnerConfig"];
         ShellRunnerConfig: {
@@ -757,7 +757,7 @@ export interface components {
             workspaceId: string;
             teamId?: string;
             worktreeBaseRef?: string;
-            column?: "backlog" | "todo" | "blocked" | "running" | "review" | "done" | "archived";
+            column?: "review" | "backlog" | "todo" | "blocked" | "running" | "done" | "archived";
             order?: number;
             runnerType: components["schemas"]["RunnerType"];
             runnerConfig: components["schemas"]["RunnerConfig"];
@@ -786,7 +786,7 @@ export interface components {
             description?: string;
             workspaceId?: string;
             worktreeBaseRef?: string;
-            column?: "backlog" | "todo" | "blocked" | "running" | "review" | "done" | "archived";
+            column?: "review" | "backlog" | "todo" | "blocked" | "running" | "done" | "archived";
             order?: number;
             runnerType?: "claude" | "codex" | "shell";
             runnerConfig?: components["schemas"]["ShellRunnerConfig"] | components["schemas"]["ClaudeRunnerConfig"] | components["schemas"]["CodexRunnerConfig"];
@@ -1029,7 +1029,7 @@ export interface components {
             metadata?: components["schemas"]["Recordstringstring"];
         };
         RunLogStream: "stdout" | "stderr" | "system";
-        RunLogKind: "system" | "text" | "user" | "agent" | "tool_call" | "tool_output" | "plan" | "status";
+        RunLogKind: "plan" | "system" | "text" | "user" | "agent" | "tool_call" | "tool_output" | "status";
         HealthResponse: {
             /** @enum {unknown} */
             ok: true;

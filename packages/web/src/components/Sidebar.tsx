@@ -28,12 +28,12 @@ function computeBadges(
   workspaceId: string | null
 ): WorkspaceBadge {
   const filtered = workspaceId
-    ? tasks.filter((t) => t.workspaceId === workspaceId)
+    ? tasks.filter((task) => task.workspaceId === workspaceId)
     : tasks;
 
   return {
-    inProgress: filtered.filter((t) => t.column === "running").length,
-    review: filtered.filter((t) => t.column === "review").length
+    inProgress: filtered.filter((task) => task.column === "running").length,
+    review: filtered.filter((task) => task.column === "review").length
   };
 }
 
@@ -42,7 +42,38 @@ function shortenPath(rootPath: string): string {
   if (parts.length <= 2) {
     return rootPath;
   }
+
   return `~/${parts.slice(-1)[0]}`;
+}
+
+function ActionRow({
+  label,
+  onClick,
+  trailing
+}: {
+  label: string;
+  onClick(): void;
+  trailing?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex min-h-10 items-center justify-between rounded-[var(--radius)] border border-transparent px-3 text-left text-[0.86rem] font-medium text-[var(--muted)] transition-[border-color,background-color,color] hover:border-border hover:bg-[var(--surface-hover)] hover:text-foreground"
+    >
+      <span>{label}</span>
+      <span className="flex items-center gap-2">
+        {trailing ? (
+          <span className="font-mono text-[0.68rem] uppercase tracking-[0.08em] text-[var(--muted)]">
+            {trailing}
+          </span>
+        ) : null}
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4">
+          <path d="M6 3.5 10.5 8 6 12.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </span>
+    </button>
+  );
 }
 
 export function Sidebar({
@@ -60,156 +91,129 @@ export function Sidebar({
 }: Props) {
   const badgesByWorkspace = useMemo(() => {
     const map = new Map<string, WorkspaceBadge>();
-    for (const ws of workspaces) {
-      map.set(ws.id, computeBadges(allTasks, ws.id));
+    for (const workspace of workspaces) {
+      map.set(workspace.id, computeBadges(allTasks, workspace.id));
     }
     return map;
   }, [workspaces, allTasks]);
 
-  const allBadge = useMemo(
-    () => computeBadges(allTasks, null),
-    [allTasks]
-  );
+  const allBadge = useMemo(() => computeBadges(allTasks, null), [allTasks]);
 
   if (collapsed) {
     return (
-      <aside className="flex h-full w-10 flex-col items-center border-r border-border bg-[var(--bg)] py-3">
-        <button
-          type="button"
-          onClick={onToggleCollapse}
-          className="flex size-7 items-center justify-center rounded-sm border border-border bg-transparent text-[var(--muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-foreground"
-          title="Expand sidebar"
-        >
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M6 3l5 5-5 5" />
-          </svg>
-        </button>
+      <aside className="border-b border-border bg-background lg:h-screen lg:border-b-0 lg:border-r">
+        <div className="flex items-center justify-between px-4 py-4 lg:h-full lg:flex-col lg:justify-start lg:px-3 lg:py-4">
+          <div className="grid size-10 place-items-center rounded-full border border-border bg-[var(--panel)] font-display text-[0.95rem]">
+            WH
+          </div>
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            className="grid size-10 place-items-center rounded-full border border-border bg-[var(--panel)] text-[var(--muted)] transition-colors hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] hover:text-foreground"
+            title="Expand sidebar"
+          >
+            <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M6 3l5 5-5 5" />
+            </svg>
+          </button>
+        </div>
       </aside>
     );
   }
 
   return (
-    <aside className="flex h-full w-60 flex-col border-r border-border bg-[var(--bg)]">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-border px-3 py-3">
-        <span className="font-mono text-[0.72rem] font-bold tracking-[0.2em] text-[var(--accent)]">
-          WORKHORSE
-        </span>
-        <button
-          type="button"
-          onClick={onToggleCollapse}
-          className="flex size-6 items-center justify-center rounded-sm border border-transparent bg-transparent text-[var(--muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-foreground"
-          title="Collapse sidebar"
-        >
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M10 3l-5 5 5 5" />
-          </svg>
-        </button>
-      </div>
-
-      {/* Workspace list */}
-      <nav className="flex-1 overflow-y-auto overscroll-contain p-2">
-        {/* All workspaces */}
-        <button
-          type="button"
-          onClick={() => onSelectWorkspace("all")}
-          className={cn(
-            "mb-1 flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-[0.78rem] transition-colors",
-            selectedWorkspaceId === "all"
-              ? "bg-[var(--accent)] text-white"
-              : "text-foreground hover:bg-[var(--surface-hover)]"
-          )}
-        >
-          <span className="flex-1 truncate font-medium">All workspaces</span>
-          <BadgeGroup badge={allBadge} active={selectedWorkspaceId === "all"} />
-        </button>
-
-        {workspaces.map((ws) => {
-          const active = selectedWorkspaceId === ws.id;
-          const badge = badgesByWorkspace.get(ws.id);
-
-          return (
-            <button
-              key={ws.id}
-              type="button"
-              onClick={() => onSelectWorkspace(ws.id)}
-              className={cn(
-                "mb-0.5 flex w-full flex-col gap-0.5 rounded-sm px-2.5 py-2 text-left transition-colors",
-                active
-                  ? "bg-[var(--accent)] text-white"
-                  : "text-foreground hover:bg-[var(--surface-hover)]"
-              )}
-            >
-              <div className="flex w-full items-center gap-2">
-                <span className="flex-1 truncate text-[0.78rem] font-medium">
-                  {ws.name}
-                </span>
-                {badge ? (
-                  <BadgeGroup badge={badge} active={active} />
-                ) : null}
-              </div>
-              <span
-                className={cn(
-                  "truncate text-[0.64rem]",
-                  active ? "text-white/70" : "text-[var(--muted)]"
-                )}
-              >
-                {shortenPath(ws.rootPath)}
-              </span>
-            </button>
-          );
-        })}
-      </nav>
-
-      {/* Bottom actions */}
-      <div className="flex flex-col gap-1 border-t border-border p-2">
-        <button
-          type="button"
-          onClick={onAddWorkspace}
-          className="flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-[0.75rem] text-[var(--muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-foreground"
-        >
-          <span className="text-[0.85rem]">+</span>
-          <span>Add Workspace</span>
-        </button>
-        <button
-          type="button"
-          onClick={onOpenTeams}
-          className="flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-[0.75rem] text-[var(--muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-foreground"
-        >
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" className="shrink-0 opacity-60">
-            <path d="M5.5 7a2 2 0 1 0-1.999-2A2 2 0 0 0 5.5 7Zm5 1.5a1.75 1.75 0 1 0-1.749-1.75A1.75 1.75 0 0 0 10.5 8.5ZM3 12.75C3 11.231 4.481 10 6.5 10s3.5 1.231 3.5 2.75V13H3Zm7.5.25v-.25c0-.783-.24-1.516-.685-2.113.21-.09.442-.137.685-.137 1.38 0 2.5.895 2.5 2V13h-2.5Z" />
-          </svg>
-          <span className="flex-1 text-left">Manage Teams</span>
-          <span className="font-mono text-[0.62rem] uppercase tracking-[0.08em]">
-            {teamCount}
-          </span>
-        </button>
-        {selectedWorkspaceId !== "all" ? (
+    <aside className="border-b border-border bg-background lg:h-screen lg:border-b-0 lg:border-r">
+      <div className="grid h-full grid-rows-[auto_minmax(0,1fr)_auto] gap-4 px-4 py-4">
+        <div className="flex items-center justify-between">
+          <span className="text-[1rem] font-semibold">Workhorse</span>
           <button
             type="button"
-            onClick={onOpenWorkspaceSettings}
-            className="flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-[0.75rem] text-[var(--muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-foreground"
+            onClick={onToggleCollapse}
+            className="grid size-8 place-items-center rounded-full border border-border bg-[var(--panel)] text-[var(--muted)] transition-colors hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] hover:text-foreground"
+            title="Collapse sidebar"
           >
-            <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" className="shrink-0 opacity-60">
-              <path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492ZM5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0Z" />
-              <path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0a1.89 1.89 0 0 1-2.824 1.028c-1.578-.935-3.375.862-2.44 2.44a1.89 1.89 0 0 1-1.028 2.824c-1.79.527-1.79 3.065 0 3.592a1.89 1.89 0 0 1 1.028 2.824c-.935 1.578.862 3.375 2.44 2.44a1.89 1.89 0 0 1 2.824 1.028c.527 1.79 3.065 1.79 3.592 0a1.89 1.89 0 0 1 2.824-1.028c1.578.935 3.375-.862 2.44-2.44a1.89 1.89 0 0 1 1.028-2.824c1.79-.527 1.79-3.065 0-3.592a1.89 1.89 0 0 1-1.028-2.824c.935-1.578-.862-3.375-2.44-2.44a1.89 1.89 0 0 1-2.824-1.028ZM8 0c.463 0 .89.258 1.103.671a2.89 2.89 0 0 0 4.316 1.573c.375-.222.856-.096 1.078.279l.001.002c.222.375.096.856-.279 1.078a2.89 2.89 0 0 0-1.573 4.316c.222.375.096.856-.279 1.078l-.002.001a.786.786 0 0 1-1.078-.279 2.89 2.89 0 0 0-4.316 1.573.786.786 0 0 1-1.078.279l-.002-.001a.786.786 0 0 1-.279-1.078 2.89 2.89 0 0 0-1.573-4.316.786.786 0 0 1-.279-1.078l.001-.002a.786.786 0 0 1 1.078-.279A2.89 2.89 0 0 0 8.897.67 .786.786 0 0 1 8 0Z" />
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M10 3 5 8l5 5" />
             </svg>
-            <span>Workspace Settings</span>
           </button>
-        ) : null}
-        <button
-          type="button"
-          onClick={onOpenGlobalSettings}
-          className="flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-[0.75rem] text-[var(--muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-foreground"
-        >
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" className="shrink-0 opacity-60">
-            <path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492ZM5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0Z" />
-            <path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0a1.89 1.89 0 0 1-2.824 1.028c-1.578-.935-3.375.862-2.44 2.44a1.89 1.89 0 0 1-1.028 2.824c-1.79.527-1.79 3.065 0 3.592a1.89 1.89 0 0 1 1.028 2.824c-.935 1.578.862 3.375 2.44 2.44a1.89 1.89 0 0 1 2.824 1.028c.527 1.79 3.065 1.79 3.592 0a1.89 1.89 0 0 1 2.824-1.028c1.578.935 3.375-.862 2.44-2.44a1.89 1.89 0 0 1 1.028-2.824c1.79-.527 1.79-3.065 0-3.592a1.89 1.89 0 0 1-1.028-2.824c.935-1.578-.862-3.375-2.44-2.44a1.89 1.89 0 0 1-2.824-1.028ZM8 0c.463 0 .89.258 1.103.671a2.89 2.89 0 0 0 4.316 1.573c.375-.222.856-.096 1.078.279l.001.002c.222.375.096.856-.279 1.078a2.89 2.89 0 0 0-1.573 4.316c.222.375.096.856-.279 1.078l-.002.001a.786.786 0 0 1-1.078-.279 2.89 2.89 0 0 0-4.316 1.573.786.786 0 0 1-1.078.279l-.002-.001a.786.786 0 0 1-.279-1.078 2.89 2.89 0 0 0-1.573-4.316.786.786 0 0 1-.279-1.078l.001-.002a.786.786 0 0 1 1.078-.279A2.89 2.89 0 0 0 8.897.67 .786.786 0 0 1 8 0Z" />
-          </svg>
-          <span>Settings</span>
-        </button>
+        </div>
+
+        <section className="surface-card grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden">
+          <div className="border-b border-border px-4 py-3">
+            <p className="section-kicker">Workspaces</p>
+          </div>
+          <nav className="min-h-0 overflow-y-auto p-2">
+            <WorkspaceButton
+              title="All workspaces"
+              subtitle={`${workspaces.length} repositories connected`}
+              badge={allBadge}
+              active={selectedWorkspaceId === "all"}
+              onClick={() => onSelectWorkspace("all")}
+            />
+            {workspaces.map((workspace) => (
+              <WorkspaceButton
+                key={workspace.id}
+                title={workspace.name}
+                subtitle={shortenPath(workspace.rootPath)}
+                badge={badgesByWorkspace.get(workspace.id)}
+                active={selectedWorkspaceId === workspace.id}
+                onClick={() => onSelectWorkspace(workspace.id)}
+              />
+            ))}
+          </nav>
+        </section>
+
+        <section className="surface-card-soft px-2 py-2">
+          <div className="grid gap-1">
+            <ActionRow label="Add workspace" onClick={onAddWorkspace} />
+            <ActionRow
+              label="Manage teams"
+              trailing={teamCount > 0 ? String(teamCount) : undefined}
+              onClick={onOpenTeams}
+            />
+            {selectedWorkspaceId !== "all" ? (
+              <ActionRow label="Workspace settings" onClick={onOpenWorkspaceSettings} />
+            ) : null}
+            <ActionRow label="Global settings" onClick={onOpenGlobalSettings} />
+          </div>
+        </section>
       </div>
     </aside>
+  );
+}
+
+function WorkspaceButton({
+  title,
+  subtitle,
+  badge,
+  active,
+  onClick
+}: {
+  title: string;
+  subtitle: string;
+  badge?: WorkspaceBadge;
+  active: boolean;
+  onClick(): void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "mb-2 grid w-full gap-2 rounded-[var(--radius)] border px-3 py-3 text-left transition-[border-color,background-color]",
+        active
+          ? "border-[var(--border-strong)] bg-[var(--surface-soft)]"
+          : "border-transparent bg-transparent hover:border-border hover:bg-[var(--surface-hover)]"
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <span className="min-w-0 text-[0.9rem] font-semibold leading-[1.35] text-foreground">
+          {title}
+        </span>
+        {badge ? <BadgeGroup badge={badge} active={active} /> : null}
+      </div>
+      <span className="truncate text-[0.74rem] text-[var(--muted)]">{subtitle}</span>
+    </button>
   );
 }
 
@@ -218,32 +222,30 @@ function BadgeGroup({ badge, active }: { badge: WorkspaceBadge; active: boolean 
     return null;
   }
 
-  const badgeBase = "inline-flex items-center gap-0.5 rounded-sm px-1 py-px text-[0.58rem] font-medium";
-
   return (
     <span className="flex shrink-0 items-center gap-1">
       {badge.inProgress > 0 ? (
         <span
           className={cn(
-            badgeBase,
+            "inline-flex items-center rounded-full border px-2 py-0.5 text-[0.66rem] font-semibold",
             active
-              ? "bg-white/20 text-white"
-              : "bg-blue-500/15 text-blue-400"
+              ? "border-[rgba(255,79,0,0.22)] bg-[rgba(255,79,0,0.08)] text-[var(--accent-strong)]"
+              : "border-border bg-[var(--panel)] text-[var(--muted)]"
           )}
         >
-          IP {badge.inProgress}
+          Run {badge.inProgress}
         </span>
       ) : null}
       {badge.review > 0 ? (
         <span
           className={cn(
-            badgeBase,
+            "inline-flex items-center rounded-full border px-2 py-0.5 text-[0.66rem] font-semibold",
             active
-              ? "bg-white/20 text-white"
-              : "bg-amber-500/15 text-amber-400"
+              ? "border-[rgba(47,117,88,0.24)] bg-[rgba(47,117,88,0.08)] text-[var(--success)]"
+              : "border-border bg-[var(--panel)] text-[var(--muted)]"
           )}
         >
-          R {badge.review}
+          Review {badge.review}
         </span>
       ) : null}
     </span>

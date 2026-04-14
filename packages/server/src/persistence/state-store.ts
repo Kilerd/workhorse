@@ -72,6 +72,35 @@ function migrateJsonState(state: AppState): AppState {
   };
 }
 
+function sanitizeStateForPersistence(state: AppState): AppState {
+  const taskList = Array.isArray(state.tasks) ? state.tasks : [];
+  const taskIds = new Set(taskList.map((task) => task.id));
+  const runList = (Array.isArray(state.runs) ? state.runs : []).filter((run) =>
+    taskIds.has(run.taskId)
+  );
+  const runIds = new Set(runList.map((run) => run.id));
+
+  return {
+    ...state,
+    tasks: taskList.map((task) => ({
+      ...task,
+      dependencies: Array.isArray(task.dependencies)
+        ? task.dependencies.filter((depId) => taskIds.has(depId))
+        : [],
+      lastRunId:
+        typeof task.lastRunId === "string" && runIds.has(task.lastRunId)
+          ? task.lastRunId
+          : undefined,
+      continuationRunId:
+        typeof task.continuationRunId === "string" &&
+        runIds.has(task.continuationRunId)
+          ? task.continuationRunId
+          : undefined
+    })),
+    runs: runList
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Row <-> domain type conversions
 // ---------------------------------------------------------------------------
@@ -378,7 +407,11 @@ export class StateStore {
 
   /** Persists the current in-memory state to SQLite. */
   public async save(): Promise<void> {
-    await this.withWriteLock(() => this.persistState(this.state));
+    await this.withWriteLock(() => {
+      const normalized = sanitizeStateForPersistence(this.state);
+      this.persistState(normalized);
+      this.state = normalized;
+    });
   }
 
   /** Atomically updates state within a write lock and persists. */
@@ -386,8 +419,9 @@ export class StateStore {
     return this.withWriteLock(async () => {
       const nextState = structuredClone(this.state) as AppState;
       const result = updater(nextState);
-      this.persistState(nextState);
-      this.state = nextState;
+      const normalized = sanitizeStateForPersistence(nextState);
+      this.persistState(normalized);
+      this.state = normalized;
       return result;
     });
   }
@@ -1019,7 +1053,9 @@ export class StateStore {
       return;
     }
 
-    const jsonState = migrateJsonState(JSON.parse(raw) as AppState);
+    const jsonState = sanitizeStateForPersistence(
+      migrateJsonState(JSON.parse(raw) as AppState)
+    );
 
     // Migrate per-run NDJSON log files
     const logEntries = await this.collectLegacyLogEntries(jsonState.runs);

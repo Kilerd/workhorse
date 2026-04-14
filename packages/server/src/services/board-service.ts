@@ -1367,7 +1367,9 @@ export class BoardService {
       throw new AppError(404, "TASK_NOT_FOUND", "Task not found");
     }
 
+    const nextRuns = this.store.listRuns().filter((run) => run.taskId !== taskId);
     this.store.setTasks(nextTasks);
+    this.store.setRuns(nextRuns);
     await this.store.save();
     this.events.publish({
       type: "task.updated",

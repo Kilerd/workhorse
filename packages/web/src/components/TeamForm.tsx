@@ -277,11 +277,11 @@ export function TeamForm({
             </p>
           </label>
 
-          <label className="grid gap-2 rounded-none border border-border bg-[var(--surface-soft)] px-3 py-2 md:col-span-2">
-            <span className="font-mono text-[0.58rem] uppercase tracking-[0.12em] text-[var(--accent)]">
+          <label className="grid gap-2 rounded-[var(--radius)] border border-border bg-[var(--surface-soft)] px-4 py-3 md:col-span-2">
+            <span className="section-kicker">
               Subtask approval
             </span>
-            <span className="text-[0.74rem] leading-[1.5] text-[var(--muted)]">
+            <span className="text-[0.82rem] leading-[1.6] text-[var(--muted)]">
               When enabled, succeeded subtasks skip manual review and move directly to done.
             </span>
             <label className="flex items-center gap-2 text-[0.78rem] text-foreground">
@@ -303,10 +303,8 @@ export function TeamForm({
         <div className="grid gap-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="m-0 font-mono text-[0.58rem] uppercase tracking-[0.12em] text-[var(--accent)]">
-                Agents
-              </p>
-              <p className="m-0 mt-1 text-[0.7rem] text-[var(--muted)]">
+              <p className="section-kicker m-0">Agents</p>
+              <p className="m-0 mt-1 text-[0.76rem] text-[var(--muted)]">
                 Exactly one coordinator is required.
               </p>
             </div>
@@ -326,17 +324,17 @@ export function TeamForm({
 
           <div className="grid gap-3">
             {payload.agents.map((agent, index) => (
-              <div key={agent.id} className="grid gap-3 border border-border bg-[var(--panel)] p-3">
+              <div key={agent.id} className="grid gap-3 rounded-[var(--radius)] border border-border bg-[var(--panel)] p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-[0.62rem] uppercase tracking-[0.12em] text-[var(--muted)]">
                       Agent {index + 1}
                     </span>
                     <span className={cn(
-                      "inline-flex min-h-5 items-center rounded-none border px-1.5 font-mono text-[0.56rem] uppercase tracking-[0.1em]",
+                      "inline-flex min-h-7 items-center rounded-full border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em]",
                       agent.role === "coordinator"
-                        ? "border-[rgba(73,214,196,0.28)] bg-[rgba(73,214,196,0.12)] text-[var(--accent-strong)]"
-                        : "border-[rgba(104,199,246,0.24)] bg-[rgba(104,199,246,0.12)] text-[var(--info)]"
+                        ? "border-[rgba(255,79,0,0.28)] bg-[rgba(255,79,0,0.08)] text-[var(--accent-strong)]"
+                        : "border-[rgba(79,92,98,0.24)] bg-[rgba(79,92,98,0.06)] text-[var(--info)]"
                     )}>
                       {agent.role}
                     </span>

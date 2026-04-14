@@ -81,6 +81,60 @@ export function usePostTeamMessage(
   });
 }
 
+export function useTeamMutations() {
+  const queryClient = useQueryClient();
+
+  const createTeamMutation = useMutation({
+    mutationFn: async (input: Parameters<typeof api.createTeam>[0]) => {
+      const response = await api.createTeam(input);
+      return response.team;
+    },
+    onSuccess: async (team) => {
+      await queryClient.invalidateQueries({ queryKey: teamQueryKeys.lists() });
+      await queryClient.invalidateQueries({
+        queryKey: teamQueryKeys.detail(team.id)
+      });
+    }
+  });
+
+  const updateTeamMutation = useMutation({
+    mutationFn: async ({
+      teamId,
+      body
+    }: {
+      teamId: string;
+      body: Parameters<typeof api.updateTeam>[1];
+    }) => {
+      const response = await api.updateTeam(teamId, body);
+      return response.team;
+    },
+    onSuccess: async (team) => {
+      await queryClient.invalidateQueries({ queryKey: teamQueryKeys.lists() });
+      await queryClient.invalidateQueries({
+        queryKey: teamQueryKeys.detail(team.id)
+      });
+    }
+  });
+
+  const deleteTeamMutation = useMutation({
+    mutationFn: async (teamId: string) => api.deleteTeam(teamId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: teamQueryKeys.lists() });
+      await queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    }
+  });
+
+  return {
+    create: createTeamMutation.mutateAsync,
+    update: updateTeamMutation.mutateAsync,
+    remove: deleteTeamMutation.mutateAsync,
+    isPending:
+      createTeamMutation.isPending ||
+      updateTeamMutation.isPending ||
+      deleteTeamMutation.isPending
+  };
+}
+
 export function useTeamProposals(teamId: string | null, parentTaskId?: string) {
   return useQuery({
     queryKey: teamQueryKeys.proposals(teamId, parentTaskId),

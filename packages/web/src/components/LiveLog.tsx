@@ -175,7 +175,7 @@ function renderStreamEntry(entry: RunLogEntry) {
   if (entry.kind === "user") {
     return (
       <article key={entry.id} className="ml-auto grid max-w-[min(34rem,86%)] gap-1 justify-items-end">
-        <div className="border border-[rgba(104,199,246,0.24)] bg-[var(--panel)] px-4 py-3">
+        <div className="rounded-[var(--radius)] border border-[rgba(255,79,0,0.24)] bg-[var(--panel)] px-4 py-3">
           {renderProseBlock(entry.text, {
             className: "text-[0.86rem] leading-[1.68]"
           })}
@@ -230,9 +230,9 @@ function renderStreamEntry(entry: RunLogEntry) {
         </div>
         <div
           className={cn(
-            "border px-4 py-3",
+            "rounded-[var(--radius)] border px-4 py-3",
             isError
-              ? "border-[rgba(240,113,113,0.22)] bg-[rgba(240,113,113,0.06)]"
+              ? "border-[rgba(181,74,74,0.22)] bg-[rgba(181,74,74,0.06)]"
               : "border-border bg-[var(--surface-soft)]"
           )}
         >
@@ -281,9 +281,9 @@ function renderToolOutputEntry(entry: RunLogEntry) {
     <article
       key={entry.id}
       className={cn(
-        "grid gap-2 border px-4 py-3",
+        "grid gap-2 rounded-[var(--radius)] border px-4 py-3",
         isError
-          ? "border-[rgba(240,113,113,0.18)] bg-[rgba(240,113,113,0.06)]"
+          ? "border-[rgba(181,74,74,0.18)] bg-[rgba(181,74,74,0.06)]"
           : "border-border bg-[var(--surface-soft)]"
       )}
     >
@@ -565,9 +565,9 @@ export function LiveLog({
       }
     >
       {showStatus ? (
-        <section className="grid gap-3 rounded-none border border-border bg-[var(--panel)] p-4 text-[0.78rem]">
+        <section className="grid gap-3 rounded-[var(--radius-lg)] border border-border bg-[var(--panel)] p-4 text-[0.78rem]">
           <h3 className="m-0 text-[0.76rem]">Run status</h3>
-          <div className="flex flex-col items-start justify-between gap-3 rounded-none border border-border bg-[var(--panel)] p-3 min-[721px]:flex-row min-[721px]:items-center">
+          <div className="flex flex-col items-start justify-between gap-3 rounded-[var(--radius)] border border-border bg-[var(--panel)] p-3 min-[721px]:flex-row min-[721px]:items-center">
             <div>
               <strong>{activeRun ? activeRun.status : "idle"}</strong>
               <p className="m-0 text-[var(--muted)]">{activeRun ? activeRun.id : "No active run"}</p>
@@ -595,7 +595,7 @@ export function LiveLog({
       ) : null}
 
       <section className={cn(
-        "grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] rounded-none border border-border bg-[var(--panel)]",
+        "grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] rounded-[var(--radius-lg)] border border-border bg-[var(--panel)]",
         !showStatus && "flex-1"
       )}>
         <div
@@ -609,7 +609,7 @@ export function LiveLog({
             <h3 className="m-0 text-[0.9rem]">Live log</h3>
             {streamEntries.length > 0 ? (
               <span
-                className="inline-flex min-h-5 items-center rounded-none border border-border bg-[var(--panel)] px-2 font-mono text-[0.54rem] uppercase tracking-[0.14em] text-[var(--muted)]"
+                className="inline-flex min-h-7 items-center rounded-full border border-border bg-[var(--panel)] px-2.5 font-mono text-[0.58rem] uppercase tracking-[0.1em] text-[var(--muted)]"
                 aria-label={`${streamEntries.length} stream entries`}
                 title={`${streamEntries.length} stream entries`}
               >
@@ -634,7 +634,7 @@ export function LiveLog({
             {streamEntries.length > 0 ? (
               <button
                 type="button"
-                className="inline-flex min-h-7 items-center gap-1.5 rounded-none border border-transparent bg-transparent px-2.5 text-[0.7rem] text-[var(--muted)] transition-[border-color,background-color,transform] hover:-translate-y-px hover:border-border hover:bg-[var(--surface-soft)]"
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-transparent bg-transparent px-3 text-[0.76rem] font-medium text-[var(--muted)] transition-[border-color,background-color,transform] hover:-translate-y-px hover:border-border hover:bg-[var(--surface-soft)]"
                 onClick={() => {
                   void handleCopyLog();
                 }}
@@ -780,7 +780,7 @@ function StickyPlanCard({
       : plan.summary ?? "Execution plan";
 
   return (
-    <section className="sticky top-0 z-[3] grid gap-3 rounded-none border border-border bg-[linear-gradient(180deg,var(--panel),var(--panel-strong))] p-4 shadow-[0_10px_24px_rgba(0,0,0,0.18)]">
+    <section className="sticky top-0 z-[3] grid gap-3 rounded-[var(--radius-lg)] border border-border bg-[linear-gradient(180deg,var(--panel),var(--panel-strong))] p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-2.5">
           <span className="inline-flex min-h-[22px] items-center px-1 font-mono text-[0.58rem] uppercase tracking-[0.12em] text-[var(--accent-strong)]">
