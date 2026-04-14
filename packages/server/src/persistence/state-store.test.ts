@@ -4,7 +4,16 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import type { AgentTeam, AppState, Run, Task, TeamMessage, Workspace } from "@workhorse/contracts";
+import type {
+  AccountAgent,
+  AgentTeam,
+  AppState,
+  Run,
+  Task,
+  TaskMessage,
+  TeamMessage,
+  Workspace
+} from "@workhorse/contracts";
 
 import { StateStore } from "./state-store.js";
 
@@ -398,5 +407,296 @@ describe("StateStore — Agent Teams", () => {
     // After team deletion, messages are cascade-deleted; re-creating will start fresh
     store.createTeam(makeTeam("ws-1"));
     expect(store.listTeamMessages("team-1")).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Helpers for Phase 4 agent model tests
+// ---------------------------------------------------------------------------
+
+function makeAgent(overrides: Partial<AccountAgent> = {}): AccountAgent {
+  const now = new Date().toISOString();
+  return {
+    id: "agent-a",
+    name: "Test Agent",
+    description: "desc",
+    runnerConfig: { type: "shell", command: "true" },
+    createdAt: now,
+    updatedAt: now,
+    ...overrides
+  };
+}
+
+function makeTaskMessage(parentTaskId: string, overrides: Partial<TaskMessage> = {}): TaskMessage {
+  return {
+    id: "msg-1",
+    parentTaskId,
+    agentName: "Agent",
+    senderType: "agent",
+    messageType: "context",
+    content: "hello",
+    createdAt: new Date().toISOString(),
+    ...overrides
+  };
+}
+
+describe("StateStore — Account Agents (Phase 4)", () => {
+  it("creates and retrieves an agent", async () => {
+    const store = new StateStore(":memory:");
+    await store.load();
+
+    const agent = makeAgent();
+    store.createAgent(agent);
+
+    const found = store.getAgent("agent-a");
+    expect(found).not.toBeNull();
+    expect(found?.name).toBe("Test Agent");
+    expect(found?.runnerConfig).toEqual({ type: "shell", command: "true" });
+  });
+
+  it("lists all agents", async () => {
+    const store = new StateStore(":memory:");
+    await store.load();
+
+    store.createAgent(makeAgent({ id: "agent-a" }));
+    store.createAgent(makeAgent({ id: "agent-b", name: "Agent B" }));
+
+    expect(store.listAgents()).toHaveLength(2);
+  });
+
+  it("updates agent fields", async () => {
+    const store = new StateStore(":memory:");
+    await store.load();
+
+    store.createAgent(makeAgent());
+    const updated = store.updateAgent("agent-a", {
+      name: "Renamed",
+      runnerConfig: { type: "shell", command: "echo updated" }
+    });
+
+    expect(updated?.name).toBe("Renamed");
+    expect((updated?.runnerConfig as { command: string }).command).toBe("echo updated");
+  });
+
+  it("returns null when updating a non-existent agent", async () => {
+    const store = new StateStore(":memory:");
+    await store.load();
+
+    expect(store.updateAgent("missing", { name: "X" })).toBeNull();
+  });
+
+  it("deletes an agent and returns true; false for missing", async () => {
+    const store = new StateStore(":memory:");
+    await store.load();
+
+    store.createAgent(makeAgent());
+    expect(store.deleteAgent("agent-a")).toBe(true);
+    expect(store.getAgent("agent-a")).toBeNull();
+    expect(store.deleteAgent("agent-a")).toBe(false);
+  });
+});
+
+async function storeWithWorkspace(): Promise<StateStore> {
+  const store = new StateStore(":memory:");
+  await store.load();
+  store.setWorkspaces([makeWorkspace()]);
+  await store.save();
+  return store;
+}
+
+// "workspace-1" is the id produced by makeWorkspace()
+const WS = "workspace-1";
+
+describe("StateStore — Workspace Agent Mounting (Phase 4)", () => {
+  it("mounts an agent to a workspace and lists it", async () => {
+    const store = await storeWithWorkspace();
+
+    store.createAgent(makeAgent());
+    const wa = store.mountAgentToWorkspace(WS, "agent-a", "worker");
+
+    expect(wa.role).toBe("worker");
+    expect(wa.name).toBe("Test Agent");
+
+    const list = store.listWorkspaceAgents(WS);
+    expect(list).toHaveLength(1);
+    expect(list[0]?.role).toBe("worker");
+  });
+
+  it("retrieves a single workspace agent", async () => {
+    const store = await storeWithWorkspace();
+
+    store.createAgent(makeAgent());
+    store.mountAgentToWorkspace(WS, "agent-a", "coordinator");
+
+    const wa = store.getWorkspaceAgent(WS, "agent-a");
+    expect(wa?.role).toBe("coordinator");
+    expect(store.getWorkspaceAgent(WS, "missing")).toBeNull();
+  });
+
+  it("unmounts an agent from a workspace", async () => {
+    const store = await storeWithWorkspace();
+
+    store.createAgent(makeAgent());
+    store.mountAgentToWorkspace(WS, "agent-a", "worker");
+
+    expect(store.unmountAgentFromWorkspace(WS, "agent-a")).toBe(true);
+    expect(store.listWorkspaceAgents(WS)).toHaveLength(0);
+    expect(store.unmountAgentFromWorkspace(WS, "agent-a")).toBe(false);
+  });
+
+  it("updates workspace agent role", async () => {
+    const store = await storeWithWorkspace();
+
+    store.createAgent(makeAgent());
+    store.mountAgentToWorkspace(WS, "agent-a", "worker");
+
+    const updated = store.updateWorkspaceAgentRole(WS, "agent-a", "coordinator");
+    expect(updated?.role).toBe("coordinator");
+  });
+
+  it("returns null when updating role for unmounted agent", async () => {
+    const store = await storeWithWorkspace();
+
+    store.createAgent(makeAgent());
+    expect(store.updateWorkspaceAgentRole(WS, "agent-a", "worker")).toBeNull();
+  });
+
+  it("enforces single coordinator per workspace on mount", async () => {
+    const store = await storeWithWorkspace();
+
+    store.createAgent(makeAgent({ id: "agent-a" }));
+    store.createAgent(makeAgent({ id: "agent-b", name: "Agent B" }));
+    store.mountAgentToWorkspace(WS, "agent-a", "coordinator");
+
+    expect(() => store.mountAgentToWorkspace(WS, "agent-b", "coordinator")).toThrow(
+      "already has a coordinator"
+    );
+  });
+
+  it("enforces single coordinator per workspace on role update", async () => {
+    const store = await storeWithWorkspace();
+
+    store.createAgent(makeAgent({ id: "agent-a" }));
+    store.createAgent(makeAgent({ id: "agent-b", name: "Agent B" }));
+    store.mountAgentToWorkspace(WS, "agent-a", "coordinator");
+    store.mountAgentToWorkspace(WS, "agent-b", "worker");
+
+    expect(() => store.updateWorkspaceAgentRole(WS, "agent-b", "coordinator")).toThrow(
+      "already has a coordinator"
+    );
+  });
+
+  it("allows re-assigning coordinator role to the same agent (idempotent)", async () => {
+    const store = await storeWithWorkspace();
+
+    store.createAgent(makeAgent());
+    store.mountAgentToWorkspace(WS, "agent-a", "coordinator");
+
+    // updating the existing coordinator to coordinator again must succeed
+    const updated = store.updateWorkspaceAgentRole(WS, "agent-a", "coordinator");
+    expect(updated?.role).toBe("coordinator");
+  });
+
+  it("throws when mounting a missing agent", async () => {
+    const store = await storeWithWorkspace();
+
+    expect(() => store.mountAgentToWorkspace(WS, "ghost", "worker")).toThrow("Agent not found");
+  });
+
+  it("cascades workspace_agents deletion when agent is deleted", async () => {
+    const store = await storeWithWorkspace();
+
+    store.createAgent(makeAgent());
+    store.mountAgentToWorkspace(WS, "agent-a", "worker");
+    expect(store.listWorkspaceAgents(WS)).toHaveLength(1);
+
+    store.deleteAgent("agent-a");
+    expect(store.listWorkspaceAgents(WS)).toHaveLength(0);
+  });
+});
+
+describe("StateStore — Workspace Config (Phase 4)", () => {
+  it("updates prStrategy and autoApproveSubtasks", async () => {
+    const store = new StateStore(":memory:");
+    await store.load();
+
+    const ws = makeWorkspace();
+    store.setWorkspaces([ws]);
+    await store.save();
+
+    const updated = store.updateWorkspaceConfig("workspace-1", {
+      prStrategy: "stacked",
+      autoApproveSubtasks: true
+    });
+
+    expect(updated?.prStrategy).toBe("stacked");
+    expect(updated?.autoApproveSubtasks).toBe(true);
+  });
+
+  it("returns null for unknown workspaceId", async () => {
+    const store = new StateStore(":memory:");
+    await store.load();
+
+    expect(store.updateWorkspaceConfig("nope", { prStrategy: "single" })).toBeNull();
+  });
+
+  it("persists workspace config across reload", async () => {
+    const store = new StateStore(":memory:");
+    await store.load();
+
+    const ws = makeWorkspace();
+    store.setWorkspaces([ws]);
+    await store.save();
+
+    store.updateWorkspaceConfig("workspace-1", { prStrategy: "stacked", autoApproveSubtasks: true });
+
+    // Force reload from DB
+    (store as any).state = (store as any).readStateFromDb();
+    const reloaded = store.listWorkspaces().find((w) => w.id === "workspace-1");
+    expect(reloaded?.prStrategy).toBe("stacked");
+    expect(reloaded?.autoApproveSubtasks).toBe(true);
+  });
+});
+
+describe("StateStore — Task Messages (Phase 4)", () => {
+  it("appends and lists task messages", async () => {
+    const store = new StateStore(":memory:");
+    await store.load();
+
+    store.appendTaskMessage(makeTaskMessage("parent-1"));
+    const messages = store.listTaskMessages("parent-1");
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.content).toBe("hello");
+  });
+
+  it("filters by parentTaskId", async () => {
+    const store = new StateStore(":memory:");
+    await store.load();
+
+    store.appendTaskMessage(makeTaskMessage("parent-a", { id: "msg-1" }));
+    store.appendTaskMessage(makeTaskMessage("parent-b", { id: "msg-2" }));
+
+    expect(store.listTaskMessages("parent-a")).toHaveLength(1);
+    expect(store.listTaskMessages("parent-b")).toHaveLength(1);
+  });
+
+  it("rejects task messages exceeding 10KB", async () => {
+    const store = new StateStore(":memory:");
+    await store.load();
+
+    expect(() =>
+      store.appendTaskMessage(
+        makeTaskMessage("parent-1", { content: "x".repeat(10 * 1024 + 1) })
+      )
+    ).toThrow("10KB");
+  });
+
+  it("stores optional taskId and returns it", async () => {
+    const store = new StateStore(":memory:");
+    await store.load();
+
+    store.appendTaskMessage(makeTaskMessage("parent-1", { taskId: "subtask-1" }));
+    const messages = store.listTaskMessages("parent-1");
+    expect(messages[0]?.taskId).toBe("subtask-1");
   });
 });

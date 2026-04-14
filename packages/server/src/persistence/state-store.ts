@@ -7,6 +7,8 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import { and, asc, eq } from "drizzle-orm";
 
 import type {
+  AccountAgent,
+  AgentRole,
   AgentTeam,
   AppState,
   CoordinatorProposal,
@@ -16,8 +18,11 @@ import type {
   Run,
   RunLogEntry,
   Task,
+  TaskMessage,
   TeamMessage,
-  Workspace
+  TeamPrStrategy,
+  Workspace,
+  WorkspaceAgent
 } from "@workhorse/contracts";
 
 import { parseRunLogEntries } from "../lib/run-log.js";
@@ -111,6 +116,9 @@ type RunRow = typeof schema.runs.$inferSelect;
 type RunLogEntryRow = typeof schema.runLogEntries.$inferSelect;
 type TeamRow = typeof schema.teams.$inferSelect;
 type TeamMessageRow = typeof schema.teamMessages.$inferSelect;
+type AgentRow = typeof schema.agents.$inferSelect;
+type WorkspaceAgentRow = typeof schema.workspaceAgents.$inferSelect;
+type TaskMessageRow = typeof schema.taskMessages.$inferSelect;
 
 function rowToWorkspace(row: WorkspaceRow): Workspace {
   return {
@@ -120,6 +128,8 @@ function rowToWorkspace(row: WorkspaceRow): Workspace {
     isGitRepo: Boolean(row.isGitRepo),
     codexSettings: JSON.parse(row.codexSettings),
     promptTemplates: row.promptTemplates ? JSON.parse(row.promptTemplates) : undefined,
+    prStrategy: (row.prStrategy as TeamPrStrategy) ?? undefined,
+    autoApproveSubtasks: row.autoApproveSubtasks ?? undefined,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt
   };
@@ -133,8 +143,52 @@ function workspaceToRow(ws: Workspace): typeof schema.workspaces.$inferInsert {
     isGitRepo: ws.isGitRepo,
     codexSettings: JSON.stringify(ws.codexSettings),
     promptTemplates: ws.promptTemplates != null ? JSON.stringify(ws.promptTemplates) : null,
+    prStrategy: ws.prStrategy ?? "independent",
+    autoApproveSubtasks: ws.autoApproveSubtasks ?? false,
     createdAt: ws.createdAt,
     updatedAt: ws.updatedAt
+  };
+}
+
+function rowToAgent(row: AgentRow): AccountAgent {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description ?? undefined,
+    runnerConfig: JSON.parse(row.runnerConfig),
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt
+  };
+}
+
+function agentToRow(agent: AccountAgent): typeof schema.agents.$inferInsert {
+  return {
+    id: agent.id,
+    name: agent.name,
+    description: agent.description ?? null,
+    runnerConfig: JSON.stringify(agent.runnerConfig),
+    createdAt: agent.createdAt,
+    updatedAt: agent.updatedAt
+  };
+}
+
+function rowToWorkspaceAgent(agentRow: AgentRow, waRow: WorkspaceAgentRow): WorkspaceAgent {
+  return {
+    ...rowToAgent(agentRow),
+    role: waRow.role as AgentRole
+  };
+}
+
+function rowToTaskMessage(row: TaskMessageRow): TaskMessage {
+  return {
+    id: row.id,
+    parentTaskId: row.parentTaskId,
+    taskId: row.taskId ?? undefined,
+    agentName: row.agentName,
+    senderType: row.senderType as TaskMessage["senderType"],
+    messageType: row.messageType as TaskMessage["messageType"],
+    content: row.content,
+    createdAt: row.createdAt
   };
 }
 
@@ -229,6 +283,7 @@ function rowToProposal(row: ProposalRow): CoordinatorProposal {
   return {
     id: row.id,
     teamId: row.teamId,
+    workspaceId: row.workspaceId ?? undefined,
     parentTaskId: row.parentTaskId,
     status: row.status as CoordinatorProposalStatus,
     drafts: JSON.parse(row.drafts) as CoordinatorProposalDraft[],
@@ -634,6 +689,7 @@ export class StateStore {
       .values({
         id: proposal.id,
         teamId: proposal.teamId,
+        workspaceId: proposal.workspaceId ?? null,
         parentTaskId: proposal.parentTaskId,
         status: proposal.status,
         drafts: JSON.stringify(proposal.drafts),
@@ -692,6 +748,213 @@ export class StateStore {
     return { ...existing, status: newStatus, decidedAt };
   }
 
+  // -------------------------------------------------------------------------
+  // Account-level Agent CRUD (Phase 4)
+  // -------------------------------------------------------------------------
+
+  public listAgents(): AccountAgent[] {
+    return this.db.select().from(schema.agents).all().map(rowToAgent);
+  }
+
+  public getAgent(agentId: string): AccountAgent | null {
+    const row = this.db
+      .select()
+      .from(schema.agents)
+      .where(eq(schema.agents.id, agentId))
+      .get();
+    return row ? rowToAgent(row) : null;
+  }
+
+  public createAgent(agent: AccountAgent): AccountAgent {
+    this.db.insert(schema.agents).values(agentToRow(agent)).run();
+    return agent;
+  }
+
+  public updateAgent(
+    agentId: string,
+    updates: Partial<Pick<AccountAgent, "name" | "description" | "runnerConfig">>
+  ): AccountAgent | null {
+    const existing = this.getAgent(agentId);
+    if (!existing) {
+      return null;
+    }
+    const updated: AccountAgent = {
+      ...existing,
+      ...updates,
+      updatedAt: new Date().toISOString()
+    };
+    this.db
+      .update(schema.agents)
+      .set({
+        name: updated.name,
+        description: updated.description ?? null,
+        runnerConfig: JSON.stringify(updated.runnerConfig),
+        updatedAt: updated.updatedAt
+      })
+      .where(eq(schema.agents.id, agentId))
+      .run();
+    return updated;
+  }
+
+  public deleteAgent(agentId: string): boolean {
+    const result = this.db
+      .delete(schema.agents)
+      .where(eq(schema.agents.id, agentId))
+      .run();
+    return result.changes > 0;
+  }
+
+  // -------------------------------------------------------------------------
+  // Workspace Agent mounting (Phase 4)
+  // -------------------------------------------------------------------------
+
+  public listWorkspaceAgents(workspaceId: string): WorkspaceAgent[] {
+    const rows = this.db
+      .select()
+      .from(schema.workspaceAgents)
+      .innerJoin(schema.agents, eq(schema.workspaceAgents.agentId, schema.agents.id))
+      .where(eq(schema.workspaceAgents.workspaceId, workspaceId))
+      .all();
+    return rows.map((row) => rowToWorkspaceAgent(row.agents, row.workspace_agents));
+  }
+
+  public getWorkspaceAgent(workspaceId: string, agentId: string): WorkspaceAgent | null {
+    const row = this.db
+      .select()
+      .from(schema.workspaceAgents)
+      .innerJoin(schema.agents, eq(schema.workspaceAgents.agentId, schema.agents.id))
+      .where(
+        and(
+          eq(schema.workspaceAgents.workspaceId, workspaceId),
+          eq(schema.workspaceAgents.agentId, agentId)
+        )
+      )
+      .get();
+    return row ? rowToWorkspaceAgent(row.agents, row.workspace_agents) : null;
+  }
+
+  public mountAgentToWorkspace(
+    workspaceId: string,
+    agentId: string,
+    role: AgentRole
+  ): WorkspaceAgent {
+    if (role === "coordinator") {
+      this.ensureSingleCoordinator(workspaceId);
+    }
+    const agent = this.getAgent(agentId);
+    if (!agent) {
+      throw new AppError(404, "AGENT_NOT_FOUND", `Agent not found: ${agentId}`);
+    }
+    const now = new Date().toISOString();
+    this.db
+      .insert(schema.workspaceAgents)
+      .values({ workspaceId, agentId, role, createdAt: now })
+      .run();
+    return { ...agent, role };
+  }
+
+  public unmountAgentFromWorkspace(workspaceId: string, agentId: string): boolean {
+    const result = this.db
+      .delete(schema.workspaceAgents)
+      .where(
+        and(
+          eq(schema.workspaceAgents.workspaceId, workspaceId),
+          eq(schema.workspaceAgents.agentId, agentId)
+        )
+      )
+      .run();
+    return result.changes > 0;
+  }
+
+  public updateWorkspaceAgentRole(
+    workspaceId: string,
+    agentId: string,
+    role: AgentRole
+  ): WorkspaceAgent | null {
+    if (role === "coordinator") {
+      this.ensureSingleCoordinator(workspaceId, agentId);
+    }
+    const result = this.db
+      .update(schema.workspaceAgents)
+      .set({ role })
+      .where(
+        and(
+          eq(schema.workspaceAgents.workspaceId, workspaceId),
+          eq(schema.workspaceAgents.agentId, agentId)
+        )
+      )
+      .run();
+    if (result.changes === 0) {
+      return null;
+    }
+    return this.getWorkspaceAgent(workspaceId, agentId);
+  }
+
+  // -------------------------------------------------------------------------
+  // Workspace coordination config (Phase 4)
+  // -------------------------------------------------------------------------
+
+  public updateWorkspaceConfig(
+    workspaceId: string,
+    config: Partial<Pick<Workspace, "prStrategy" | "autoApproveSubtasks">>
+  ): Workspace | null {
+    const workspaces = this.state.workspaces;
+    const idx = workspaces.findIndex((ws) => ws.id === workspaceId);
+    if (idx === -1) {
+      return null;
+    }
+    const updated: Workspace = {
+      ...workspaces[idx]!,
+      ...config,
+      updatedAt: new Date().toISOString()
+    };
+    this.db
+      .update(schema.workspaces)
+      .set({
+        prStrategy: updated.prStrategy ?? "independent",
+        autoApproveSubtasks: updated.autoApproveSubtasks ?? false,
+        updatedAt: updated.updatedAt
+      })
+      .where(eq(schema.workspaces.id, workspaceId))
+      .run();
+    this.state.workspaces[idx] = updated;
+    return updated;
+  }
+
+  // -------------------------------------------------------------------------
+  // Task Messages (Phase 4 — workspace-level, no team_id)
+  // -------------------------------------------------------------------------
+
+  public listTaskMessages(parentTaskId: string): TaskMessage[] {
+    return this.db
+      .select()
+      .from(schema.taskMessages)
+      .where(eq(schema.taskMessages.parentTaskId, parentTaskId))
+      .orderBy(asc(schema.taskMessages.createdAt))
+      .all()
+      .map(rowToTaskMessage);
+  }
+
+  public appendTaskMessage(message: TaskMessage): void {
+    const MAX_CONTENT_BYTES = 10 * 1024;
+    if (Buffer.byteLength(message.content, "utf8") > MAX_CONTENT_BYTES) {
+      throw new AppError(400, "MESSAGE_TOO_LARGE", "Message content exceeds 10KB limit");
+    }
+    this.db
+      .insert(schema.taskMessages)
+      .values({
+        id: message.id,
+        parentTaskId: message.parentTaskId,
+        taskId: message.taskId ?? null,
+        agentName: message.agentName,
+        senderType: message.senderType,
+        messageType: message.messageType,
+        content: message.content,
+        createdAt: message.createdAt
+      })
+      .run();
+  }
+
   /** Closes the underlying SQLite connection. Call on server shutdown. */
   public close(): void {
     this.sqlite?.close();
@@ -700,6 +963,34 @@ export class StateStore {
   // -------------------------------------------------------------------------
   // Private helpers
   // -------------------------------------------------------------------------
+
+  /**
+   * Ensures a workspace has at most one coordinator agent. Call before mounting
+   * or changing an agent's role to "coordinator".
+   * @param excludeAgentId Skip this agent when counting coordinators (for role updates).
+   */
+  private ensureSingleCoordinator(workspaceId: string, excludeAgentId?: string): void {
+    const existing = this.db
+      .select()
+      .from(schema.workspaceAgents)
+      .where(
+        and(
+          eq(schema.workspaceAgents.workspaceId, workspaceId),
+          eq(schema.workspaceAgents.role, "coordinator")
+        )
+      )
+      .all();
+    const conflicting = excludeAgentId
+      ? existing.filter((wa) => wa.agentId !== excludeAgentId)
+      : existing;
+    if (conflicting.length > 0) {
+      throw new AppError(
+        409,
+        "COORDINATOR_ALREADY_EXISTS",
+        "This workspace already has a coordinator agent"
+      );
+    }
+  }
 
   private initSchema(): void {
     this.sqlite.exec(`
@@ -827,6 +1118,42 @@ export class StateStore {
 
       CREATE INDEX IF NOT EXISTS idx_coordinator_proposals_parent_task_id
         ON coordinator_proposals (team_id, parent_task_id);
+
+      -- Phase 4: account-level agents + workspace mounting
+      CREATE TABLE IF NOT EXISTS agents (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        runner_config TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS workspace_agents (
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+        role TEXT NOT NULL DEFAULT 'worker',
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (workspace_id, agent_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_workspace_agents_workspace_id
+        ON workspace_agents (workspace_id);
+
+      -- task_messages: workspace-level agent communication thread (no team_id)
+      CREATE TABLE IF NOT EXISTS task_messages (
+        id TEXT PRIMARY KEY,
+        parent_task_id TEXT NOT NULL,
+        task_id TEXT,
+        agent_name TEXT NOT NULL,
+        sender_type TEXT NOT NULL DEFAULT 'agent',
+        message_type TEXT NOT NULL DEFAULT 'context',
+        content TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_task_messages_parent_task_id
+        ON task_messages (parent_task_id, created_at);
     `);
 
     // Add new columns to existing tables. SQLite does not support IF NOT EXISTS
@@ -844,7 +1171,12 @@ export class StateStore {
       "ALTER TABLE teams ADD COLUMN auto_approve_subtasks INTEGER NOT NULL DEFAULT 0",
       // Renamed from direction; default 'agent' covers rows written by the initial PR version
       "ALTER TABLE team_messages ADD COLUMN sender_type TEXT NOT NULL DEFAULT 'agent'",
-      "ALTER TABLE team_messages ADD COLUMN message_type TEXT NOT NULL DEFAULT 'context'"
+      "ALTER TABLE team_messages ADD COLUMN message_type TEXT NOT NULL DEFAULT 'context'",
+      // Phase 4: workspace coordination config
+      "ALTER TABLE workspaces ADD COLUMN pr_strategy TEXT NOT NULL DEFAULT 'independent'",
+      "ALTER TABLE workspaces ADD COLUMN auto_approve_subtasks INTEGER NOT NULL DEFAULT 0",
+      // Phase 4: workspace-scoped coordinator proposals
+      "ALTER TABLE coordinator_proposals ADD COLUMN workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE"
     ]) {
       try {
         this.sqlite.exec(col);
@@ -852,6 +1184,10 @@ export class StateStore {
         // column already exists — safe to ignore
       }
     }
+
+    // Phase 4: team_id on coordinator_proposals is now nullable (workspace-scoped proposals
+    // leave team_id as null). The column cannot be altered directly in SQLite, so we handle
+    // this at the application layer by allowing null reads.
   }
 
   private readStateFromDb(): AppState {

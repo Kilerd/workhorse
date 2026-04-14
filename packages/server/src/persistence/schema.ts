@@ -12,6 +12,10 @@ export const workspaces = sqliteTable("workspaces", {
   isGitRepo: integer("is_git_repo", { mode: "boolean" }).notNull().default(false),
   codexSettings: text("codex_settings").notNull(),
   promptTemplates: text("prompt_templates"),
+  prStrategy: text("pr_strategy").notNull().default("independent"),
+  autoApproveSubtasks: integer("auto_approve_subtasks", { mode: "boolean" })
+    .notNull()
+    .default(false),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull()
 });
@@ -103,9 +107,8 @@ export const teams = sqliteTable("teams", {
 
 export const coordinatorProposals = sqliteTable("coordinator_proposals", {
   id: text("id").primaryKey(),
-  teamId: text("team_id")
-    .notNull()
-    .references(() => teams.id, { onDelete: "cascade" }),
+  teamId: text("team_id"),
+  workspaceId: text("workspace_id").references(() => workspaces.id, { onDelete: "cascade" }),
   parentTaskId: text("parent_task_id").notNull(),
   status: text("status").notNull().default("pending"),
   drafts: text("drafts").notNull(),
@@ -118,6 +121,43 @@ export const teamMessages = sqliteTable("team_messages", {
   teamId: text("team_id")
     .notNull()
     .references(() => teams.id, { onDelete: "cascade" }),
+  parentTaskId: text("parent_task_id").notNull(),
+  taskId: text("task_id"),
+  agentName: text("agent_name").notNull(),
+  senderType: text("sender_type").notNull(),
+  messageType: text("message_type").notNull(),
+  content: text("content").notNull(),
+  createdAt: text("created_at").notNull()
+});
+
+// === New agent model (Phase 4 refactor) ===
+
+export const agents = sqliteTable("agents", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  runnerConfig: text("runner_config").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull()
+});
+
+export const workspaceAgents = sqliteTable(
+  "workspace_agents",
+  {
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    agentId: text("agent_id")
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
+    role: text("role").notNull().default("worker"),
+    createdAt: text("created_at").notNull()
+  },
+  (table) => [primaryKey({ columns: [table.workspaceId, table.agentId] })]
+);
+
+export const taskMessages = sqliteTable("task_messages", {
+  id: text("id").primaryKey(),
   parentTaskId: text("parent_task_id").notNull(),
   taskId: text("task_id"),
   agentName: text("agent_name").notNull(),
