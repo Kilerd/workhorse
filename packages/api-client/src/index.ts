@@ -54,7 +54,8 @@ import type {
   WorkspaceData,
   WorkspaceGitRefsData,
   WorkspaceGitStatusData,
-  WorkspaceGitPullData
+  WorkspaceGitPullData,
+  ListProposalsData
 } from "@workhorse/contracts";
 import type { paths } from "./generated/openapi";
 
@@ -484,6 +485,58 @@ export function createApiClient(baseUrl: string) {
         await requestJson(
           `/api/workspaces/${encodeURIComponent(workspaceId)}/task-messages`,
           { method: "POST", body: JSON.stringify(body) }
+        )
+      ),
+    listWorkspaceProposals: async (
+      workspaceId: string,
+      query: ListProposalsQuery = {}
+    ): Promise<ListProposalsData> => {
+      const qs = query.parentTaskId
+        ? `?parentTaskId=${encodeURIComponent(query.parentTaskId)}`
+        : "";
+      return unwrap(
+        await requestJson(
+          `/api/workspaces/${encodeURIComponent(workspaceId)}/proposals${qs}`
+        )
+      );
+    },
+    getWorkspaceProposal: async (
+      workspaceId: string,
+      proposalId: string
+    ): Promise<{ proposal: CoordinatorProposal }> =>
+      unwrap(
+        await requestJson(
+          `/api/workspaces/${encodeURIComponent(workspaceId)}/proposals/${encodeURIComponent(proposalId)}`
+        )
+      ),
+    approveWorkspaceProposal: async (
+      workspaceId: string,
+      proposalId: string
+    ): Promise<{ proposal: CoordinatorProposal }> =>
+      unwrap(
+        await requestJson(
+          `/api/workspaces/${encodeURIComponent(workspaceId)}/proposals/${encodeURIComponent(proposalId)}/approve`,
+          { method: "POST" }
+        )
+      ),
+    rejectWorkspaceProposal: async (
+      workspaceId: string,
+      proposalId: string
+    ): Promise<{ proposal: CoordinatorProposal }> =>
+      unwrap(
+        await requestJson(
+          `/api/workspaces/${encodeURIComponent(workspaceId)}/proposals/${encodeURIComponent(proposalId)}/reject`,
+          { method: "POST" }
+        )
+      ),
+    cancelWorkspaceSubtask: async (
+      workspaceId: string,
+      taskId: string
+    ): Promise<TaskData> =>
+      unwrap(
+        await requestJson(
+          `/api/workspaces/${encodeURIComponent(workspaceId)}/tasks/${encodeURIComponent(taskId)}/cancel`,
+          { method: "POST" }
         )
       )
   };
