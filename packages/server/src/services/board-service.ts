@@ -3,9 +3,12 @@ import { constants } from "node:fs";
 import { join } from "node:path";
 
 import type {
+  AccountAgent,
+  AgentRole,
   AgentTeam,
   AppState,
   CoordinatorProposal,
+  CreateAgentBody,
   CreateTaskBody,
   CreateTeamBody,
   CreateWorkspaceBody,
@@ -14,6 +17,8 @@ import type {
   HealthCodexQuotaData,
   ListTasksQuery,
   ListProposalsQuery,
+  MountAgentBody,
+  PostTaskMessageBody,
   Run,
   RunnerConfig,
   StartTaskBody,
@@ -24,10 +29,13 @@ import type {
   TaskWorktree,
   TeamAgent,
   TeamMessage,
+  UpdateAgentBody,
+  UpdateAgentRoleBody,
   UpdateSettingsBody,
   UpdateTaskBody,
   UpdateTeamBody,
   UpdateWorkspaceBody,
+  UpdateWorkspaceConfigBody,
   WorkspaceAgent,
   WorkspaceGitRef,
   Workspace
@@ -2564,7 +2572,7 @@ export class BoardService {
     return this.requireTask(taskId);
   }
 
-  public async cancelSubtask(teamId: string, taskId: string): Promise<Task> {
+  public async cancelSubtask(teamId: string | null, taskId: string): Promise<Task> {
     const { task, team, parentTask } = this.requireTeamSubtask(taskId, teamId ?? undefined);
 
     const cancellation = await this.store.updateState((state) => {
@@ -2974,6 +2982,143 @@ export class BoardService {
 
     const first = columnTasks[0];
     return first ? first.order - 1_024 : 1_024;
+  }
+
+  // -------------------------------------------------------------------------
+  // Agent CRUD (Phase 4)
+  // -------------------------------------------------------------------------
+
+  public listAgents(): AccountAgent[] {
+    return this.store.listAgents();
+  }
+
+  public createAgent(body: CreateAgentBody): AccountAgent {
+    const now = new Date().toISOString();
+    const agent: AccountAgent = {
+      id: createId(),
+      name: body.name,
+      description: body.description,
+      runnerConfig: body.runnerConfig,
+      createdAt: now,
+      updatedAt: now
+    };
+    return this.store.createAgent(agent);
+  }
+
+  public getAgent(agentId: string): AccountAgent {
+    const agent = this.store.getAgent(agentId);
+    if (!agent) {
+      throw new AppError(404, "AGENT_NOT_FOUND", `Agent not found: ${agentId}`);
+    }
+    return agent;
+  }
+
+  public updateAgent(agentId: string, body: UpdateAgentBody): AccountAgent {
+    const updated = this.store.updateAgent(agentId, body);
+    if (!updated) {
+      throw new AppError(404, "AGENT_NOT_FOUND", `Agent not found: ${agentId}`);
+    }
+    return updated;
+  }
+
+  public deleteAgent(agentId: string): void {
+    const deleted = this.store.deleteAgent(agentId);
+    if (!deleted) {
+      throw new AppError(404, "AGENT_NOT_FOUND", `Agent not found: ${agentId}`);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Workspace Agent management (Phase 4)
+  // -------------------------------------------------------------------------
+
+  public listWorkspaceAgentsByWorkspace(workspaceId: string): WorkspaceAgent[] {
+    this.requireWorkspace(workspaceId);
+    return this.store.listWorkspaceAgents(workspaceId);
+  }
+
+  public mountAgent(workspaceId: string, body: MountAgentBody): WorkspaceAgent {
+    this.requireWorkspace(workspaceId);
+    return this.store.mountAgentToWorkspace(workspaceId, body.agentId, body.role as AgentRole);
+  }
+
+  public unmountAgent(workspaceId: string, agentId: string): void {
+    this.requireWorkspace(workspaceId);
+    const removed = this.store.unmountAgentFromWorkspace(workspaceId, agentId);
+    if (!removed) {
+      throw new AppError(404, "WORKSPACE_AGENT_NOT_FOUND", `Agent ${agentId} not mounted in workspace ${workspaceId}`);
+    }
+  }
+
+  public updateAgentRole(
+    workspaceId: string,
+    agentId: string,
+    body: UpdateAgentRoleBody
+  ): WorkspaceAgent {
+    this.requireWorkspace(workspaceId);
+    const updated = this.store.updateWorkspaceAgentRole(workspaceId, agentId, body.role as AgentRole);
+    if (!updated) {
+      throw new AppError(404, "WORKSPACE_AGENT_NOT_FOUND", `Agent ${agentId} not mounted in workspace ${workspaceId}`);
+    }
+    return updated;
+  }
+
+  // -------------------------------------------------------------------------
+  // Workspace config (Phase 4)
+  // -------------------------------------------------------------------------
+
+  public updateWorkspaceConfig(workspaceId: string, body: UpdateWorkspaceConfigBody): Workspace {
+    const updated = this.store.updateWorkspaceConfig(workspaceId, body);
+    if (!updated) {
+      throw new AppError(404, "WORKSPACE_NOT_FOUND", `Workspace not found: ${workspaceId}`);
+    }
+    return updated;
+  }
+
+  // -------------------------------------------------------------------------
+  // Task Messages (Phase 4)
+  // -------------------------------------------------------------------------
+
+  public listTaskMessagesByWorkspace(workspaceId: string, parentTaskId?: string): TaskMessage[] {
+    this.requireWorkspace(workspaceId);
+    if (!parentTaskId) {
+      throw new AppError(400, "PARENT_TASK_ID_REQUIRED", "parentTaskId query parameter is required");
+    }
+    return this.store.listTaskMessages(parentTaskId);
+  }
+
+  public postTaskMessage(workspaceId: string, body: PostTaskMessageBody): TaskMessage {
+    this.requireWorkspace(workspaceId);
+    const task = this.requireTask(body.parentTaskId);
+    if (task.workspaceId !== workspaceId) {
+      throw new AppError(403, "WORKSPACE_MISMATCH", "Task does not belong to this workspace");
+    }
+    const message: TaskMessage = {
+      id: createId(),
+      parentTaskId: body.parentTaskId,
+      agentName: "human",
+      senderType: "human",
+      messageType: "context",
+      content: body.content,
+      createdAt: new Date().toISOString()
+    };
+    this.store.appendTaskMessage(message);
+    return message;
+  }
+
+  // -------------------------------------------------------------------------
+  // Workspace-scoped cancel subtask (Phase 4)
+  // -------------------------------------------------------------------------
+
+  public async cancelSubtaskByWorkspace(workspaceId: string, taskId: string): Promise<Task> {
+    const task = this.requireTask(taskId);
+    if (!task.parentTaskId) {
+      throw new AppError(409, "TASK_NOT_SUBTASK", "Task is not a subtask");
+    }
+    if (task.workspaceId !== workspaceId) {
+      throw new AppError(403, "WORKSPACE_MISMATCH", "Task does not belong to this workspace");
+    }
+    return this.cancelSubtask(null, taskId);
   }
 
 }

@@ -54,7 +54,21 @@ import {
   validateWorkspaceListProposalsParams,
   validateWorkspaceGetProposalParams,
   validateWorkspaceApproveProposalParams,
-  validateWorkspaceRejectProposalParams
+  validateWorkspaceRejectProposalParams,
+  validateWorkspaceCancelSubtaskParams,
+  validateAgentParams,
+  validateCreateAgentBody,
+  validateUpdateAgentBody,
+  validateListWorkspaceAgentsParams,
+  validateMountAgentBody,
+  validateWorkspaceAgentParams,
+  validateUpdateAgentRoleBody,
+  validateUpdateWorkspaceConfigParams,
+  validateUpdateWorkspaceConfigBody,
+  validateListTaskMessagesParams,
+  validateListTaskMessagesQuery,
+  validatePostTaskMessageParams,
+  validatePostTaskMessageBody
 } from "@workhorse/contracts";
 import type {
   ListTeamMessagesParams,
@@ -635,6 +649,166 @@ export function createApp(
     service.rejectProposalByWorkspace(params.workspaceId, params.proposalId);
     const proposal = service.getProposalByWorkspace(params.workspaceId, params.proposalId);
     return c.json(ok({ proposal }));
+  });
+
+  // Agent CRUD routes (Phase 4)
+  app.get("/api/agents", (c) => {
+    const items = service.listAgents();
+    return c.json(ok({ items }));
+  });
+
+  app.post("/api/agents", async (c) => {
+    const body = validateOrThrow(
+      await c.req.json(),
+      validateCreateAgentBody,
+      "Invalid create agent body"
+    );
+    const agent = service.createAgent(body);
+    return c.json(ok({ agent }), 201);
+  });
+
+  app.get("/api/agents/:agentId", (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateAgentParams,
+      "Invalid agent params"
+    );
+    const agent = service.getAgent(params.agentId);
+    return c.json(ok({ agent }));
+  });
+
+  app.patch("/api/agents/:agentId", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateAgentParams,
+      "Invalid agent params"
+    );
+    const body = validateOrThrow(
+      await c.req.json(),
+      validateUpdateAgentBody,
+      "Invalid update agent body"
+    );
+    const agent = service.updateAgent(params.agentId, body);
+    return c.json(ok({ agent }));
+  });
+
+  app.delete("/api/agents/:agentId", (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateAgentParams,
+      "Invalid agent params"
+    );
+    service.deleteAgent(params.agentId);
+    return c.json(ok({ deleted: true }));
+  });
+
+  // Workspace Agent management routes (Phase 4)
+  app.get("/api/workspaces/:workspaceId/agents", (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateListWorkspaceAgentsParams,
+      "Invalid workspace params"
+    );
+    const items = service.listWorkspaceAgentsByWorkspace(params.workspaceId);
+    return c.json(ok({ items }));
+  });
+
+  app.post("/api/workspaces/:workspaceId/agents", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateListWorkspaceAgentsParams,
+      "Invalid workspace params"
+    );
+    const body = validateOrThrow(
+      await c.req.json(),
+      validateMountAgentBody,
+      "Invalid mount agent body"
+    );
+    const agent = service.mountAgent(params.workspaceId, body);
+    return c.json(ok({ agent }), 201);
+  });
+
+  app.patch("/api/workspaces/:workspaceId/agents/:agentId", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateWorkspaceAgentParams,
+      "Invalid workspace agent params"
+    );
+    const body = validateOrThrow(
+      await c.req.json(),
+      validateUpdateAgentRoleBody,
+      "Invalid update agent role body"
+    );
+    const agent = service.updateAgentRole(params.workspaceId, params.agentId, body);
+    return c.json(ok({ agent }));
+  });
+
+  app.delete("/api/workspaces/:workspaceId/agents/:agentId", (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateWorkspaceAgentParams,
+      "Invalid workspace agent params"
+    );
+    service.unmountAgent(params.workspaceId, params.agentId);
+    return c.json(ok({ deleted: true }));
+  });
+
+  // Workspace config route (Phase 4)
+  app.patch("/api/workspaces/:workspaceId/config", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateUpdateWorkspaceConfigParams,
+      "Invalid workspace params"
+    );
+    const body = validateOrThrow(
+      await c.req.json(),
+      validateUpdateWorkspaceConfigBody,
+      "Invalid workspace config body"
+    );
+    const workspace = service.updateWorkspaceConfig(params.workspaceId, body);
+    return c.json(ok({ workspace }));
+  });
+
+  // Task Messages routes (Phase 4)
+  app.get("/api/workspaces/:workspaceId/task-messages", (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateListTaskMessagesParams,
+      "Invalid workspace params"
+    );
+    const query = validateOrThrow(
+      queryObject(c.req.url),
+      validateListTaskMessagesQuery,
+      "Invalid task messages query"
+    );
+    const items = service.listTaskMessagesByWorkspace(params.workspaceId, query.parentTaskId);
+    return c.json(ok({ items }));
+  });
+
+  app.post("/api/workspaces/:workspaceId/task-messages", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validatePostTaskMessageParams,
+      "Invalid workspace params"
+    );
+    const body = validateOrThrow(
+      await c.req.json(),
+      validatePostTaskMessageBody,
+      "Invalid post task message body"
+    );
+    const item = service.postTaskMessage(params.workspaceId, body);
+    return c.json(ok({ item }), 201);
+  });
+
+  // Workspace cancel subtask route (Phase 4)
+  app.post("/api/workspaces/:workspaceId/tasks/:taskId/cancel", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateWorkspaceCancelSubtaskParams,
+      "Invalid workspace cancel subtask params"
+    );
+    const task = await service.cancelSubtaskByWorkspace(params.workspaceId, params.taskId);
+    return c.json(ok({ task }));
   });
 
   return app;

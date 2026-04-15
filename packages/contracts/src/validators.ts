@@ -60,6 +60,7 @@ import type {
   WorkspaceGetProposalParams,
   WorkspaceApproveProposalParams,
   WorkspaceRejectProposalParams,
+  WorkspaceCancelSubtaskParams,
   RequestTaskReviewResponse,
   RejectTaskBody,
   RejectTaskParams,
@@ -110,7 +111,9 @@ import type {
   WorkspaceGitStatusResponse,
   WorkspaceGitPullResponse,
   WorkspaceResponse,
-  WorkspacesResponse
+  WorkspacesResponse,
+  ListProposalsResponse,
+  ProposalResponse
 } from "./api.js";
 import type {
   AccountAgent,
@@ -214,6 +217,8 @@ export const validateWorkspaceApproveProposalParams =
   typia.createValidate<WorkspaceApproveProposalParams>();
 export const validateWorkspaceRejectProposalParams =
   typia.createValidate<WorkspaceRejectProposalParams>();
+export const validateWorkspaceCancelSubtaskParams =
+  typia.createValidate<WorkspaceCancelSubtaskParams>();
 
 export const validateCreateAgentBody = typia.createValidate<CreateAgentBody>();
 export const validateUpdateAgentBody = typia.createValidate<UpdateAgentBody>();
@@ -344,5 +349,13 @@ export const schemaRegistry = {
   WorkspaceAgentResponse: () => typia.json.schema<WorkspaceAgentResponse>(),
   ListWorkspaceAgentsResponse: () => typia.json.schema<ListWorkspaceAgentsResponse>(),
   TaskMessagesResponse: () => typia.json.schema<TaskMessagesResponse>(),
-  TaskMessageResponse: () => typia.json.schema<TaskMessageResponse>()
+  TaskMessageResponse: () => typia.json.schema<TaskMessageResponse>(),
+  WorkspaceListProposalsParams: () => typia.json.schema<WorkspaceListProposalsParams>(),
+  WorkspaceGetProposalParams: () => typia.json.schema<WorkspaceGetProposalParams>(),
+  WorkspaceApproveProposalParams: () => typia.json.schema<WorkspaceApproveProposalParams>(),
+  WorkspaceRejectProposalParams: () => typia.json.schema<WorkspaceRejectProposalParams>(),
+  WorkspaceCancelSubtaskParams: () => typia.json.schema<WorkspaceCancelSubtaskParams>(),
+  ListProposalsResponse: () => typia.json.schema<ListProposalsResponse>(),
+  ProposalResponse: () => typia.json.schema<ProposalResponse>(),
+  ListProposalsQuery: () => typia.json.schema<ListProposalsQuery>()
 };

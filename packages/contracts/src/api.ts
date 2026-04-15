@@ -527,6 +527,11 @@ export interface WorkspaceRejectProposalParams {
   proposalId: string;
 }
 
+export interface WorkspaceCancelSubtaskParams {
+  workspaceId: string;
+  taskId: string;
+}
+
 // === Account-level Agents (Phase 4) ===
 
 export interface CreateAgentBody {
@@ -744,7 +749,15 @@ export type SchemaName =
   | "WorkspaceAgentResponse"
   | "ListWorkspaceAgentsResponse"
   | "TaskMessagesResponse"
-  | "TaskMessageResponse";
+  | "TaskMessageResponse"
+  | "WorkspaceListProposalsParams"
+  | "WorkspaceGetProposalParams"
+  | "WorkspaceApproveProposalParams"
+  | "WorkspaceRejectProposalParams"
+  | "WorkspaceCancelSubtaskParams"
+  | "ListProposalsResponse"
+  | "ProposalResponse"
+  | "ListProposalsQuery";
 
 export const endpointRegistry: EndpointSpec[] = [
   {
@@ -1873,6 +1886,107 @@ export const endpointRegistry: EndpointSpec[] = [
       {
         status: 404,
         description: "Workspace not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "listWorkspaceProposals",
+    method: "get",
+    path: "/api/workspaces/{workspaceId}/proposals",
+    summary: "List coordinator proposals for a workspace",
+    tag: "Workspace Agents",
+    paramsSchema: "WorkspaceListProposalsParams",
+    querySchema: "ListProposalsQuery",
+    responses: [
+      {
+        status: 200,
+        description: "Proposal collection",
+        schema: "ListProposalsResponse"
+      },
+      {
+        status: 404,
+        description: "Workspace not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "getWorkspaceProposal",
+    method: "get",
+    path: "/api/workspaces/{workspaceId}/proposals/{proposalId}",
+    summary: "Get a coordinator proposal by workspace",
+    tag: "Workspace Agents",
+    paramsSchema: "WorkspaceGetProposalParams",
+    responses: [
+      {
+        status: 200,
+        description: "Coordinator proposal",
+        schema: "ProposalResponse"
+      },
+      {
+        status: 404,
+        description: "Proposal not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "approveWorkspaceProposal",
+    method: "post",
+    path: "/api/workspaces/{workspaceId}/proposals/{proposalId}/approve",
+    summary: "Approve a workspace coordinator proposal",
+    tag: "Workspace Agents",
+    paramsSchema: "WorkspaceApproveProposalParams",
+    responses: [
+      {
+        status: 200,
+        description: "Approved proposal",
+        schema: "ProposalResponse"
+      },
+      {
+        status: 409,
+        description: "Proposal already decided",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "rejectWorkspaceProposal",
+    method: "post",
+    path: "/api/workspaces/{workspaceId}/proposals/{proposalId}/reject",
+    summary: "Reject a workspace coordinator proposal",
+    tag: "Workspace Agents",
+    paramsSchema: "WorkspaceRejectProposalParams",
+    responses: [
+      {
+        status: 200,
+        description: "Rejected proposal",
+        schema: "ProposalResponse"
+      },
+      {
+        status: 409,
+        description: "Proposal already decided",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "cancelSubtaskByWorkspace",
+    method: "post",
+    path: "/api/workspaces/{workspaceId}/tasks/{taskId}/cancel",
+    summary: "Cancel a workspace subtask",
+    tag: "Workspace Agents",
+    paramsSchema: "WorkspaceCancelSubtaskParams",
+    responses: [
+      {
+        status: 200,
+        description: "Cancelled subtask",
+        schema: "TaskResponse"
+      },
+      {
+        status: 409,
+        description: "Task cannot be cancelled",
         schema: "ApiError"
       }
     ]
