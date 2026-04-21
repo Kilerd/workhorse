@@ -12,7 +12,8 @@ import type {
   Task,
   TaskMessage,
   TeamMessage,
-  Workspace
+  Workspace,
+  WorkspaceChannel
 } from "@workhorse/contracts";
 
 import { StateStore } from "./state-store.js";
@@ -688,6 +689,43 @@ describe("StateStore — Workspace Config (Phase 4)", () => {
     const reloaded = store.listWorkspaces().find((w) => w.id === "workspace-1");
     expect(reloaded?.prStrategy).toBe("stacked");
     expect(reloaded?.autoApproveSubtasks).toBe(true);
+  });
+
+  it("keeps #all active when its backing task is a channel_backing task", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "workhorse-all-channel-"));
+    const workspace = makeWorkspace();
+    const backingTask: Task = {
+      ...makeTask(workspace.id),
+      id: "task-backing",
+      title: "Sample Coordinator",
+      column: "review",
+      taskKind: "channel_backing"
+    };
+    const allChannel: WorkspaceChannel = {
+      id: "channel-all",
+      workspaceId: workspace.id,
+      kind: "all",
+      name: "All",
+      slug: "all",
+      taskId: backingTask.id,
+      createdAt: workspace.createdAt
+    };
+
+    const initialStore = new StateStore(dataDir);
+    await initialStore.load();
+    initialStore.setWorkspaces([workspace]);
+    initialStore.setTasks([backingTask]);
+    await initialStore.save();
+    initialStore.saveWorkspaceChannel(allChannel);
+
+    const reloadedStore = new StateStore(dataDir);
+    await reloadedStore.load();
+
+    const reloadedAllChannel = reloadedStore.getWorkspaceAllChannel(workspace.id);
+    expect(reloadedAllChannel?.taskId).toBe(backingTask.id);
+    expect(reloadedAllChannel?.archivedAt).toBeUndefined();
+    expect(reloadedStore.listWorkspaceChannels(workspace.id)[0]?.kind).toBe("all");
+    expect(reloadedStore.listWorkspaceChannels(workspace.id)[0]?.archivedAt).toBeUndefined();
   });
 });
 

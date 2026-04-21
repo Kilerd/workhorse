@@ -291,8 +291,9 @@ export function Sidebar({
               {workspaces.map((workspace) => {
                 const channels = workspaceChannelsByWorkspaceId.get(workspace.id) ?? [];
                 const allChannel = channels.find(
-                  (channel) => channel.kind === "all" && !channel.archivedAt
+                  (channel) => channel.kind === "all" || channel.slug === "all"
                 );
+                const allChannelId = allChannel?.id ?? "all";
                 const taskChannels = channels
                   .filter((channel) => channel.kind === "task" && !channel.archivedAt)
                   .map((channel) => ({
@@ -319,14 +320,15 @@ export function Sidebar({
                     />
 
                     <div className="ml-3 grid gap-1 border-l border-border pl-2.5">
-                      {allChannel ? (
-                        <ChannelRow
-                          label="#all"
-                          trailing="chat"
-                          active={selectedChannelId === allChannel.id}
-                          onClick={() => onSelectChannel(workspace.id, allChannel.id)}
-                        />
-                      ) : null}
+                      <ChannelRow
+                        label="#all"
+                        trailing="chat"
+                        active={
+                          selectedChannelId === allChannel?.id ||
+                          selectedChannelId === "all"
+                        }
+                        onClick={() => onSelectChannel(workspace.id, allChannelId)}
+                      />
 
                       {taskChannels.map(({ channel, task }) => (
                         <ChannelRow

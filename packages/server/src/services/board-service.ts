@@ -549,6 +549,28 @@ export class BoardService {
     this.requireWorkspace(workspaceId);
     const existing = this.store.getWorkspaceAllChannel(workspaceId);
     if (existing) {
+      if (
+        existing.name !== "All" ||
+        existing.slug !== "all" ||
+        existing.archivedAt != null
+      ) {
+        const updated = this.store.updateWorkspaceChannel(existing.id, {
+          name: "All",
+          slug: "all",
+          archivedAt: undefined
+        });
+        if (updated) {
+          this.events.publish({
+            type: "workspace.channel.updated",
+            action: "updated",
+            workspaceId,
+            channelId: updated.id,
+            channel: updated
+          });
+          return updated;
+        }
+      }
+
       return existing;
     }
 

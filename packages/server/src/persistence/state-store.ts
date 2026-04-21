@@ -1573,7 +1573,7 @@ export class StateStore {
         if (channel.kind === "all") {
           allChannelByWorkspaceId.set(channel.workspaceId, channel);
         }
-        if (channel.taskId) {
+        if (channel.kind === "task" && channel.taskId) {
           channelByTaskId.set(channel.taskId, channel);
         }
       }
