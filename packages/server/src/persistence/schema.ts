@@ -38,6 +38,7 @@ export const tasks = sqliteTable("tasks", {
   pullRequest: text("pull_request"),
   rejected: integer("rejected", { mode: "boolean" }).notNull().default(false),
   cancelledAt: text("cancelled_at"),
+  taskKind: text("task_kind").notNull().default("user"),
   teamId: text("team_id"),
   parentTaskId: text("parent_task_id"),
   teamAgentId: text("team_agent_id"),
@@ -109,7 +110,9 @@ export const coordinatorProposals = sqliteTable("coordinator_proposals", {
   id: text("id").primaryKey(),
   teamId: text("team_id"),
   workspaceId: text("workspace_id").references(() => workspaces.id, { onDelete: "cascade" }),
+  channelId: text("channel_id").references(() => workspaceChannels.id, { onDelete: "cascade" }),
   parentTaskId: text("parent_task_id").notNull(),
+  proposalMode: text("proposal_mode").notNull().default("subtasks"),
   status: text("status").notNull().default("pending"),
   drafts: text("drafts").notNull(),
   createdAt: text("created_at").notNull(),
@@ -155,6 +158,36 @@ export const workspaceAgents = sqliteTable(
   },
   (table) => [primaryKey({ columns: [table.workspaceId, table.agentId] })]
 );
+
+export const workspaceChannels = sqliteTable("workspace_channels", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id")
+    .notNull()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull(),
+  taskId: text("task_id"),
+  createdAt: text("created_at").notNull(),
+  archivedAt: text("archived_at")
+});
+
+export const channelMessages = sqliteTable("channel_messages", {
+  id: text("id").primaryKey(),
+  channelId: text("channel_id")
+    .notNull()
+    .references(() => workspaceChannels.id, { onDelete: "cascade" }),
+  workspaceId: text("workspace_id")
+    .notNull()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
+  taskId: text("task_id"),
+  agentName: text("agent_name").notNull(),
+  senderType: text("sender_type").notNull(),
+  messageType: text("message_type").notNull(),
+  content: text("content").notNull(),
+  metadata: text("metadata"),
+  createdAt: text("created_at").notNull()
+});
 
 export const taskMessages = sqliteTable("task_messages", {
   id: text("id").primaryKey(),

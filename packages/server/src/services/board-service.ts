@@ -7,7 +7,9 @@ import type {
   AgentRole,
   AgentTeam,
   AppState,
+  ChannelMessage,
   CoordinatorProposal,
+  CoordinatorProposalMode,
   CreateAgentBody,
   CreateTaskBody,
   CreateTeamBody,
@@ -18,6 +20,7 @@ import type {
   ListTasksQuery,
   ListProposalsQuery,
   MountAgentBody,
+  PostChannelMessageBody,
   PostTaskMessageBody,
   Run,
   RunnerConfig,
@@ -37,6 +40,7 @@ import type {
   UpdateWorkspaceBody,
   UpdateWorkspaceConfigBody,
   WorkspaceAgent,
+  WorkspaceChannel,
   WorkspaceGitRef,
   Workspace
 } from "@workhorse/contracts";
@@ -92,11 +96,14 @@ import { TaskScheduler } from "./task-scheduler.js";
 import {
   CoordinatorSubtaskParseError,
   buildCoordinatorPrompt,
+  buildWorkspaceChannelPrompt,
+  CoordinatorSubtaskDraft,
   buildSubtaskPrompt,
   buildTeamAgentMessageEvent,
   buildTeamTaskCreatedEvent,
-  parseCoordinatorSubtasks,
+  parseCoordinatorChannelResult,
   truncateTeamMessagePayload,
+  parseCoordinatorSubtasks,
   type TeamAgentContext
 } from "./team-coordinator-service.js";
 import {
@@ -475,6 +482,252 @@ export class BoardService {
     };
   }
 
+  private buildWorkspaceChannelChatOptions(
+    channel: WorkspaceChannel,
+    backingTask: Task,
+    agents: WorkspaceAgent[]
+  ): Pick<StartTaskOptions, "allowedColumns" | "runnerConfigOverride" | "runMetadata" | "skipDependencyCheck"> {
+    const coordinator = this.resolveCoordinator(agents);
+    const transcript = this.buildChannelTranscript(this.store.listChannelMessages(channel.id));
+    const prompt = buildWorkspaceChannelPrompt({
+      agents: this.buildAgentContexts(agents),
+      transcript
+    });
+
+    return {
+      allowedColumns: ["backlog", "todo", "blocked", "review", "done"],
+      runnerConfigOverride: this.withRunnerPrompt(coordinator.runnerConfig, prompt),
+      runMetadata: {
+        trigger: "workspace_channel_chat",
+        workspaceId: backingTask.workspaceId,
+        channelId: channel.id,
+        proposalMode: "top_level_tasks",
+        teamAgentId: coordinator.id
+      },
+      skipDependencyCheck: true
+    };
+  }
+
+  private buildChannelTranscript(messages: ChannelMessage[]): string {
+    if (messages.length === 0) {
+      return "No prior conversation yet.";
+    }
+
+    return messages
+      .map((message) => {
+        const sender =
+          message.senderType === "human"
+            ? "User"
+            : message.senderType === "agent"
+              ? message.agentName
+              : "System";
+        return `[${message.senderType}/${message.messageType}] ${sender}: ${message.content}`;
+      })
+      .join("\n\n");
+  }
+
+  private hasQueuedWorkspaceChannelFollowUp(
+    channelId: string,
+    runStartedAt: string
+  ): boolean {
+    const startedAtMs = Date.parse(runStartedAt);
+
+    return this.store.listChannelMessages(channelId).some((message) => {
+      if (message.senderType !== "human") {
+        return false;
+      }
+
+      if (message.metadata?.delivery !== "queued_follow_up") {
+        return false;
+      }
+
+      return Date.parse(message.createdAt) >= startedAtMs;
+    });
+  }
+
+  private ensureWorkspaceAllChannel(workspaceId: string): WorkspaceChannel {
+    this.requireWorkspace(workspaceId);
+    const existing = this.store.getWorkspaceAllChannel(workspaceId);
+    if (existing) {
+      return existing;
+    }
+
+    const workspace = this.requireWorkspace(workspaceId);
+    const channel: WorkspaceChannel = {
+      id: createId(),
+      workspaceId,
+      kind: "all",
+      name: "All",
+      slug: "all",
+      createdAt: new Date().toISOString()
+    };
+    const saved = this.store.saveWorkspaceChannel(channel);
+    this.events.publish({
+      type: "workspace.channel.updated",
+      action: "created",
+      workspaceId,
+      channelId: saved.id,
+      channel: saved
+    });
+    return saved;
+  }
+
+  private async ensureWorkspaceAllChannelBackingTask(workspaceId: string): Promise<{
+    channel: WorkspaceChannel;
+    task: Task;
+  }> {
+    const channel = this.ensureWorkspaceAllChannel(workspaceId);
+    const existingTask =
+      channel.taskId ? this.store.listTasks().find((task) => task.id === channel.taskId) : null;
+    if (existingTask) {
+      return { channel, task: existingTask };
+    }
+
+    const workspace = this.requireWorkspace(workspaceId);
+    const now = new Date().toISOString();
+    const taskId = createId();
+    const title = `${workspace.name} Coordinator`;
+    const task: Task = {
+      id: taskId,
+      title,
+      description: "",
+      workspaceId,
+      column: "review",
+      order: -1,
+      runnerType: "codex",
+      runnerConfig: { type: "codex", prompt: "Workspace coordinator backing task." },
+      dependencies: [],
+      worktree: createTaskWorktree(taskId, title, {
+        workspace,
+        status: "removed"
+      }),
+      rejected: false,
+      taskKind: "channel_backing",
+      createdAt: now,
+      updatedAt: now
+    };
+
+    const tasks = [...this.store.listTasks(), task];
+    this.store.setTasks(tasks);
+    await this.store.save();
+    const updatedChannel = this.store.updateWorkspaceChannel(channel.id, { taskId });
+    const resolvedChannel = updatedChannel ?? channel;
+    return { channel: resolvedChannel, task };
+  }
+
+  private ensureTaskChannel(task: Task): WorkspaceChannel {
+    const existing = this.store.getTaskChannelByTaskId(task.id);
+    const archivedAt = task.column === "archived" || task.taskKind === "channel_backing"
+      ? task.updatedAt
+      : undefined;
+    const slug = this.buildTaskChannelSlug(task, existing?.id);
+    if (existing) {
+      const updated = this.store.updateWorkspaceChannel(existing.id, {
+        workspaceId: task.workspaceId,
+        name: task.title,
+        slug,
+        archivedAt
+      });
+      return updated ?? existing;
+    }
+
+    const channel: WorkspaceChannel = {
+      id: createId(),
+      workspaceId: task.workspaceId,
+      kind: "task",
+      name: task.title,
+      slug,
+      taskId: task.id,
+      createdAt: task.createdAt,
+      archivedAt
+    };
+    const saved = this.store.saveWorkspaceChannel(channel);
+    this.events.publish({
+      type: "workspace.channel.updated",
+      action: "created",
+      workspaceId: task.workspaceId,
+      channelId: saved.id,
+      channel: saved
+    });
+    return saved;
+  }
+
+  private buildTaskChannelSlug(
+    task: Pick<Task, "workspaceId" | "title">,
+    excludeChannelId?: string
+  ): string {
+    const baseSlug =
+      task.title
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "task";
+    const existingSlugs = new Set(
+      this.store
+        .listWorkspaceChannels(task.workspaceId)
+        .filter((channel) => channel.id !== excludeChannelId)
+        .map((channel) => channel.slug)
+    );
+
+    if (!existingSlugs.has(baseSlug)) {
+      return baseSlug;
+    }
+
+    let suffix = 2;
+    while (existingSlugs.has(`${baseSlug}-${suffix}`)) {
+      suffix += 1;
+    }
+
+    return `${baseSlug}-${suffix}`;
+  }
+
+  private publishChannelMessage(input: {
+    channel: WorkspaceChannel;
+    taskId?: string;
+    agentName: string;
+    senderType: ChannelMessage["senderType"];
+    messageType: ChannelMessage["messageType"];
+    content: string;
+    metadata?: Record<string, string>;
+    createdAt?: string;
+  }): ChannelMessage {
+    const message: ChannelMessage = {
+      id: createId(),
+      channelId: input.channel.id,
+      workspaceId: input.channel.workspaceId,
+      taskId: input.taskId,
+      agentName: input.agentName,
+      senderType: input.senderType,
+      messageType: input.messageType,
+      content: truncateTeamMessagePayload(input.content),
+      metadata: input.metadata,
+      createdAt: input.createdAt ?? new Date().toISOString()
+    };
+    this.store.appendChannelMessage(message);
+    this.events.publish({
+      type: "channel.message.created",
+      workspaceId: input.channel.workspaceId,
+      channelId: input.channel.id,
+      message
+    });
+    return message;
+  }
+
+  private publishTaskChannelMessage(
+    task: Task,
+    input: Omit<Parameters<BoardService["publishChannelMessage"]>[0], "channel" | "taskId">
+  ): ChannelMessage | null {
+    if (task.taskKind === "channel_backing") {
+      return null;
+    }
+    const channel = this.ensureTaskChannel(task);
+    return this.publishChannelMessage({
+      ...input,
+      channel,
+      taskId: task.id
+    });
+  }
+
   private buildAgentContexts(agents: WorkspaceAgent[]): TeamAgentContext[] {
     return agents.map((agent) => ({
       id: agent.id,
@@ -577,19 +830,198 @@ export class BoardService {
     );
   }
 
+  private async extractLatestRunAgentText(runId: string): Promise<string | undefined> {
+    const entries = await this.store.readLogEntries(runId);
+    const lastAgentEntry = [...entries].reverse().find((entry) => entry.kind === "agent");
+    return lastAgentEntry?.text.trim() || undefined;
+  }
+
+  private resolveRunMessageAgentName(task: Task, run: Run): string {
+    if (run.metadata?.trigger === "manual_claude_review" || run.metadata?.trigger === "auto_ai_review") {
+      return "Reviewer";
+    }
+
+    if (task.teamId) {
+      const team = this.store.getTeam(task.teamId);
+      if (team && task.teamAgentId) {
+        return (
+          team.agents.find((agent) => agent.id === task.teamAgentId)?.agentName ?? "Assistant"
+        );
+      }
+    }
+
+    if (task.teamAgentId) {
+      const agent = this.store
+        .listWorkspaceAgents(task.workspaceId)
+        .find((entry) => entry.id === task.teamAgentId);
+      if (agent) {
+        return agent.name;
+      }
+    }
+
+    return run.runnerType === "claude" ? "Claude" : run.runnerType === "codex" ? "Codex" : "Shell";
+  }
+
+  private async appendTaskChannelRunSummary(task: Task, run: Run): Promise<void> {
+    if (task.taskKind === "channel_backing" || task.column === "archived") {
+      return;
+    }
+
+    if (run.metadata?.trigger === "team_coordinator") {
+      return;
+    }
+
+    const agentText = await this.extractLatestRunAgentText(run.id);
+    if (agentText) {
+      this.publishTaskChannelMessage(task, {
+        agentName: this.resolveRunMessageAgentName(task, run),
+        senderType: "agent",
+        messageType: "context",
+        content: agentText
+      });
+      return;
+    }
+
+    const statusLabel =
+      run.status === "succeeded"
+        ? "Run finished."
+        : `Run ${run.status}${typeof run.exitCode === "number" ? ` (exit ${run.exitCode})` : ""}.`;
+    this.publishTaskChannelMessage(task, {
+      agentName: "system",
+      senderType: "system",
+      messageType: "status",
+      content: statusLabel
+    });
+  }
+
+  private async handleWorkspaceChannelChatFinished(task: Task, run: Run): Promise<void> {
+    const workspaceId = ensure(
+      run.metadata?.workspaceId,
+      500,
+      "MISSING_WORKSPACE_ID",
+      "Run metadata missing workspaceId in workspace channel path"
+    );
+    const channelId = ensure(
+      run.metadata?.channelId,
+      500,
+      "MISSING_CHANNEL_ID",
+      "Run metadata missing channelId in workspace channel path"
+    );
+    const channel = this.store.getWorkspaceChannel(channelId);
+    if (!channel) {
+      throw new AppError(404, "CHANNEL_NOT_FOUND", "Workspace channel not found");
+    }
+    const agents = this.store.listWorkspaceAgents(workspaceId);
+    const coordinator = this.resolveCoordinator(agents);
+    const shouldStartFollowUp = this.hasQueuedWorkspaceChannelFollowUp(
+      channel.id,
+      run.startedAt
+    );
+
+    if (run.status !== "succeeded") {
+      this.publishChannelMessage({
+        channel,
+        taskId: task.id,
+        agentName: "system",
+        senderType: "system",
+        messageType: "status",
+        content: `Coordinator run ${run.status}.`
+      });
+      if (shouldStartFollowUp) {
+        await this.runLifecycle.startTask(
+          task.id,
+          this.buildWorkspaceChannelChatOptions(channel, task, agents)
+        );
+      }
+      return;
+    }
+
+    try {
+      const output = await this.extractCoordinatorOutput(run.id);
+      const result = parseCoordinatorChannelResult(output);
+
+      this.publishChannelMessage({
+        channel,
+        taskId: task.id,
+        agentName: coordinator.name,
+        senderType: "agent",
+        messageType: "context",
+        content: result.reply
+      });
+
+      if (result.tasks.length > 0) {
+        const existingPending = this.store
+          .listChannelProposals(channel.id)
+          .find((proposal) => proposal.status === "pending");
+        if (existingPending) {
+          this.store.updateProposalStatus(
+            existingPending.id,
+            "rejected",
+            new Date().toISOString()
+          );
+        }
+
+        const proposal: CoordinatorProposal = {
+          id: createId(),
+          teamId: null,
+          workspaceId,
+          channelId: channel.id,
+          parentTaskId: task.id,
+          proposalMode: "top_level_tasks",
+          status: "pending",
+          drafts: result.tasks,
+          createdAt: new Date().toISOString()
+        };
+        this.store.saveProposal(proposal);
+        this.events.publish({
+          type: "channel.proposal.created",
+          workspaceId,
+          channelId: channel.id,
+          proposal
+        });
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Coordinator response could not be processed";
+      this.publishChannelMessage({
+        channel,
+        taskId: task.id,
+        agentName: "system",
+        senderType: "system",
+        messageType: "status",
+        content: `Coordinator response could not be processed: ${message}`
+      });
+    }
+
+    if (shouldStartFollowUp) {
+      await this.runLifecycle.startTask(
+        task.id,
+        this.buildWorkspaceChannelChatOptions(channel, task, agents)
+      );
+    }
+  }
+
   private async handleTeamRunFinished(task: Task, run: Run): Promise<void> {
+    if (run.metadata?.trigger === "workspace_channel_chat") {
+      await this.handleWorkspaceChannelChatFinished(task, run);
+      return;
+    }
+
     const isWorkspacePath =
       !task.teamId && Boolean(run.metadata?.workspaceId);
     if (!task.teamId && !isWorkspacePath) {
+      await this.appendTaskChannelRunSummary(task, run);
       return;
     }
 
     if (task.parentTaskId) {
       await this.handleSubtaskRunFinished(task, run);
+      await this.appendTaskChannelRunSummary(task, run);
       return;
     }
 
     if (run.status !== "succeeded" || run.metadata?.trigger !== "team_coordinator") {
+      await this.appendTaskChannelRunSummary(task, run);
       return;
     }
 
@@ -616,6 +1048,7 @@ export class BoardService {
           id: createId(),
           teamId: team.id,
           parentTaskId: task.id,
+          proposalMode: "subtasks",
           status: "pending",
           drafts,
           createdAt: new Date().toISOString()
@@ -656,7 +1089,7 @@ export class BoardService {
         const drafts = parseCoordinatorSubtasks(output);
 
         const existingPending = this.store
-          .listProposalsByWorkspace(workspaceId, task.id)
+          .listChannelProposals(this.ensureTaskChannel(task).id)
           .find((p) => p.status === "pending");
         if (existingPending) {
           this.store.updateProposalStatus(
@@ -666,21 +1099,39 @@ export class BoardService {
           );
         }
 
+        const channel = this.ensureTaskChannel(task);
         const proposal: CoordinatorProposal = {
           id: createId(),
           teamId: null,
           workspaceId,
+          channelId: channel.id,
           parentTaskId: task.id,
+          proposalMode: "subtasks",
           status: "pending",
           drafts,
           createdAt: new Date().toISOString()
         };
         this.store.saveProposal(proposal);
 
+        this.publishChannelMessage({
+          channel,
+          taskId: task.id,
+          agentName: "system",
+          senderType: "system",
+          messageType: "status",
+          content: `Coordinator drafted ${drafts.length} subtask${drafts.length === 1 ? "" : "s"} for approval.`
+        });
+
         this.events.publish({
           type: "workspace.proposal.created",
           workspaceId,
           parentTaskId: task.id,
+          proposal
+        });
+        this.events.publish({
+          type: "channel.proposal.created",
+          workspaceId,
+          channelId: channel.id,
           proposal
         });
       } catch (error) {
@@ -1063,6 +1514,14 @@ export class BoardService {
         createdAt
       };
       this.store.appendTaskMessage(item);
+      const parentTask = this.requireTask(input.parentTaskId);
+      this.publishTaskChannelMessage(parentTask, {
+        agentName: input.agentName,
+        senderType: input.senderType,
+        messageType: input.messageType,
+        content: input.payload,
+        createdAt
+      });
       this.events.publish({
         type: "task.message.created",
         workspaceId: input.workspaceId,
@@ -1098,9 +1557,14 @@ export class BoardService {
 
   private async extractCoordinatorOutput(runId: string): Promise<string> {
     const entries = await this.store.readLogEntries(runId);
-    const lastAgentEntry = [...entries].reverse().find((entry) => entry.kind === "agent");
+    const output = entries
+      .filter((entry) => entry.kind === "agent")
+      .map((entry) => entry.text)
+      .join("")
+      .trim();
+
     return ensure(
-      lastAgentEntry?.text.trim(),
+      output,
       400,
       "TEAM_COORDINATOR_OUTPUT_MISSING",
       "Coordinator run did not produce a final agent output"
@@ -1155,7 +1619,7 @@ export class BoardService {
     });
 
     const createdAt = new Date().toISOString();
-    return this.store.updateState((state) => {
+    const result = await this.store.updateState((state) => {
       const parentIndex = state.tasks.findIndex((task) => task.id === parentTask.id);
       if (parentIndex === -1) {
         throw new AppError(404, "TASK_NOT_FOUND", "Parent team task not found");
@@ -1193,6 +1657,7 @@ export class BoardService {
           parentTaskId: parentTask.id,
           teamAgentId: agent.id,
           rejected: false,
+          taskKind: "user",
           createdAt,
           updatedAt: createdAt
         } satisfies Task;
@@ -1216,6 +1681,10 @@ export class BoardService {
         subtasks: plannedSubtasks.map((task) => ({ ...task }))
       };
     });
+    for (const subtask of result.subtasks) {
+      this.ensureTaskChannel(subtask);
+    }
+    return result;
   }
 
   private buildCoordinatorSummary(
@@ -1282,7 +1751,7 @@ export class BoardService {
     });
 
     const createdAt = new Date().toISOString();
-    return this.store.updateState((state) => {
+    const result = await this.store.updateState((state) => {
       const parentIndex = state.tasks.findIndex((task) => task.id === parentTask.id);
       if (parentIndex === -1) {
         throw new AppError(404, "TASK_NOT_FOUND", "Parent coordinator task not found");
@@ -1319,6 +1788,7 @@ export class BoardService {
           parentTaskId: parentTask.id,
           teamAgentId: agent.id,
           rejected: false,
+          taskKind: "user",
           createdAt,
           updatedAt: createdAt
         } satisfies Task;
@@ -1342,6 +1812,95 @@ export class BoardService {
         subtasks: plannedSubtasks.map((task) => ({ ...task }))
       };
     });
+    for (const subtask of result.subtasks) {
+      this.ensureTaskChannel(subtask);
+    }
+    return result;
+  }
+
+  private async createCoordinatorTasksFromChannelProposal(
+    workspace: Workspace,
+    agents: WorkspaceAgent[],
+    drafts: CoordinatorSubtaskDraft[]
+  ): Promise<Task[]> {
+    const agentBuckets = new Map<string, WorkspaceAgent[]>();
+    for (const agent of agents) {
+      const bucket = agentBuckets.get(agent.name) ?? [];
+      bucket.push(agent);
+      agentBuckets.set(agent.name, bucket);
+    }
+
+    const titleToId = new Map<string, string>();
+    const draftAssignments = drafts.map((draft) => {
+      const matches = agentBuckets.get(draft.assignedAgent) ?? [];
+      if (matches.length === 0) {
+        throw new CoordinatorSubtaskParseError(
+          `Coordinator assigned unknown agent "${draft.assignedAgent}"`
+        );
+      }
+      if (matches.length > 1) {
+        throw new CoordinatorSubtaskParseError(
+          `Coordinator assigned ambiguous agent "${draft.assignedAgent}"`
+        );
+      }
+      if (titleToId.has(draft.title)) {
+        throw new CoordinatorSubtaskParseError(
+          `Coordinator emitted duplicate task title "${draft.title}"`
+        );
+      }
+      const taskId = createId();
+      titleToId.set(draft.title, taskId);
+      return { draft, agent: matches[0]!, taskId };
+    });
+
+    const createdAt = new Date().toISOString();
+    const createdTasks = await this.store.updateState((state) => {
+      const plannedTasks = draftAssignments.map(({ draft, agent, taskId }, index) => {
+        const dependencyIds = draft.dependencies.map((dependencyTitle) => {
+          const dependencyId = titleToId.get(dependencyTitle);
+          if (!dependencyId) {
+            throw new CoordinatorSubtaskParseError(
+              `Coordinator referenced unknown dependency "${dependencyTitle}"`
+            );
+          }
+          return dependencyId;
+        });
+
+        return {
+          id: taskId,
+          title: draft.title,
+          description: draft.description,
+          workspaceId: workspace.id,
+          column: "todo",
+          order: this.nextOrderFromTasks("todo", state.tasks, index),
+          runnerType: agent.runnerConfig.type,
+          runnerConfig: agent.runnerConfig,
+          dependencies: dependencyIds,
+          worktree: createTaskWorktree(taskId, draft.title, { workspace }),
+          rejected: false,
+          taskKind: "user",
+          teamAgentId: agent.id,
+          createdAt,
+          updatedAt: createdAt
+        } satisfies Task;
+      });
+
+      const cycle = DependencyGraph.fromTasks([...state.tasks, ...plannedTasks]).detectCycle();
+      if (cycle) {
+        throw new CoordinatorSubtaskParseError(
+          `Coordinator emitted circular task dependencies: ${cycle.join(" -> ")}`
+        );
+      }
+
+      state.tasks.push(...plannedTasks);
+      return plannedTasks.map((task) => ({ ...task }));
+    });
+
+    for (const task of createdTasks) {
+      this.ensureTaskChannel(task);
+    }
+
+    return createdTasks;
   }
 
   private nextOrderFromTasks(
@@ -1460,6 +2019,7 @@ export class BoardService {
     const workspaces = [...this.store.listWorkspaces(), workspace];
     this.store.setWorkspaces(workspaces);
     await this.store.save();
+    this.ensureWorkspaceAllChannel(workspace.id);
     this.events.publish({
       type: "workspace.updated",
       action: "created",
@@ -1507,7 +2067,9 @@ export class BoardService {
   }
 
   public async deleteWorkspace(workspaceId: string): Promise<DeleteResult> {
-    const hasTasks = this.store.listTasks().some((task) => task.workspaceId === workspaceId);
+    const hasTasks = this.store
+      .listTasks()
+      .some((task) => task.workspaceId === workspaceId && task.taskKind !== "channel_backing");
     if (hasTasks) {
       throw new AppError(
         409,
@@ -1516,6 +2078,18 @@ export class BoardService {
       );
     }
 
+    const removedTaskIds = new Set(
+      this.store
+        .listTasks()
+        .filter((task) => task.workspaceId === workspaceId)
+        .map((task) => task.id)
+    );
+    const nextTasks = this.store
+      .listTasks()
+      .filter((task) => task.workspaceId !== workspaceId);
+    const nextRuns = this.store
+      .listRuns()
+      .filter((run) => !removedTaskIds.has(run.taskId));
     const nextWorkspaces = this.store
       .listWorkspaces()
       .filter((workspace) => workspace.id !== workspaceId);
@@ -1523,6 +2097,8 @@ export class BoardService {
       throw new AppError(404, "WORKSPACE_NOT_FOUND", "Workspace not found");
     }
 
+    this.store.setTasks(nextTasks);
+    this.store.setRuns(nextRuns);
     this.store.setWorkspaces(nextWorkspaces);
     await this.store.save();
     this.events.publish({
@@ -1540,6 +2116,7 @@ export class BoardService {
   public listTasks(query: ListTasksQuery): Task[] {
     return this.store
       .listTasks()
+      .filter((task) => task.taskKind !== "channel_backing")
       .filter((task) =>
         query.workspaceId ? task.workspaceId === query.workspaceId : true
       )
@@ -1651,6 +2228,7 @@ export class BoardService {
       dependencies: [],
       worktree,
       rejected: false,
+      taskKind: "user",
       teamId: team?.id,
       createdAt: now,
       updatedAt: now
@@ -1659,6 +2237,7 @@ export class BoardService {
     const tasks = [...existingTasks, task];
     this.store.setTasks(tasks);
     await this.store.save();
+    this.ensureTaskChannel(task);
     this.events.publish({
       type: "task.updated",
       action: "created",
@@ -1758,6 +2337,9 @@ export class BoardService {
 
     this.store.setTasks(tasks);
     await this.store.save();
+    if (task.taskKind === "user") {
+      this.ensureTaskChannel(task);
+    }
     if (
       previousColumn !== nextColumn &&
       (nextColumn === "done" || nextColumn === "archived")
@@ -1806,6 +2388,12 @@ export class BoardService {
     this.store.setTasks(nextTasks);
     this.store.setRuns(nextRuns);
     await this.store.save();
+    const taskChannel = this.store.getTaskChannelByTaskId(taskId);
+    if (taskChannel) {
+      this.store.updateWorkspaceChannel(taskChannel.id, {
+        archivedAt: new Date().toISOString()
+      });
+    }
     this.events.publish({
       type: "task.updated",
       action: "deleted",
@@ -2873,67 +3461,123 @@ export class BoardService {
       throw new AppError(409, "PROPOSAL_ALREADY_DECIDED", "Proposal has already been approved or rejected");
     }
 
-    const parentTask = this.requireTask(proposal.parentTaskId);
     const workspace = this.requireWorkspace(workspaceId);
     const agents = this.store.listWorkspaceAgents(workspaceId);
+    const channel = proposal.channelId
+      ? this.store.getWorkspaceChannel(proposal.channelId)
+      : null;
 
-    let updatedParent: Task;
-    let subtasks: Task[];
-    try {
-      ({ parentTask: updatedParent, subtasks } = await this.createCoordinatorSubtasksWs(
-        parentTask,
-        agents,
-        workspace,
-        proposal.drafts
-      ));
-    } catch (error) {
-      this.store.updateProposalStatus(proposalId, "pending", null);
-      throw error;
-    }
+    if (proposal.proposalMode === "top_level_tasks") {
+      let createdTasks: Task[];
+      try {
+        createdTasks = await this.createCoordinatorTasksFromChannelProposal(
+          workspace,
+          agents,
+          proposal.drafts
+        );
+      } catch (error) {
+        this.store.updateProposalStatus(proposalId, "pending", null);
+        throw error;
+      }
 
-    const coordinator = this.resolveCoordinator(agents);
-    const summaryPayload = this.buildCoordinatorSummary(
-      subtasks,
-      (subtask) => this.resolveAssignedAgent(agents, subtask).name
-    );
-    const message: TaskMessage = {
-      id: createId(),
-      parentTaskId: parentTask.id,
-      taskId: parentTask.id,
-      agentName: coordinator.name,
-      senderType: "agent",
-      messageType: "context",
-      content: truncateTeamMessagePayload(summaryPayload),
-      createdAt: new Date().toISOString()
-    };
-    this.store.appendTaskMessage(message);
+      for (const task of createdTasks) {
+        this.events.publish({
+          type: "task.updated",
+          action: "created",
+          taskId: task.id,
+          task
+        });
+      }
 
-    this.events.publish({
-      type: "task.updated",
-      action: "updated",
-      taskId: updatedParent.id,
-      task: updatedParent
-    });
-    for (const subtask of subtasks) {
+      if (channel) {
+        this.publishChannelMessage({
+          channel,
+          taskId: proposal.parentTaskId,
+          agentName: "system",
+          senderType: "system",
+          messageType: "status",
+          content: `Created ${createdTasks.length} task${createdTasks.length === 1 ? "" : "s"} from the approved proposal.`
+        });
+      }
+    } else {
+      const parentTask = this.requireTask(proposal.parentTaskId);
+      let updatedParent: Task;
+      let subtasks: Task[];
+      try {
+        ({ parentTask: updatedParent, subtasks } = await this.createCoordinatorSubtasksWs(
+          parentTask,
+          agents,
+          workspace,
+          proposal.drafts
+        ));
+      } catch (error) {
+        this.store.updateProposalStatus(proposalId, "pending", null);
+        throw error;
+      }
+
+      const coordinator = this.resolveCoordinator(agents);
+      const summaryPayload = this.buildCoordinatorSummary(
+        subtasks,
+        (subtask) => this.resolveAssignedAgent(agents, subtask).name
+      );
+      const message: TaskMessage = {
+        id: createId(),
+        parentTaskId: parentTask.id,
+        taskId: parentTask.id,
+        agentName: coordinator.name,
+        senderType: "agent",
+        messageType: "context",
+        content: truncateTeamMessagePayload(summaryPayload),
+        createdAt: new Date().toISOString()
+      };
+      this.store.appendTaskMessage(message);
+
       this.events.publish({
         type: "task.updated",
-        action: "created",
-        taskId: subtask.id,
-        task: subtask
+        action: "updated",
+        taskId: updatedParent.id,
+        task: updatedParent
       });
+      for (const subtask of subtasks) {
+        this.events.publish({
+          type: "task.updated",
+          action: "created",
+          taskId: subtask.id,
+          task: subtask
+        });
+      }
+      this.events.publish({
+        type: "task.message.created",
+        workspaceId,
+        parentTaskId: parentTask.id,
+        message
+      });
+      if (channel) {
+        this.publishChannelMessage({
+          channel,
+          taskId: parentTask.id,
+          agentName: coordinator.name,
+          senderType: "agent",
+          messageType: "context",
+          content: summaryPayload
+        });
+      }
     }
-    this.events.publish({
-      type: "task.message.created",
-      workspaceId,
-      parentTaskId: parentTask.id,
-      message
-    });
+
     this.events.publish({
       type: "workspace.proposal.updated",
       workspaceId,
-      parentTaskId: parentTask.id,
+      parentTaskId: proposal.parentTaskId,
       proposal: claimed
     });
+    if (channel) {
+      this.events.publish({
+        type: "channel.proposal.updated",
+        workspaceId,
+        channelId: channel.id,
+        proposal: claimed
+      });
+    }
 
     await this.scheduler.evaluate();
   }
@@ -2952,6 +3596,14 @@ export class BoardService {
         parentTaskId: proposal.parentTaskId,
         proposal: updated
       });
+      if (proposal.channelId) {
+        this.events.publish({
+          type: "channel.proposal.updated",
+          workspaceId,
+          channelId: proposal.channelId,
+          proposal: updated
+        });
+      }
     }
   }
 
@@ -3063,6 +3715,9 @@ export class BoardService {
   public mountAgent(workspaceId: string, body: MountAgentBody): WorkspaceAgent {
     this.requireWorkspace(workspaceId);
     const agent = this.store.mountAgentToWorkspace(workspaceId, body.agentId, body.role as AgentRole);
+    if (body.role === "coordinator") {
+      this.ensureWorkspaceAllChannel(workspaceId);
+    }
     this.events.publish({
       type: "workspace.agent.updated",
       action: "mounted",
@@ -3099,6 +3754,9 @@ export class BoardService {
     if (!updated) {
       throw new AppError(404, "WORKSPACE_AGENT_NOT_FOUND", `Agent ${agentId} not mounted in workspace ${workspaceId}`);
     }
+    if (body.role === "coordinator") {
+      this.ensureWorkspaceAllChannel(workspaceId);
+    }
     this.events.publish({
       type: "workspace.agent.updated",
       action: "updated",
@@ -3125,6 +3783,226 @@ export class BoardService {
       workspace: updated
     });
     return updated;
+  }
+
+  // -------------------------------------------------------------------------
+  // Workspace Channels
+  // -------------------------------------------------------------------------
+
+  public listWorkspaceChannelsByWorkspace(workspaceId: string): WorkspaceChannel[] {
+    this.requireWorkspace(workspaceId);
+    const tasksById = new Map(this.store.listTasks().map((task) => [task.id, task]));
+
+    return this.store
+      .listWorkspaceChannels(workspaceId)
+      .filter((channel) => {
+        if (channel.kind === "all") {
+          return true;
+        }
+
+        if (!channel.taskId) {
+          return false;
+        }
+
+        const task = tasksById.get(channel.taskId);
+        return Boolean(
+          task &&
+            task.workspaceId === workspaceId &&
+            task.taskKind === "user" &&
+            task.column !== "archived" &&
+            task.column !== "done"
+        );
+      })
+      .sort((left, right) => {
+        if (left.kind === "all" && right.kind !== "all") {
+          return -1;
+        }
+        if (right.kind === "all" && left.kind !== "all") {
+          return 1;
+        }
+
+        const leftTask = left.taskId ? tasksById.get(left.taskId) : undefined;
+        const rightTask = right.taskId ? tasksById.get(right.taskId) : undefined;
+        const leftUpdatedAt = leftTask?.updatedAt ?? left.createdAt;
+        const rightUpdatedAt = rightTask?.updatedAt ?? right.createdAt;
+        return rightUpdatedAt.localeCompare(leftUpdatedAt);
+      });
+  }
+
+  public getWorkspaceChannelByWorkspace(
+    workspaceId: string,
+    channelId: string
+  ): WorkspaceChannel {
+    this.requireWorkspace(workspaceId);
+    const channel = this.store.getWorkspaceChannel(channelId);
+    if (!channel || channel.workspaceId !== workspaceId) {
+      throw new AppError(404, "CHANNEL_NOT_FOUND", "Workspace channel not found");
+    }
+    return channel;
+  }
+
+  public getWorkspaceChannelBySlug(
+    workspaceId: string,
+    channelSlug: string
+  ): WorkspaceChannel {
+    this.requireWorkspace(workspaceId);
+    const channel = this.store.getWorkspaceChannelBySlug(workspaceId, channelSlug);
+    if (!channel) {
+      throw new AppError(404, "CHANNEL_NOT_FOUND", "Workspace channel not found");
+    }
+    return channel;
+  }
+
+  public listChannelMessagesByWorkspace(
+    workspaceId: string,
+    channelId: string
+  ): ChannelMessage[] {
+    this.getWorkspaceChannelByWorkspace(workspaceId, channelId);
+    return this.store.listChannelMessages(channelId);
+  }
+
+  public listChannelProposalsByWorkspace(
+    workspaceId: string,
+    channelId: string
+  ): CoordinatorProposal[] {
+    this.getWorkspaceChannelByWorkspace(workspaceId, channelId);
+    return this.store.listChannelProposals(channelId);
+  }
+
+  public async postChannelMessageByWorkspace(
+    workspaceId: string,
+    channelId: string,
+    body: PostChannelMessageBody
+  ): Promise<ChannelMessage> {
+    const channel = this.getWorkspaceChannelByWorkspace(workspaceId, channelId);
+    const content = body.content.trim();
+    if (!content) {
+      throw new AppError(400, "INVALID_CHANNEL_MESSAGE", "Channel message cannot be blank");
+    }
+
+    if (channel.kind === "all") {
+      const agents = this.store.listWorkspaceAgents(workspaceId);
+      this.resolveCoordinator(agents);
+      const { channel: ensuredChannel, task } =
+        await this.ensureWorkspaceAllChannelBackingTask(workspaceId);
+      if (this.runLifecycle.isActive(task.id)) {
+        try {
+          await this.sendTaskInput(task.id, { text: content });
+          return this.publishChannelMessage({
+            channel: ensuredChannel,
+            taskId: task.id,
+            agentName: "User",
+            senderType: "human",
+            messageType: "context",
+            content,
+            metadata: {
+              delivery: "live_input"
+            }
+          });
+        } catch (error) {
+          if (
+            error instanceof AppError &&
+            (error.code === "TASK_INPUT_NOT_SUPPORTED" ||
+              error.code === "TASK_INPUT_REJECTED" ||
+              error.code === "TASK_INPUT_NOT_AVAILABLE")
+          ) {
+            return this.publishChannelMessage({
+              channel: ensuredChannel,
+              taskId: task.id,
+              agentName: "User",
+              senderType: "human",
+              messageType: "context",
+              content,
+              metadata: {
+                delivery: "queued_follow_up"
+              }
+            });
+          }
+          throw error;
+        }
+      }
+
+      const message = this.publishChannelMessage({
+        channel: ensuredChannel,
+        taskId: task.id,
+        agentName: "User",
+        senderType: "human",
+        messageType: "context",
+        content
+      });
+      await this.runLifecycle.startTask(
+        task.id,
+        this.buildWorkspaceChannelChatOptions(ensuredChannel, task, agents)
+      );
+      return message;
+    }
+
+    const taskId = ensure(
+      channel.taskId,
+      400,
+      "CHANNEL_TASK_MISSING",
+      "Task channel is missing its task binding"
+    );
+    const task = this.requireTask(taskId);
+    if (task.workspaceId !== workspaceId || task.taskKind !== "user" || task.column === "archived") {
+      throw new AppError(409, "CHANNEL_TASK_UNAVAILABLE", "Task channel is no longer active");
+    }
+
+    const message = this.publishChannelMessage({
+      channel,
+      taskId: task.id,
+      agentName: "User",
+      senderType: "human",
+      messageType: "feedback",
+      content
+    });
+
+    if (task.column === "backlog" || task.column === "todo") {
+      if (!this.findPlanSessionId(task.id)) {
+        throw new AppError(
+          409,
+          "TASK_CHANNEL_INPUT_NOT_AVAILABLE",
+          "Start planning first before continuing this task thread."
+        );
+      }
+      await this.sendPlanFeedback(task.id, { text: content });
+      return message;
+    }
+
+    if (task.runnerType !== "codex" || (!this.runLifecycle.isActive(task.id) && task.column !== "review")) {
+      throw new AppError(
+        409,
+        "TASK_CHANNEL_INPUT_NOT_AVAILABLE",
+        "This task channel only accepts replies while a Codex task is running or in review."
+      );
+    }
+
+    await this.sendTaskInput(task.id, { text: content });
+    return message;
+  }
+
+  public async approveChannelProposalByWorkspace(
+    workspaceId: string,
+    channelId: string,
+    proposalId: string
+  ): Promise<void> {
+    const proposal = this.getProposalByWorkspace(workspaceId, proposalId);
+    if (proposal.channelId !== channelId) {
+      throw new AppError(404, "PROPOSAL_NOT_FOUND", "Coordinator proposal not found");
+    }
+    await this.approveProposalByWorkspace(workspaceId, proposalId);
+  }
+
+  public rejectChannelProposalByWorkspace(
+    workspaceId: string,
+    channelId: string,
+    proposalId: string
+  ): void {
+    const proposal = this.getProposalByWorkspace(workspaceId, proposalId);
+    if (proposal.channelId !== channelId) {
+      throw new AppError(404, "PROPOSAL_NOT_FOUND", "Coordinator proposal not found");
+    }
+    this.rejectProposalByWorkspace(workspaceId, proposalId);
   }
 
   // -------------------------------------------------------------------------
@@ -3155,6 +4033,13 @@ export class BoardService {
       createdAt: new Date().toISOString()
     };
     this.store.appendTaskMessage(message);
+    this.publishTaskChannelMessage(task, {
+      agentName: "User",
+      senderType: "human",
+      messageType: "context",
+      content: body.content,
+      createdAt: message.createdAt
+    });
     this.events.publish({
       type: "task.message.created",
       workspaceId,

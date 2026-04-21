@@ -13,6 +13,9 @@ export const coordinationQueryKeys = {
     if (scope.kind === "workspace") {
       return ["coordination", "messages", "workspace", scope.workspaceId, scope.parentTaskId] as const;
     }
+    if (scope.kind === "workspace_channel") {
+      return ["coordination", "messages", "workspace-channel", scope.workspaceId, scope.channelId] as const;
+    }
     return ["coordination", "messages", "none"] as const;
   },
   proposals: (scope: CoordinationScope) => {
@@ -21,6 +24,9 @@ export const coordinationQueryKeys = {
     }
     if (scope.kind === "workspace") {
       return ["coordination", "proposals", "workspace", scope.workspaceId, scope.parentTaskId] as const;
+    }
+    if (scope.kind === "workspace_channel") {
+      return ["coordination", "proposals", "workspace-channel", scope.workspaceId, scope.channelId] as const;
     }
     return ["coordination", "proposals", "none"] as const;
   }
@@ -41,6 +47,11 @@ export function useCoordinationMessages(scope: CoordinationScope) {
         const response = await api.listTaskMessages(scope.workspaceId, {
           parentTaskId: scope.parentTaskId
         });
+        return normalizeCoordinationMessages(response.items);
+      }
+
+      if (scope.kind === "workspace_channel") {
+        const response = await api.listChannelMessages(scope.workspaceId, scope.channelId);
         return normalizeCoordinationMessages(response.items);
       }
 
@@ -66,6 +77,13 @@ export function usePostCoordinationMessage(scope: CoordinationScope) {
       if (scope.kind === "workspace") {
         const response = await api.postTaskMessage(scope.workspaceId, {
           parentTaskId: scope.parentTaskId,
+          content
+        });
+        return response.item;
+      }
+
+      if (scope.kind === "workspace_channel") {
+        const response = await api.postChannelMessage(scope.workspaceId, scope.channelId, {
           content
         });
         return response.item;
@@ -99,6 +117,11 @@ export function useCoordinationProposals(scope: CoordinationScope) {
         return response.items;
       }
 
+      if (scope.kind === "workspace_channel") {
+        const response = await api.listChannelProposals(scope.workspaceId, scope.channelId);
+        return response.items;
+      }
+
       return [];
     },
     enabled: scope.kind !== "none"
@@ -123,6 +146,9 @@ export function useCoordinationProposalActions(scope: CoordinationScope) {
       if (scope.kind === "workspace") {
         return api.approveWorkspaceProposal(scope.workspaceId, proposalId);
       }
+      if (scope.kind === "workspace_channel") {
+        return api.approveChannelProposal(scope.workspaceId, scope.channelId, proposalId);
+      }
       throw new Error("Coordination proposal context is unavailable.");
     },
     onSuccess: invalidate
@@ -135,6 +161,9 @@ export function useCoordinationProposalActions(scope: CoordinationScope) {
       }
       if (scope.kind === "workspace") {
         return api.rejectWorkspaceProposal(scope.workspaceId, proposalId);
+      }
+      if (scope.kind === "workspace_channel") {
+        return api.rejectChannelProposal(scope.workspaceId, scope.channelId, proposalId);
       }
       throw new Error("Coordination proposal context is unavailable.");
     },

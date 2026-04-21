@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   CoordinatorSubtaskParseError,
   buildCoordinatorPrompt,
+  buildWorkspaceChannelPrompt,
   buildSubtaskPrompt,
   buildTeamAgentMessageEvent,
   buildTeamTaskCreatedEvent,
+  parseCoordinatorChannelResult,
   parseCoordinatorSubtasks,
   truncateTeamMessagePayload
 } from "./team-coordinator-service.js";
@@ -85,6 +87,72 @@ describe("team coordinator service", () => {
     expect(() => parseCoordinatorSubtasks('{"title":"not an array"}')).toThrow(
       CoordinatorSubtaskParseError
     );
+  });
+
+  it("allows workspace channel prompts to reply in plain text unless proposing tasks", () => {
+    const prompt = buildWorkspaceChannelPrompt({
+      agents: [
+        {
+          id: "agent-coordinator",
+          name: "Coordinator",
+          role: "coordinator",
+          runnerType: "codex"
+        }
+      ],
+      transcript: "User: 你好，你是谁？"
+    });
+
+    expect(prompt).toContain("For normal conversation, reply with plain text only.");
+    expect(prompt).toContain("Only when you are ready to propose new top-level tasks");
+  });
+
+  it("parses plain-text workspace channel replies without requiring JSON", () => {
+    const result = parseCoordinatorChannelResult("你好，我是这个 workspace 的 coordinator。");
+
+    expect(result).toEqual({
+      reply: "你好，我是这个 workspace 的 coordinator。",
+      tasks: []
+    });
+  });
+
+  it("parses structured workspace channel task proposals", () => {
+    const result = parseCoordinatorChannelResult(
+      JSON.stringify({
+        reply: "我已经拆出了两个任务。",
+        tasks: [
+          {
+            title: "Task A",
+            description: "First task",
+            assignedAgent: "Coordinator",
+            dependencies: []
+          },
+          {
+            title: "Task B",
+            description: "Second task",
+            assignedAgent: "Coordinator",
+            dependencies: ["Task A"]
+          }
+        ]
+      })
+    );
+
+    expect(result).toEqual({
+      reply: "我已经拆出了两个任务。",
+      tasks: [
+        {
+          title: "Task A",
+          description: "First task",
+          assignedAgent: "Coordinator",
+          dependencies: []
+        },
+        {
+          title: "Task B",
+          description: "Second task",
+          assignedAgent: "Coordinator",
+          dependencies: ["Task A"]
+        }
+      ]
+    });
   });
 
   it("injects team context and historical messages into subtask prompts", () => {

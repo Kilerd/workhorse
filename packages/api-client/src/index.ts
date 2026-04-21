@@ -3,6 +3,8 @@ import { Fetcher, type Middleware } from "openapi-typescript-fetch";
 import type {
   AccountAgent,
   AgentTeamData,
+  ChannelMessage,
+  ChannelMessagesData,
   CleanupTaskWorktreeData,
   CoordinatorProposal,
   CreateAgentBody,
@@ -14,6 +16,7 @@ import type {
   HealthData,
   ListAgentsData,
   ListProposalsQuery,
+  ListWorkspaceChannelsData,
   ListTaskMessagesQuery,
   ListWorkspaceAgentsData,
   TeamMessagesData,
@@ -27,6 +30,7 @@ import type {
   PlanFeedbackBody,
   PlanFeedbackData,
   PlanTaskData,
+  PostChannelMessageBody,
   PostTaskMessageBody,
   PostTeamMessageBody,
   RejectTaskBody,
@@ -51,6 +55,7 @@ import type {
   UpdateWorkspaceBody,
   UpdateWorkspaceConfigBody,
   WorkspaceAgentData,
+  WorkspaceChannelData,
   WorkspaceData,
   WorkspaceGitRefsData,
   WorkspaceGitStatusData,
@@ -462,6 +467,83 @@ export function createApiClient(baseUrl: string) {
         await requestJson(
           `/api/workspaces/${encodeURIComponent(workspaceId)}/config`,
           { method: "PATCH", body: JSON.stringify(body) }
+        )
+      ),
+    listWorkspaceChannels: async (
+      workspaceId: string
+    ): Promise<ListWorkspaceChannelsData> =>
+      unwrap(
+        await requestJson(
+          `/api/workspaces/${encodeURIComponent(workspaceId)}/channels`
+        )
+      ),
+    getWorkspaceChannel: async (
+      workspaceId: string,
+      channelId: string
+    ): Promise<WorkspaceChannelData> =>
+      unwrap(
+        await requestJson(
+          `/api/workspaces/${encodeURIComponent(workspaceId)}/channels/${encodeURIComponent(channelId)}`
+        )
+      ),
+    getWorkspaceChannelBySlug: async (
+      workspaceId: string,
+      channelSlug: string
+    ): Promise<WorkspaceChannelData> =>
+      unwrap(
+        await requestJson(
+          `/api/workspaces/${encodeURIComponent(workspaceId)}/channels/by-slug/${encodeURIComponent(channelSlug)}`
+        )
+      ),
+    listChannelMessages: async (
+      workspaceId: string,
+      channelId: string
+    ): Promise<ChannelMessagesData> =>
+      unwrap(
+        await requestJson(
+          `/api/workspaces/${encodeURIComponent(workspaceId)}/channels/${encodeURIComponent(channelId)}/messages`
+        )
+      ),
+    postChannelMessage: async (
+      workspaceId: string,
+      channelId: string,
+      body: PostChannelMessageBody
+    ): Promise<{ item: ChannelMessage }> =>
+      unwrap(
+        await requestJson(
+          `/api/workspaces/${encodeURIComponent(workspaceId)}/channels/${encodeURIComponent(channelId)}/messages`,
+          { method: "POST", body: JSON.stringify(body) }
+        )
+      ),
+    listChannelProposals: async (
+      workspaceId: string,
+      channelId: string
+    ): Promise<ListProposalsData> =>
+      unwrap(
+        await requestJson(
+          `/api/workspaces/${encodeURIComponent(workspaceId)}/channels/${encodeURIComponent(channelId)}/proposals`
+        )
+      ),
+    approveChannelProposal: async (
+      workspaceId: string,
+      channelId: string,
+      proposalId: string
+    ): Promise<{ proposal: CoordinatorProposal }> =>
+      unwrap(
+        await requestJson(
+          `/api/workspaces/${encodeURIComponent(workspaceId)}/channels/${encodeURIComponent(channelId)}/proposals/${encodeURIComponent(proposalId)}/approve`,
+          { method: "POST" }
+        )
+      ),
+    rejectChannelProposal: async (
+      workspaceId: string,
+      channelId: string,
+      proposalId: string
+    ): Promise<{ proposal: CoordinatorProposal }> =>
+      unwrap(
+        await requestJson(
+          `/api/workspaces/${encodeURIComponent(workspaceId)}/channels/${encodeURIComponent(channelId)}/proposals/${encodeURIComponent(proposalId)}/reject`,
+          { method: "POST" }
         )
       ),
     listTaskMessages: async (

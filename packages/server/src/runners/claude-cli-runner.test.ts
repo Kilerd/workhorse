@@ -32,6 +32,7 @@ function createClaudeContext(
         permissionMode: "default"
       },
       dependencies: [],
+      taskKind: "user",
       worktree: {
         baseRef: "origin/main",
         branchName: "task/task-claude-1-review-the-task",

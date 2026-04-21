@@ -239,6 +239,8 @@ export interface Task {
   rejected?: boolean;
   /** Present when a team subtask was explicitly cancelled by a user. */
   cancelledAt?: string;
+  /** Internal visibility bucket for UI-facing vs. system backing tasks. Defaults to `user`. */
+  taskKind?: "user" | "channel_backing";
   /** When set, this task belongs to an agent team. */
   teamId?: string;
   /** When set, this task is a subtask created by a team coordinator. */
@@ -366,6 +368,35 @@ export interface WorkspaceAgent extends AccountAgent {
   role: AgentRole;
 }
 
+// === Workspace Channels ===
+
+export type WorkspaceChannelKind = "all" | "task";
+
+export interface WorkspaceChannel {
+  id: string;
+  workspaceId: string;
+  kind: WorkspaceChannelKind;
+  name: string;
+  slug: string;
+  /** `#all` uses this to point at its hidden backing coordinator task. */
+  taskId?: string;
+  createdAt: string;
+  archivedAt?: string;
+}
+
+export interface ChannelMessage {
+  id: string;
+  channelId: string;
+  workspaceId: string;
+  taskId?: string;
+  agentName: string;
+  senderType: TeamMessageSenderType;
+  messageType: TeamMessageType;
+  content: string;
+  metadata?: Record<string, string>;
+  createdAt: string;
+}
+
 // === Task Messages (workspace-level agent communication) ===
 
 /** A message in a task's coordination thread, not tied to any team entity. */
@@ -385,6 +416,7 @@ export interface TaskMessage {
 // === Coordinator Proposals ===
 
 export type CoordinatorProposalStatus = "pending" | "approved" | "rejected";
+export type CoordinatorProposalMode = "top_level_tasks" | "subtasks";
 
 /** A single subtask draft produced by the coordinator LLM output. */
 export interface CoordinatorProposalDraft {
@@ -404,7 +436,9 @@ export interface CoordinatorProposal {
   teamId: string | null;
   /** Set for workspace-scoped proposals (new model). */
   workspaceId?: string;
+  channelId?: string;
   parentTaskId: string;
+  proposalMode: CoordinatorProposalMode;
   status: CoordinatorProposalStatus;
   drafts: CoordinatorProposalDraft[];
   createdAt: string;

@@ -70,6 +70,136 @@ class HoldingRunner implements RunnerAdapter {
   }
 }
 
+class CoordinatorJsonRunner implements RunnerAdapter {
+  public readonly type = "claude" as const;
+
+  public constructor(
+    private readonly payload: {
+      reply: string;
+      tasks: Array<{
+        title: string;
+        description: string;
+        assignedAgent: string;
+        dependencies: string[];
+      }>;
+    }
+  ) {}
+
+  public async start(
+    _context: RunnerStartContext,
+    hooks: RunnerLifecycleHooks
+  ): Promise<RunnerControl> {
+    setTimeout(async () => {
+      await hooks.onOutput({
+        kind: "agent",
+        text: JSON.stringify(this.payload),
+        stream: "stdout",
+        title: "Coordinator reply",
+        source: "Claude CLI"
+      });
+      await hooks.onExit({ status: "succeeded", exitCode: 0 });
+    }, 10);
+
+    return {
+      command: "claude (coordinator json mock)",
+      async stop() {}
+    };
+  }
+}
+
+class CoordinatorTextRunner implements RunnerAdapter {
+  public readonly type = "claude" as const;
+
+  public constructor(private readonly reply: string) {}
+
+  public async start(
+    _context: RunnerStartContext,
+    hooks: RunnerLifecycleHooks
+  ): Promise<RunnerControl> {
+    setTimeout(async () => {
+      await hooks.onOutput({
+        kind: "agent",
+        text: this.reply,
+        stream: "stdout",
+        title: "Coordinator reply",
+        source: "Claude CLI"
+      });
+      await hooks.onExit({ status: "succeeded", exitCode: 0 });
+    }, 10);
+
+    return {
+      command: "claude (coordinator text mock)",
+      async stop() {}
+    };
+  }
+}
+
+class QueuedCoordinatorTextRunner implements RunnerAdapter {
+  public readonly type = "claude" as const;
+  private nextReplyIndex = 0;
+
+  public constructor(
+    private readonly replies: string[],
+    private readonly delayMs = 40
+  ) {}
+
+  public async start(
+    _context: RunnerStartContext,
+    hooks: RunnerLifecycleHooks
+  ): Promise<RunnerControl> {
+    const reply =
+      this.replies[this.nextReplyIndex] ??
+      this.replies[this.replies.length - 1] ??
+      "Acknowledged.";
+    this.nextReplyIndex += 1;
+
+    setTimeout(async () => {
+      await hooks.onOutput({
+        kind: "agent",
+        text: reply,
+        stream: "stdout",
+        title: "Coordinator reply",
+        source: "Claude CLI"
+      });
+      await hooks.onExit({ status: "succeeded", exitCode: 0 });
+    }, this.delayMs);
+
+    return {
+      command: "claude (queued coordinator mock)",
+      async stop() {}
+    };
+  }
+}
+
+class StreamingCoordinatorTextRunner implements RunnerAdapter {
+  public readonly type = "claude" as const;
+
+  public constructor(private readonly chunks: string[]) {}
+
+  public async start(
+    _context: RunnerStartContext,
+    hooks: RunnerLifecycleHooks
+  ): Promise<RunnerControl> {
+    setTimeout(async () => {
+      for (const chunk of this.chunks) {
+        await hooks.onOutput({
+          kind: "agent",
+          text: chunk,
+          stream: "stdout",
+          title: "Coordinator reply",
+          source: "Claude CLI"
+        });
+      }
+      await hooks.onExit({ status: "succeeded", exitCode: 0 });
+    }, 10);
+
+    return {
+      command: "claude (streaming coordinator mock)",
+      async stop() {}
+    };
+  }
+}
+
 function createCodexAppServerStub(
   quota: HealthCodexQuotaData | null = null,
   overrides: {
@@ -312,6 +442,7 @@ async function createTeamSubtask(
         command: "true"
       },
     dependencies: [],
+    taskKind: "user",
     worktree: {
       baseRef: "main",
       branchName: `team/${input.teamId}/${taskId}`,
@@ -2782,6 +2913,526 @@ describe("scheduler API", () => {
     expect(data.ok).toBe(true);
     expect(data.data.started).toEqual([]);
     expect(data.data.blocked).toEqual([]);
+  });
+});
+
+describe("workspace channel API", () => {
+  it("resolves #all and task channels by slug with unique task slugs", async () => {
+    const { app, service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+    const firstTask = await service.createTask({
+      title: "One task",
+      workspaceId: workspace.id,
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "true"
+      }
+    });
+    const secondTask = await service.createTask({
+      title: "One task",
+      workspaceId: workspace.id,
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "true"
+      }
+    });
+
+    const listRes = await app.request(`/api/workspaces/${workspace.id}/channels`);
+    expect(listRes.status).toBe(200);
+    const listData = (await listRes.json()) as {
+      ok: boolean;
+      data: {
+        items: Array<{
+          id: string;
+          kind: "all" | "task";
+          slug: string;
+          taskId?: string;
+        }>;
+      };
+    };
+
+    const allChannel = listData.data.items.find((item) => item.kind === "all");
+    const firstTaskChannel = listData.data.items.find(
+      (item) => item.taskId === firstTask.id
+    );
+    const secondTaskChannel = listData.data.items.find(
+      (item) => item.taskId === secondTask.id
+    );
+
+    expect(allChannel).toMatchObject({ slug: "all" });
+    expect(firstTaskChannel).toMatchObject({ slug: "one-task" });
+    expect(secondTaskChannel).toMatchObject({ slug: "one-task-2" });
+
+    const allBySlugRes = await app.request(
+      `/api/workspaces/${workspace.id}/channels/by-slug/all`
+    );
+    expect(allBySlugRes.status).toBe(200);
+    const allBySlugData = (await allBySlugRes.json()) as {
+      ok: boolean;
+      data: { channel: { id: string; slug: string } };
+    };
+    expect(allBySlugData.data.channel).toMatchObject({
+      id: allChannel!.id,
+      slug: "all"
+    });
+
+    const taskBySlugRes = await app.request(
+      `/api/workspaces/${workspace.id}/channels/by-slug/one-task-2`
+    );
+    expect(taskBySlugRes.status).toBe(200);
+    const taskBySlugData = (await taskBySlugRes.json()) as {
+      ok: boolean;
+      data: { channel: { id: string; slug: string; taskId?: string } };
+    };
+    expect(taskBySlugData.data.channel).toMatchObject({
+      id: secondTaskChannel!.id,
+      slug: "one-task-2",
+      taskId: secondTask.id
+    });
+  });
+
+  it("lists #all first and only includes active task channels", async () => {
+    const { app, service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+    const activeTask = await createShellTask(service, workspace.id);
+    const doneTask = await service.createTask({
+      title: "Done task",
+      workspaceId: workspace.id,
+      column: "done",
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "true"
+      }
+    });
+    const archivedTask = await service.createTask({
+      title: "Archived task",
+      workspaceId: workspace.id,
+      column: "archived",
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "true"
+      }
+    });
+
+    const res = await app.request(`/api/workspaces/${workspace.id}/channels`);
+    expect(res.status).toBe(200);
+
+    const data = (await res.json()) as {
+      ok: boolean;
+      data: {
+        items: Array<{
+          id: string;
+          kind: "all" | "task";
+          slug: string;
+          taskId?: string;
+        }>;
+      };
+    };
+
+    expect(data.ok).toBe(true);
+    expect(data.data.items[0]).toMatchObject({
+      kind: "all",
+      slug: "all"
+    });
+    expect(data.data.items.some((item) => item.taskId === activeTask.id)).toBe(true);
+    expect(data.data.items.some((item) => item.taskId === doneTask.id)).toBe(false);
+    expect(data.data.items.some((item) => item.taskId === archivedTask.id)).toBe(false);
+  });
+
+  it("treats plain-text #all replies as chat instead of a parse error", async () => {
+    const codexServer = createCodexAppServerStub();
+    const { app, service, workspaceDir } = await createRuntime({
+      codexAppServer: codexServer,
+      runners: {
+        claude: new CoordinatorTextRunner("你好，我是这个 workspace 的 coordinator。"),
+        shell: new ShellRunner(),
+        codex: new CodexAcpRunner(codexServer)
+      }
+    });
+    const workspace = await createWorkspace(service, workspaceDir);
+    const coordinator = service.createAgent({
+      name: "Workspace coordinator",
+      runnerConfig: {
+        type: "claude",
+        prompt: "Coordinate work"
+      }
+    });
+    service.mountAgent(workspace.id, {
+      agentId: coordinator.id,
+      role: "coordinator"
+    });
+
+    const allChannel = service
+      .listWorkspaceChannelsByWorkspace(workspace.id)
+      .find((item) => item.kind === "all");
+    expect(allChannel).toBeDefined();
+
+    const postRes = await app.request(
+      `/api/workspaces/${workspace.id}/channels/${allChannel!.id}/messages`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          content: "你好啊，你是谁？"
+        })
+      }
+    );
+    expect(postRes.status).toBe(201);
+
+    const refreshedAllChannel = service
+      .listWorkspaceChannelsByWorkspace(workspace.id)
+      .find((item) => item.id === allChannel!.id);
+    await waitForRunToFinish(service, refreshedAllChannel!.taskId!);
+
+    const messagesRes = await app.request(
+      `/api/workspaces/${workspace.id}/channels/${allChannel!.id}/messages`
+    );
+    expect(messagesRes.status).toBe(200);
+    const messagesData = (await messagesRes.json()) as {
+      ok: boolean;
+      data: {
+        items: Array<{
+          senderType: "agent" | "human" | "system";
+          content: string;
+        }>;
+      };
+    };
+
+    expect(messagesData.data.items).toHaveLength(2);
+    expect(messagesData.data.items[0]).toMatchObject({
+      senderType: "human",
+      content: "你好啊，你是谁？"
+    });
+    expect(messagesData.data.items[1]).toMatchObject({
+      senderType: "agent",
+      content: "你好，我是这个 workspace 的 coordinator。"
+    });
+
+    const proposalsRes = await app.request(
+      `/api/workspaces/${workspace.id}/channels/${allChannel!.id}/proposals`
+    );
+    const proposalsData = (await proposalsRes.json()) as {
+      ok: boolean;
+      data: { items: Array<{ id: string }> };
+    };
+    expect(proposalsData.data.items).toEqual([]);
+
+    const channelsAfterReply = service.listWorkspaceChannelsByWorkspace(workspace.id);
+    expect(channelsAfterReply.find((item) => item.kind === "all")).toMatchObject({
+      id: allChannel!.id,
+      slug: "all"
+    });
+  });
+
+  it("assembles streamed #all replies instead of keeping only the final delta", async () => {
+    const codexServer = createCodexAppServerStub();
+    const { app, service, workspaceDir } = await createRuntime({
+      codexAppServer: codexServer,
+      runners: {
+        claude: new StreamingCoordinatorTextRunner([
+          "你好",
+          "，我",
+          "是这个 workspace 的 coordinator",
+          "。"
+        ]),
+        shell: new ShellRunner(),
+        codex: new CodexAcpRunner(codexServer)
+      }
+    });
+    const workspace = await createWorkspace(service, workspaceDir);
+    const coordinator = service.createAgent({
+      name: "Workspace coordinator",
+      runnerConfig: {
+        type: "claude",
+        prompt: "Coordinate work"
+      }
+    });
+    service.mountAgent(workspace.id, {
+      agentId: coordinator.id,
+      role: "coordinator"
+    });
+
+    const allChannel = service
+      .listWorkspaceChannelsByWorkspace(workspace.id)
+      .find((item) => item.kind === "all");
+    expect(allChannel).toBeDefined();
+
+    const postRes = await app.request(
+      `/api/workspaces/${workspace.id}/channels/${allChannel!.id}/messages`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          content: "你好"
+        })
+      }
+    );
+    expect(postRes.status).toBe(201);
+
+    const refreshedAllChannel = service
+      .listWorkspaceChannelsByWorkspace(workspace.id)
+      .find((item) => item.id === allChannel!.id);
+    await waitForRunToFinish(service, refreshedAllChannel!.taskId!);
+
+    const messagesRes = await app.request(
+      `/api/workspaces/${workspace.id}/channels/${allChannel!.id}/messages`
+    );
+    expect(messagesRes.status).toBe(200);
+    const messagesData = (await messagesRes.json()) as {
+      ok: boolean;
+      data: {
+        items: Array<{
+          senderType: "agent" | "human" | "system";
+          content: string;
+        }>;
+      };
+    };
+
+    expect(messagesData.data.items).toHaveLength(2);
+    expect(messagesData.data.items[1]).toMatchObject({
+      senderType: "agent",
+      content: "你好，我是这个 workspace 的 coordinator。"
+    });
+  });
+
+  it("accepts repeated #all messages while the coordinator is still responding", async () => {
+    const codexServer = createCodexAppServerStub();
+    const { app, service, workspaceDir } = await createRuntime({
+      codexAppServer: codexServer,
+      runners: {
+        claude: new QueuedCoordinatorTextRunner([
+          "第一条消息我收到了。",
+          "第二条消息我也看到了。"
+        ]),
+        shell: new ShellRunner(),
+        codex: new CodexAcpRunner(codexServer)
+      }
+    });
+    const workspace = await createWorkspace(service, workspaceDir);
+    const coordinator = service.createAgent({
+      name: "Workspace coordinator",
+      runnerConfig: {
+        type: "claude",
+        prompt: "Coordinate work"
+      }
+    });
+    service.mountAgent(workspace.id, {
+      agentId: coordinator.id,
+      role: "coordinator"
+    });
+
+    const allChannel = service
+      .listWorkspaceChannelsByWorkspace(workspace.id)
+      .find((item) => item.kind === "all");
+    expect(allChannel).toBeDefined();
+
+    const firstRes = await app.request(
+      `/api/workspaces/${workspace.id}/channels/${allChannel!.id}/messages`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          content: "第一条消息"
+        })
+      }
+    );
+    expect(firstRes.status).toBe(201);
+
+    const secondRes = await app.request(
+      `/api/workspaces/${workspace.id}/channels/${allChannel!.id}/messages`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          content: "第二条消息"
+        })
+      }
+    );
+    expect(secondRes.status).toBe(201);
+
+    await sleep(150);
+
+    const refreshedAllChannel = service
+      .listWorkspaceChannelsByWorkspace(workspace.id)
+      .find((item) => item.id === allChannel!.id);
+    const backingTaskId = refreshedAllChannel?.taskId;
+    expect(backingTaskId).toBeTruthy();
+    expect(service.listRuns(backingTaskId!).length).toBe(2);
+
+    const messagesRes = await app.request(
+      `/api/workspaces/${workspace.id}/channels/${allChannel!.id}/messages`
+    );
+    const messagesData = (await messagesRes.json()) as {
+      ok: boolean;
+      data: {
+        items: Array<{
+          senderType: "agent" | "human" | "system";
+          content: string;
+        }>;
+      };
+    };
+
+    expect(messagesData.data.items.map((item) => item.content)).toEqual([
+      "第一条消息",
+      "第二条消息",
+      "第一条消息我收到了。",
+      "第二条消息我也看到了。"
+    ]);
+  });
+
+  it("creates top-level tasks from #all proposals through channel approval", async () => {
+    const codexServer = createCodexAppServerStub();
+    const { app, service, workspaceDir } = await createRuntime({
+      codexAppServer: codexServer,
+      runners: {
+        claude: new CoordinatorJsonRunner({
+          reply: "I split this into one focused implementation task.",
+          tasks: [
+            {
+              title: "Implement sidebar channels",
+              description: "Add #all and per-task channels to the workspace sidebar.",
+              assignedAgent: "Workspace coordinator",
+              dependencies: []
+            }
+          ]
+        }),
+        shell: new ShellRunner(),
+        codex: new CodexAcpRunner(codexServer)
+      }
+    });
+    const workspace = await createWorkspace(service, workspaceDir);
+    const coordinator = service.createAgent({
+      name: "Workspace coordinator",
+      runnerConfig: {
+        type: "claude",
+        prompt: "Coordinate work"
+      }
+    });
+    service.mountAgent(workspace.id, {
+      agentId: coordinator.id,
+      role: "coordinator"
+    });
+
+    const channelsRes = await app.request(`/api/workspaces/${workspace.id}/channels`);
+    const channelsData = (await channelsRes.json()) as {
+      ok: boolean;
+      data: {
+        items: Array<{
+          id: string;
+          kind: "all" | "task";
+          taskId?: string;
+        }>;
+      };
+    };
+    const allChannel = channelsData.data.items.find((item) => item.kind === "all");
+    expect(allChannel).toBeDefined();
+
+    const postRes = await app.request(
+      `/api/workspaces/${workspace.id}/channels/${allChannel!.id}/messages`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          content: "Please break sidebar chat into deliverable tasks."
+        })
+      }
+    );
+    expect(postRes.status).toBe(201);
+
+    const refreshedAllChannel = service
+      .listWorkspaceChannelsByWorkspace(workspace.id)
+      .find((item) => item.id === allChannel!.id);
+    expect(refreshedAllChannel?.taskId).toBeTruthy();
+
+    await waitForRunToFinish(service, refreshedAllChannel!.taskId!);
+
+    const messagesRes = await app.request(
+      `/api/workspaces/${workspace.id}/channels/${allChannel!.id}/messages`
+    );
+    expect(messagesRes.status).toBe(200);
+    const messagesData = (await messagesRes.json()) as {
+      ok: boolean;
+      data: {
+        items: Array<{
+          senderType: "agent" | "human" | "system";
+          content: string;
+        }>;
+      };
+    };
+    expect(messagesData.data.items.map((item) => item.senderType)).toEqual([
+      "human",
+      "agent"
+    ]);
+    expect(messagesData.data.items[1]?.content).toContain("focused implementation task");
+
+    const proposalsRes = await app.request(
+      `/api/workspaces/${workspace.id}/channels/${allChannel!.id}/proposals`
+    );
+    expect(proposalsRes.status).toBe(200);
+    const proposalsData = (await proposalsRes.json()) as {
+      ok: boolean;
+      data: {
+        items: Array<{
+          id: string;
+          channelId?: string;
+          proposalMode: "top_level_tasks" | "subtasks";
+          status: "pending" | "approved" | "rejected";
+          drafts: Array<{ title: string }>;
+        }>;
+      };
+    };
+    expect(proposalsData.data.items).toHaveLength(1);
+    expect(proposalsData.data.items[0]).toMatchObject({
+      channelId: allChannel!.id,
+      proposalMode: "top_level_tasks",
+      status: "pending"
+    });
+    expect(proposalsData.data.items[0]?.drafts[0]?.title).toBe("Implement sidebar channels");
+
+    const approveRes = await app.request(
+      `/api/workspaces/${workspace.id}/channels/${allChannel!.id}/proposals/${proposalsData.data.items[0]!.id}/approve`,
+      {
+        method: "POST"
+      }
+    );
+    expect(approveRes.status).toBe(200);
+
+    const userTasks = service.listTasks({}).filter((task) => task.workspaceId === workspace.id);
+    expect(userTasks).toHaveLength(1);
+    expect(userTasks[0]).toMatchObject({
+      title: "Implement sidebar channels",
+      taskKind: "user"
+    });
+
+    const refreshedChannelsRes = await app.request(`/api/workspaces/${workspace.id}/channels`);
+    const refreshedChannelsData = (await refreshedChannelsRes.json()) as {
+      ok: boolean;
+      data: {
+        items: Array<{
+          kind: "all" | "task";
+          taskId?: string;
+        }>;
+      };
+    };
+    expect(
+      refreshedChannelsData.data.items.some(
+        (item) => item.kind === "task" && item.taskId === userTasks[0]?.id
+      )
+    ).toBe(true);
   });
 });
 

@@ -31,6 +31,7 @@ function createCodexContext(overrides: Partial<RunnerStartContext> = {}): Runner
         prompt: "Implement the feature"
       },
       dependencies: [],
+      taskKind: "user",
       worktree: {
         baseRef: "origin/main",
         branchName: "task/task-1-implement-feature",

@@ -15,6 +15,10 @@ import type {
   CreateWorkspaceBody,
   CleanupTaskWorktreeParams,
   CleanupTaskWorktreeResponse,
+  ChannelMessageData,
+  ChannelMessageResponse,
+  ChannelMessagesData,
+  ChannelMessagesResponse,
   DeleteAgentResponse,
   DeleteTaskParams,
   DeleteTaskResponse,
@@ -30,6 +34,8 @@ import type {
   ListAgentsResponse,
   ListProposalsParams,
   ListProposalsQuery,
+  ListWorkspaceChannelsData,
+  ListWorkspaceChannelsParams,
   ListTaskMessagesParams,
   ListTaskMessagesQuery,
   ListTeamMessagesQuery,
@@ -40,6 +46,7 @@ import type {
   ListWorkspaceAgentsResponse,
   MountAgentBody,
   PickWorkspaceRootResponse,
+  PostChannelMessageBody,
   ListWorkspaceGitRefsParams,
   WorkspaceGitStatusParams,
   WorkspaceGitPullParams,
@@ -104,6 +111,12 @@ import type {
   UpdateWorkspaceConfigBody,
   UpdateWorkspaceConfigParams,
   UpdateWorkspaceParams,
+  WorkspaceChannelData,
+  WorkspaceChannelSlugParams,
+  WorkspaceChannelParams,
+  WorkspaceChannelProposalParams,
+  WorkspaceChannelResponse,
+  WorkspaceChannelsResponse,
   WorkspaceAgentData,
   WorkspaceAgentParams,
   WorkspaceAgentResponse,
@@ -118,12 +131,14 @@ import type {
 import type {
   AccountAgent,
   AgentTeam,
+  ChannelMessage,
   GlobalSettings,
   Run,
   Task,
   TaskMessage,
   TaskWorktree,
   TeamMessage,
+  WorkspaceChannel,
   Workspace,
   WorkspaceAgent,
   WorkspaceGitRef
@@ -234,6 +249,16 @@ export const validateUpdateWorkspaceConfigBody =
   typia.createValidate<UpdateWorkspaceConfigBody>();
 export const validateUpdateWorkspaceConfigParams =
   typia.createValidate<UpdateWorkspaceConfigParams>();
+export const validateListWorkspaceChannelsParams =
+  typia.createValidate<ListWorkspaceChannelsParams>();
+export const validateWorkspaceChannelParams =
+  typia.createValidate<WorkspaceChannelParams>();
+export const validateWorkspaceChannelSlugParams =
+  typia.createValidate<WorkspaceChannelSlugParams>();
+export const validateWorkspaceChannelProposalParams =
+  typia.createValidate<WorkspaceChannelProposalParams>();
+export const validatePostChannelMessageBody =
+  typia.createValidate<PostChannelMessageBody>();
 export const validateListTaskMessagesParams =
   typia.createValidate<ListTaskMessagesParams>();
 export const validateListTaskMessagesQuery =
@@ -328,11 +353,19 @@ export const schemaRegistry = {
   TeamMessagesResponse: () => typia.json.schema<TeamMessagesResponse>(),
   TeamMessageResponse: () => typia.json.schema<TeamMessageResponse>(),
   AccountAgent: () => typia.json.schema<AccountAgent>(),
+  WorkspaceChannel: () => typia.json.schema<WorkspaceChannel>(),
+  ChannelMessage: () => typia.json.schema<ChannelMessage>(),
   WorkspaceAgent: () => typia.json.schema<WorkspaceAgent>(),
   TaskMessage: () => typia.json.schema<TaskMessage>(),
   CreateAgentBody: () => typia.json.schema<CreateAgentBody>(),
   UpdateAgentBody: () => typia.json.schema<UpdateAgentBody>(),
   AgentParams: () => typia.json.schema<AgentParams>(),
+  ListWorkspaceChannelsParams: () => typia.json.schema<ListWorkspaceChannelsParams>(),
+  WorkspaceChannelSlugParams: () => typia.json.schema<WorkspaceChannelSlugParams>(),
+  WorkspaceChannelParams: () => typia.json.schema<WorkspaceChannelParams>(),
+  WorkspaceChannelProposalParams: () =>
+    typia.json.schema<WorkspaceChannelProposalParams>(),
+  PostChannelMessageBody: () => typia.json.schema<PostChannelMessageBody>(),
   ListWorkspaceAgentsParams: () => typia.json.schema<ListWorkspaceAgentsParams>(),
   MountAgentBody: () => typia.json.schema<MountAgentBody>(),
   WorkspaceAgentParams: () => typia.json.schema<WorkspaceAgentParams>(),
@@ -346,6 +379,10 @@ export const schemaRegistry = {
   AgentResponse: () => typia.json.schema<AgentResponse>(),
   ListAgentsResponse: () => typia.json.schema<ListAgentsResponse>(),
   DeleteAgentResponse: () => typia.json.schema<DeleteAgentResponse>(),
+  WorkspaceChannelsResponse: () => typia.json.schema<WorkspaceChannelsResponse>(),
+  WorkspaceChannelResponse: () => typia.json.schema<WorkspaceChannelResponse>(),
+  ChannelMessagesResponse: () => typia.json.schema<ChannelMessagesResponse>(),
+  ChannelMessageResponse: () => typia.json.schema<ChannelMessageResponse>(),
   WorkspaceAgentResponse: () => typia.json.schema<WorkspaceAgentResponse>(),
   ListWorkspaceAgentsResponse: () => typia.json.schema<ListWorkspaceAgentsResponse>(),
   TaskMessagesResponse: () => typia.json.schema<TaskMessagesResponse>(),

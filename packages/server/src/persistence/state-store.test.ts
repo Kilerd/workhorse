@@ -48,6 +48,7 @@ function makeTask(workspaceId: string): Task {
       command: "true"
     },
     dependencies: [],
+    taskKind: "user",
     worktree: {
       baseRef: "main",
       branchName: "task-1",

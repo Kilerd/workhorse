@@ -614,6 +614,109 @@ export interface paths {
         patch: operations["updateWorkspaceConfig"];
         trace?: never;
     };
+    "/api/workspaces/{workspaceId}/channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List visible channels for a workspace */
+        get: operations["listWorkspaceChannels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{workspaceId}/channels/{channelId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a workspace channel */
+        get: operations["getWorkspaceChannel"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{workspaceId}/channels/{channelId}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List chat messages for a workspace channel */
+        get: operations["listChannelMessages"];
+        put?: never;
+        /** Post a message into a workspace channel */
+        post: operations["postChannelMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{workspaceId}/channels/{channelId}/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List coordinator proposals for a workspace channel */
+        get: operations["listChannelProposals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{workspaceId}/channels/{channelId}/proposals/{proposalId}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve a workspace channel proposal */
+        post: operations["approveChannelProposal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{workspaceId}/channels/{channelId}/proposals/{proposalId}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject a workspace channel proposal */
+        post: operations["rejectChannelProposal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspaces/{workspaceId}/task-messages": {
         parameters: {
             query?: never;
@@ -818,6 +921,8 @@ export interface components {
             rejected?: boolean;
             /** @description Present when a team subtask was explicitly cancelled by a user. */
             cancelledAt?: string;
+            /** @description Internal visibility bucket for UI-facing vs. system backing tasks. Defaults to `user`. */
+            taskKind?: "user" | "channel_backing";
             /** @description When set, this task belongs to an agent team. */
             teamId?: string;
             /** @description When set, this task is a subtask created by a team coordinator. */
@@ -1453,6 +1558,30 @@ export interface components {
             createdAt: string;
             updatedAt: string;
         };
+        WorkspaceChannel: {
+            id: string;
+            workspaceId: string;
+            kind: components["schemas"]["WorkspaceChannelKind"];
+            name: string;
+            slug: string;
+            /** @description `#all` uses this to point at its hidden backing coordinator task. */
+            taskId?: string;
+            createdAt: string;
+            archivedAt?: string;
+        };
+        WorkspaceChannelKind: "all" | "task";
+        ChannelMessage: {
+            id: string;
+            channelId: string;
+            workspaceId: string;
+            taskId?: string;
+            agentName: string;
+            senderType: components["schemas"]["TeamMessageSenderType"];
+            messageType: components["schemas"]["TeamMessageType"];
+            content: string;
+            metadata?: components["schemas"]["Recordstringstring"];
+            createdAt: string;
+        };
         /**
          * @description An AccountAgent with the role it was assigned when mounted to a workspace.
          *     Returned by listWorkspaceAgents().
@@ -1491,6 +1620,21 @@ export interface components {
         };
         AgentParams: {
             agentId: string;
+        };
+        ListWorkspaceChannelsParams: {
+            workspaceId: string;
+        };
+        WorkspaceChannelParams: {
+            workspaceId: string;
+            channelId: string;
+        };
+        WorkspaceChannelProposalParams: {
+            workspaceId: string;
+            channelId: string;
+            proposalId: string;
+        };
+        PostChannelMessageBody: {
+            content: string;
         };
         ListWorkspaceAgentsParams: {
             workspaceId: string;
@@ -1546,6 +1690,38 @@ export interface components {
             /** @enum {unknown} */
             ok: true;
             data: components["schemas"]["DeleteResult"];
+        };
+        WorkspaceChannelsResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["ListWorkspaceChannelsData"];
+        };
+        ListWorkspaceChannelsData: {
+            items: components["schemas"]["WorkspaceChannel"][];
+        };
+        WorkspaceChannelResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["WorkspaceChannelData"];
+        };
+        WorkspaceChannelData: {
+            channel: components["schemas"]["WorkspaceChannel"];
+        };
+        ChannelMessagesResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["ChannelMessagesData"];
+        };
+        ChannelMessagesData: {
+            items: components["schemas"]["ChannelMessage"][];
+        };
+        ChannelMessageResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["ChannelMessageData"];
+        };
+        ChannelMessageData: {
+            item: components["schemas"]["ChannelMessage"];
         };
         WorkspaceAgentResponse: {
             /** @enum {unknown} */
@@ -1616,13 +1792,16 @@ export interface components {
             teamId: null | string;
             /** @description Set for workspace-scoped proposals (new model). */
             workspaceId?: string;
+            channelId?: string;
             parentTaskId: string;
+            proposalMode: components["schemas"]["CoordinatorProposalMode"];
             status: components["schemas"]["CoordinatorProposalStatus"];
             drafts: components["schemas"]["CoordinatorProposalDraft"][];
             createdAt: string;
             /** @description ISO timestamp of when the proposal was approved or rejected. */
             decidedAt?: string;
         };
+        CoordinatorProposalMode: "top_level_tasks" | "subtasks";
         CoordinatorProposalStatus: "pending" | "approved" | "rejected";
         /** @description A single subtask draft produced by the coordinator LLM output. */
         CoordinatorProposalDraft: {
@@ -3380,6 +3559,244 @@ export interface operations {
             };
             /** @description Workspace not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listWorkspaceChannels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Workspace channel collection */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceChannelsResponse"];
+                };
+            };
+            /** @description Workspace not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getWorkspaceChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: string;
+                channelId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Workspace channel */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceChannelResponse"];
+                };
+            };
+            /** @description Channel not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listChannelMessages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: string;
+                channelId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Channel message collection */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelMessagesResponse"];
+                };
+            };
+            /** @description Channel not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    postChannelMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: string;
+                channelId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PostChannelMessageBody"];
+            };
+        };
+        responses: {
+            /** @description Created channel message */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelMessageResponse"];
+                };
+            };
+            /** @description Validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Channel not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listChannelProposals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: string;
+                channelId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Proposal collection */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListProposalsResponse"];
+                };
+            };
+            /** @description Channel not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    approveChannelProposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: string;
+                channelId: string;
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Approved proposal */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalResponse"];
+                };
+            };
+            /** @description Proposal already decided */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    rejectChannelProposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: string;
+                channelId: string;
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rejected proposal */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalResponse"];
+                };
+            };
+            /** @description Proposal already decided */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

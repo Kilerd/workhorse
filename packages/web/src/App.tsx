@@ -5,17 +5,25 @@ import {
   Navigate,
   Route,
   Routes,
+  matchPath,
   useLocation,
   useNavigate,
   useParams
 } from "react-router-dom";
-import type { RunLogEntry, ServerEvent, Workspace, WorkspaceAgent } from "@workhorse/contracts";
+import type {
+  RunLogEntry,
+  ServerEvent,
+  Workspace,
+  WorkspaceAgent,
+  WorkspaceChannel
+} from "@workhorse/contracts";
 
 import { Board } from "@/components/Board";
 import { Sidebar } from "@/components/Sidebar";
 import { TaskDetailsPanel } from "@/components/TaskDetailsPanel";
 import { AgentsPage } from "@/components/AgentsPage";
 import { AgentEditPage } from "@/components/AgentEditPage";
+import { WorkspaceChannelPage } from "@/components/WorkspaceChannelPage";
 import {
   GlobalSettingsModal,
   TaskModal,
@@ -26,7 +34,11 @@ import { TopBar } from "@/components/TopBar";
 import { useBoardData } from "@/hooks/useBoardData";
 import { api } from "@/lib/api";
 import { useWorkspaceSocket } from "@/hooks/useWorkspaceSocket";
-import { resolveRunSelectionAfterStart } from "@/lib/run-selection";
+import {
+  resolveActiveRunId,
+  resolveRunSelectionAfterStart,
+  resolveViewedRunId
+} from "@/lib/run-selection";
 import { isBoardVisibleColumn, type DisplayTaskColumn } from "@/lib/task-view";
 import { queryClient } from "@/lib/query";
 import { applyTheme, getPreferredTheme, type ThemeMode } from "@/lib/theme";
@@ -34,6 +46,7 @@ import { Button } from "@/components/ui/button";
 import { prepareLiveLogEntries } from "@/components/live-log-entries";
 import { getTaskCoordinationScope } from "@/lib/coordination";
 import { useAgents, workspaceAgentQueryKeys } from "@/hooks/useAgents";
+import { workspaceChannelQueryKeys } from "@/hooks/useChannels";
 import {
   coordinationQueryKeys,
   useCoordinationMessages,
@@ -49,6 +62,14 @@ export default function App() {
   return <ReactAppShell />;
 }
 
+function workspaceBoardPath(workspaceId: string | "all"): string {
+  return workspaceId === "all" ? "/" : `/workspaces/${workspaceId}/board`;
+}
+
+function workspaceChannelPath(workspaceId: string, channelSlug: string): string {
+  return `/workspaces/${workspaceId}/channels/${channelSlug}`;
+}
+
 function ReactAppShell() {
   const board = useBoardData();
   const location = useLocation();
@@ -59,7 +80,7 @@ function ReactAppShell() {
   >();
   const [searchQuery, setSearchQuery] = useState("");
   const [theme, setTheme] = useState<ThemeMode>(() => getPreferredTheme());
-  const { selectedWorkspaceTasks, displayedTasks, workspacesQuery } = board;
+  const { displayedTasks, workspacesQuery } = board;
   const agentsQuery = useAgents();
 
   useEffect(() => {
@@ -93,6 +114,7 @@ function ReactAppShell() {
           break;
         case "task.updated":
           queryClient.invalidateQueries({ queryKey: ["tasks"] });
+          queryClient.invalidateQueries({ queryKey: workspaceChannelQueryKeys.lists() });
           break;
         case "run.started":
           if (event.taskId === board.selectedTask?.id) {
@@ -172,6 +194,11 @@ function ReactAppShell() {
             queryKey: workspaceAgentQueryKeys.list(event.workspaceId)
           });
           break;
+        case "workspace.channel.updated":
+          queryClient.invalidateQueries({
+            queryKey: workspaceChannelQueryKeys.list(event.workspaceId)
+          });
+          break;
         case "task.message.created":
           queryClient.invalidateQueries({
             queryKey: coordinationQueryKeys.messages({
@@ -189,6 +216,30 @@ function ReactAppShell() {
               workspaceId: event.workspaceId,
               parentTaskId: event.parentTaskId
             })
+          });
+          break;
+        case "channel.message.created":
+          queryClient.invalidateQueries({
+            queryKey: coordinationQueryKeys.messages({
+              kind: "workspace_channel",
+              workspaceId: event.workspaceId,
+              channelId: event.channelId
+            })
+          });
+          queryClient.invalidateQueries({ queryKey: ["tasks"] });
+          break;
+        case "channel.proposal.created":
+        case "channel.proposal.updated":
+          queryClient.invalidateQueries({
+            queryKey: coordinationQueryKeys.proposals({
+              kind: "workspace_channel",
+              workspaceId: event.workspaceId,
+              channelId: event.channelId
+            })
+          });
+          queryClient.invalidateQueries({ queryKey: ["tasks"] });
+          queryClient.invalidateQueries({
+            queryKey: workspaceChannelQueryKeys.list(event.workspaceId)
           });
           break;
         default:
@@ -216,7 +267,57 @@ function ReactAppShell() {
     }
     return map;
   }, [workspaceAgentQueries, workspaces]);
-  const tasks = selectedWorkspaceTasks;
+  const workspaceChannelQueries = useQueries({
+    queries: workspaces.map((workspace) => ({
+      queryKey: workspaceChannelQueryKeys.list(workspace.id),
+      queryFn: async () => (await api.listWorkspaceChannels(workspace.id)).items,
+      enabled: workspaces.length > 0
+    }))
+  });
+  const workspaceChannelsByWorkspaceId = useMemo(() => {
+    const map = new Map<string, WorkspaceChannel[]>();
+    for (const [index, workspace] of workspaces.entries()) {
+      map.set(workspace.id, workspaceChannelQueries[index]?.data ?? []);
+    }
+    return map;
+  }, [workspaceChannelQueries, workspaces]);
+  const taskChannelByTaskId = useMemo(() => {
+    const map = new Map<string, WorkspaceChannel>();
+    for (const channels of workspaceChannelsByWorkspaceId.values()) {
+      for (const channel of channels) {
+        if (channel.kind === "task" && channel.taskId && !channel.archivedAt) {
+          map.set(channel.taskId, channel);
+        }
+      }
+    }
+    return map;
+  }, [workspaceChannelsByWorkspaceId]);
+  const routeWorkspaceMatch = matchPath("/workspaces/:workspaceId/*", location.pathname);
+  const routeBoardMatch = matchPath("/workspaces/:workspaceId/board", location.pathname);
+  const routeChannelMatch = matchPath(
+    "/workspaces/:workspaceId/channels/:channelSlug",
+    location.pathname
+  );
+  const routeSelectedWorkspaceId =
+    routeWorkspaceMatch?.params.workspaceId ?? (location.pathname === "/" ? "all" : null);
+  const activeWorkspaceId = routeSelectedWorkspaceId ?? board.selectedWorkspaceId;
+  const routeChannelSlug = routeChannelMatch?.params.channelSlug ?? null;
+  const routedChannel =
+    routeSelectedWorkspaceId && routeSelectedWorkspaceId !== "all" && routeChannelSlug
+      ? workspaceChannelsByWorkspaceId
+          .get(routeSelectedWorkspaceId)
+          ?.find(
+            (channel) =>
+              channel.slug === routeChannelSlug || channel.id === routeChannelSlug
+          ) ?? null
+      : null;
+  const activeChannelId =
+    routedChannel?.id ??
+    (location.pathname === "/" || routeBoardMatch ? null : board.selectedChannelId);
+  const tasks =
+    activeWorkspaceId === "all"
+      ? displayedTasks
+      : displayedTasks.filter((task) => task.workspaceId === activeWorkspaceId);
   const allTasks = displayedTasks;
   const workspaceNames = useMemo(() => {
     return new Map(workspaces.map((workspace) => [workspace.id, workspace.name]));
@@ -250,21 +351,21 @@ function ReactAppShell() {
   }, [searchQuery, visibleBoardTasks, workspaceAgentsByWorkspaceId, workspaceNames]);
 
   const selectedWorkspaceName = useMemo(() => {
-    if (board.selectedWorkspaceId === "all") {
+    if (activeWorkspaceId === "all") {
       return "All workspaces";
     }
     return (
-      workspaces.find((workspace) => workspace.id === board.selectedWorkspaceId)?.name ??
+      workspaces.find((workspace) => workspace.id === activeWorkspaceId)?.name ??
       "All workspaces"
     );
-  }, [board.selectedWorkspaceId, workspaces]);
+  }, [activeWorkspaceId, workspaces]);
   const selectedWorkspace = useMemo(() => {
-    if (board.selectedWorkspaceId === "all") {
+    if (activeWorkspaceId === "all") {
       return null;
     }
 
-    return workspaces.find((workspace) => workspace.id === board.selectedWorkspaceId) ?? null;
-  }, [board.selectedWorkspaceId, workspaces]);
+    return workspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? null;
+  }, [activeWorkspaceId, workspaces]);
   const selectedWorkspaceTaskCount = useMemo(() => {
     if (!selectedWorkspace) {
       return 0;
@@ -285,6 +386,42 @@ function ReactAppShell() {
       reviewMonitorLastPolledAt
     ]
   );
+
+  useEffect(() => {
+    if (activeWorkspaceId !== board.selectedWorkspaceId) {
+      board.setWorkspaceSelection(activeWorkspaceId);
+    }
+
+    if (activeChannelId !== board.selectedChannelId) {
+      board.setChannelSelection(activeChannelId ?? null);
+    }
+
+    if (!routeChannelMatch) {
+      return;
+    }
+
+    const nextChannel = routedChannel;
+
+    if (nextChannel?.taskId && board.selectedTask?.id !== nextChannel.taskId) {
+      board.setTaskSelection(nextChannel.taskId);
+    }
+
+    if (nextChannel && !nextChannel.taskId && board.selectedTask?.id) {
+      board.setTaskSelection(null);
+    }
+  }, [
+    activeChannelId,
+    activeWorkspaceId,
+    board.selectedChannelId,
+    board.selectedTask?.id,
+    board.selectedWorkspaceId,
+    board.setChannelSelection,
+    board.setTaskSelection,
+    board.setWorkspaceSelection,
+    routeChannelMatch,
+    routedChannel,
+    workspaceChannelsByWorkspaceId
+  ]);
 
   function handleDrop(result: DropResult) {
     if (!result.destination) {
@@ -338,11 +475,79 @@ function ReactAppShell() {
 
   function openTask(taskId: string) {
     board.setTaskSelection(taskId);
+    const task = allTasks.find((entry) => entry.id === taskId) ?? null;
+    const taskChannel = task ? taskChannelByTaskId.get(task.id) ?? null : null;
+
     board.setSidebarCollapsed(true);
+    if (task && taskChannel) {
+      board.setWorkspaceSelection(task.workspaceId);
+      board.setChannelSelection(taskChannel.id);
+      navigate(workspaceChannelPath(task.workspaceId, taskChannel.slug));
+      return;
+    }
+
     navigate(`/tasks/${taskId}`);
   }
 
+  const boardPage = (
+    <section className="min-h-0 overflow-hidden p-3 lg:p-3">
+      <DragDropContext onDragEnd={handleDrop}>
+        <Board
+          tasks={boardTasks}
+          allTasks={allTasks}
+          accountAgents={accountAgents}
+          workspaceAgentsByWorkspaceId={workspaceAgentsByWorkspaceId}
+          workspaces={workspaces}
+          reviewMonitor={reviewMonitor}
+          selectedTaskId={board.selectedTask?.id ?? null}
+          onTaskOpen={openTask}
+          onPlan={(taskId) => board.planTask(taskId)}
+          onTaskStart={(taskId) => board.startTask(taskId)}
+          onTaskStop={(taskId) => board.stopTask(taskId)}
+          onMoveToTodo={(taskId) => board.moveToTodo(taskId)}
+          onMarkDone={(taskId) => board.markDone(taskId)}
+          onArchive={(taskId) => board.archiveTask(taskId)}
+          onApproveSubtask={(task) =>
+            void board.approveTask({
+              taskId: task.id,
+              teamId: task.teamId,
+              workspaceId: task.workspaceId,
+              parentTaskId: task.parentTaskId
+            })
+          }
+          onRejectSubtask={(task, reason) =>
+            void board.rejectTask({
+              taskId: task.id,
+              teamId: task.teamId,
+              workspaceId: task.workspaceId,
+              parentTaskId: task.parentTaskId,
+              reason
+            })
+          }
+          onRetrySubtask={(task) =>
+            void board.retryTask({
+              taskId: task.id,
+              teamId: task.teamId,
+              workspaceId: task.workspaceId,
+              parentTaskId: task.parentTaskId
+            })
+          }
+          onCancelSubtask={(task) =>
+            void board.cancelSubtask({
+              taskId: task.id,
+              teamId: task.teamId,
+              workspaceId: task.workspaceId,
+              parentTaskId: task.parentTaskId
+            })
+          }
+          reviewActionBusy={board.isBusy}
+        />
+      </DragDropContext>
+    </section>
+  );
+
   const isTaskDetailView = location.pathname.startsWith("/tasks/");
+  const isChannelView = location.pathname.includes("/channels/");
   const isAgentsView = location.pathname.startsWith("/agents");
   const isWorkspaceSettingsView = location.pathname === "/workspace-settings";
 
@@ -351,11 +556,29 @@ function ReactAppShell() {
       <Sidebar
         workspaces={workspaces}
         allTasks={allTasks}
+        workspaceChannelsByWorkspaceId={workspaceChannelsByWorkspaceId}
         agentCount={accountAgents.length}
-        selectedWorkspaceId={board.selectedWorkspaceId}
+        selectedWorkspaceId={activeWorkspaceId}
+        selectedChannelId={activeChannelId}
         collapsed={board.sidebarCollapsed}
         onToggleCollapse={board.toggleSidebarCollapsed}
-        onSelectWorkspace={board.setWorkspaceSelection}
+        onSelectWorkspace={(workspaceId) => {
+          board.setWorkspaceSelection(workspaceId);
+          board.setChannelSelection(null);
+          navigate(workspaceBoardPath(workspaceId));
+        }}
+        onSelectChannel={(workspaceId, channelId) => {
+          board.setWorkspaceSelection(workspaceId);
+          board.setChannelSelection(channelId);
+          const channel =
+            workspaceChannelsByWorkspaceId
+              .get(workspaceId)
+              ?.find((entry) => entry.id === channelId) ?? null;
+          if (channel?.taskId) {
+            board.setTaskSelection(channel.taskId);
+          }
+          navigate(workspaceChannelPath(workspaceId, channel?.slug ?? channelId));
+        }}
         onAddWorkspace={() => board.setWorkspaceModalOpen(true)}
         onOpenAgents={() => navigate("/agents")}
         onOpenWorkspaceSettings={() => navigate("/workspace-settings")}
@@ -364,17 +587,20 @@ function ReactAppShell() {
 
       <main
         className={
-          isTaskDetailView
+          isTaskDetailView || isChannelView
             ? "relative z-[1] min-h-screen min-w-0 overflow-hidden lg:min-h-0"
             : "relative z-[1] grid min-h-screen min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden lg:min-h-0"
         }
       >
-        {isTaskDetailView || isAgentsView || isWorkspaceSettingsView ? null : (
+        {isTaskDetailView || isChannelView || isAgentsView || isWorkspaceSettingsView ? null : (
           <TopBar
             onCreateTask={() => board.setTaskModalOpen(true)}
             onRefresh={() => {
               void queryClient.invalidateQueries({ queryKey: ["workspaces"] });
               void queryClient.invalidateQueries({ queryKey: ["tasks"] });
+              void queryClient.invalidateQueries({
+                queryKey: workspaceChannelQueryKeys.lists()
+              });
               void queryClient.invalidateQueries({ queryKey: ["settings"] });
               void queryClient.invalidateQueries({ queryKey: ["health"] });
               setSyncedAt(new Date().toISOString());
@@ -389,8 +615,8 @@ function ReactAppShell() {
             codexQuota={board.healthQuery.data?.codexQuota}
             gitStatus={board.workspaceGitStatus}
             onPull={() => {
-              if (board.selectedWorkspaceId !== "all") {
-                void board.pullWorkspace(board.selectedWorkspaceId);
+              if (activeWorkspaceId !== "all") {
+                void board.pullWorkspace(activeWorkspaceId);
               }
             }}
             isPulling={board.isPulling}
@@ -400,63 +626,21 @@ function ReactAppShell() {
         )}
 
         <Routes>
+          <Route path="/" element={boardPage} />
           <Route
-            path="/"
+            path="/workspaces/:workspaceId/board"
+            element={boardPage}
+          />
+          <Route
+            path="/workspaces/:workspaceId/channels/:channelSlug"
             element={
-              <section className="min-h-0 overflow-hidden p-3 lg:p-3">
-                <DragDropContext onDragEnd={handleDrop}>
-                  <Board
-                    tasks={boardTasks}
-                    allTasks={allTasks}
-                    accountAgents={accountAgents}
-                    workspaceAgentsByWorkspaceId={workspaceAgentsByWorkspaceId}
-                    workspaces={workspaces}
-                    reviewMonitor={reviewMonitor}
-                    selectedTaskId={board.selectedTask?.id ?? null}
-                    onTaskOpen={openTask}
-                    onPlan={(taskId) => board.planTask(taskId)}
-                    onTaskStart={(taskId) => board.startTask(taskId)}
-                    onTaskStop={(taskId) => board.stopTask(taskId)}
-                    onMoveToTodo={(taskId) => board.moveToTodo(taskId)}
-                    onMarkDone={(taskId) => board.markDone(taskId)}
-                    onArchive={(taskId) => board.archiveTask(taskId)}
-                    onApproveSubtask={(task) =>
-                      void board.approveTask({
-                        taskId: task.id,
-                        teamId: task.teamId,
-                        workspaceId: task.workspaceId,
-                        parentTaskId: task.parentTaskId
-                      })
-                    }
-                    onRejectSubtask={(task, reason) =>
-                      void board.rejectTask({
-                        taskId: task.id,
-                        teamId: task.teamId,
-                        workspaceId: task.workspaceId,
-                        parentTaskId: task.parentTaskId,
-                        reason
-                      })
-                    }
-                    onRetrySubtask={(task) =>
-                      void board.retryTask({
-                        taskId: task.id,
-                        teamId: task.teamId,
-                        workspaceId: task.workspaceId,
-                        parentTaskId: task.parentTaskId
-                      })
-                    }
-                    onCancelSubtask={(task) =>
-                      void board.cancelSubtask({
-                        taskId: task.id,
-                        teamId: task.teamId,
-                        workspaceId: task.workspaceId,
-                        parentTaskId: task.parentTaskId
-                      })
-                    }
-                    reviewActionBusy={board.isBusy}
-                  />
-                </DragDropContext>
-              </section>
+              <WorkspaceChannelRoute
+                board={board}
+                allTasks={allTasks}
+                workspaces={workspaces}
+                workspaceAgentsByWorkspaceId={workspaceAgentsByWorkspaceId}
+                workspaceChannelsByWorkspaceId={workspaceChannelsByWorkspaceId}
+              />
             }
           />
           <Route
@@ -467,6 +651,7 @@ function ReactAppShell() {
                 allTasks={allTasks}
                 workspaces={workspaces}
                 workspaceAgentsByWorkspaceId={workspaceAgentsByWorkspaceId}
+                taskChannelByTaskId={taskChannelByTaskId}
               />
             }
           />
@@ -503,7 +688,7 @@ function ReactAppShell() {
                     workspaceId: selectedWorkspace.id,
                     body: values
                   });
-                  navigate("/");
+                  navigate(workspaceBoardPath(selectedWorkspace.id));
                 }}
               />
             }
@@ -535,7 +720,7 @@ function ReactAppShell() {
       <TaskModal
         open={board.taskModalOpen}
         workspaces={workspaces}
-        selectedWorkspaceId={board.selectedWorkspaceId}
+        selectedWorkspaceId={activeWorkspaceId}
         settings={board.settingsQuery.data ?? null}
         submitting={board.isCreatingTask}
         onClose={() => board.setTaskModalOpen(false)}
@@ -555,13 +740,15 @@ interface TaskDetailsRouteProps {
   allTasks: BoardData["displayedTasks"];
   workspaces: Workspace[];
   workspaceAgentsByWorkspaceId: Map<string, WorkspaceAgent[]>;
+  taskChannelByTaskId: Map<string, WorkspaceChannel>;
 }
 
 function TaskDetailsRoute({
   board,
   allTasks,
   workspaces,
-  workspaceAgentsByWorkspaceId
+  workspaceAgentsByWorkspaceId,
+  taskChannelByTaskId
 }: TaskDetailsRouteProps) {
   const navigate = useNavigate();
   const { taskId } = useParams<{ taskId: string }>();
@@ -573,6 +760,7 @@ function TaskDetailsRoute({
   }, [board.selectedTask?.id, board.setTaskSelection, taskId]);
 
   const task = taskId ? allTasks.find((entry) => entry.id === taskId) ?? null : null;
+  const taskChannel = task ? taskChannelByTaskId.get(task.id) ?? null : null;
   const workspaceAgents = task
     ? workspaceAgentsByWorkspaceId.get(task.workspaceId) ?? []
     : [];
@@ -636,6 +824,15 @@ function TaskDetailsRoute({
           onAction={() => navigate("/")}
         />
       </section>
+    );
+  }
+
+  if (taskChannel) {
+    return (
+      <Navigate
+        to={workspaceChannelPath(task.workspaceId, taskChannel.slug)}
+        replace
+      />
     );
   }
 
@@ -731,6 +928,239 @@ function TaskDetailsRoute({
         onSetDependencies={(ids) => board.setTaskDependencies({ taskId: task.id, dependencies: ids })}
       />
     </section>
+  );
+}
+
+interface WorkspaceChannelRouteProps {
+  board: BoardData;
+  allTasks: BoardData["displayedTasks"];
+  workspaces: Workspace[];
+  workspaceAgentsByWorkspaceId: Map<string, WorkspaceAgent[]>;
+  workspaceChannelsByWorkspaceId: Map<string, WorkspaceChannel[]>;
+}
+
+function WorkspaceChannelRoute({
+  board,
+  allTasks,
+  workspaces,
+  workspaceAgentsByWorkspaceId,
+  workspaceChannelsByWorkspaceId
+}: WorkspaceChannelRouteProps) {
+  const navigate = useNavigate();
+  const { workspaceId, channelSlug } = useParams<{
+    workspaceId: string;
+    channelSlug: string;
+  }>();
+  const resolvedWorkspaceId = workspaceId ?? "";
+  const resolvedChannelSlug = channelSlug ?? "";
+
+  const workspace = workspaces.find((entry) => entry.id === resolvedWorkspaceId) ?? null;
+  const listedChannel =
+    workspaceChannelsByWorkspaceId
+      .get(resolvedWorkspaceId)
+      ?.find(
+        (entry) =>
+          entry.slug === resolvedChannelSlug || entry.id === resolvedChannelSlug
+      ) ?? null;
+  const channelQuery = useQuery({
+    queryKey: ["workspace-channel", resolvedWorkspaceId, resolvedChannelSlug],
+    queryFn: async () => {
+      if (!resolvedWorkspaceId || !resolvedChannelSlug) {
+        return null;
+      }
+      try {
+        return (
+          await api.getWorkspaceChannelBySlug(
+            resolvedWorkspaceId,
+            resolvedChannelSlug
+          )
+        ).channel;
+      } catch {
+        return (await api.getWorkspaceChannel(resolvedWorkspaceId, resolvedChannelSlug))
+          .channel;
+      }
+    },
+    enabled: Boolean(resolvedWorkspaceId && resolvedChannelSlug && !listedChannel)
+  });
+  const channel = listedChannel ?? channelQuery.data ?? null;
+  const task = channel?.taskId
+    ? allTasks.find((entry) => entry.id === channel.taskId) ?? null
+    : null;
+  const workspaceAgents = workspaceAgentsByWorkspaceId.get(resolvedWorkspaceId) ?? [];
+  const scope =
+    channel !== null && resolvedWorkspaceId
+      ? ({ kind: "workspace_channel", workspaceId: resolvedWorkspaceId, channelId: channel.id } as const)
+      : ({ kind: "none" } as const);
+  const messages = useCoordinationMessages(scope);
+  const postMessage = usePostCoordinationMessage(scope);
+  const proposals = useCoordinationProposals(scope);
+  const taskRunsQuery = useQuery({
+    queryKey: ["runs", task?.id ?? ""],
+    queryFn: async () => {
+      if (!task?.id) {
+        return [];
+      }
+      const response = await api.listRuns(task.id);
+      return response.items;
+    },
+    enabled: Boolean(task?.id)
+  });
+  const runs = taskRunsQuery.data ?? [];
+  const activeRunId = useMemo(() => resolveActiveRunId(runs), [runs]);
+  const viewedRunId = useMemo(
+    () =>
+      resolveViewedRunId({
+        runs,
+        selectedRunId: board.selectedRunId,
+        lastRunId: task?.lastRunId
+      }),
+    [board.selectedRunId, runs, task?.lastRunId]
+  );
+  const liveLog =
+    activeRunId && viewedRunId === activeRunId ? board.liveLogByRunId[activeRunId] ?? [] : [];
+  const runLogQuery = useQuery({
+    queryKey: ["run-log", viewedRunId ?? ""],
+    queryFn: async (): Promise<RunLogEntry[]> => {
+      if (!viewedRunId) {
+        return [];
+      }
+
+      return (await api.getRunLog(viewedRunId)).items;
+    },
+    enabled: Boolean(viewedRunId)
+  });
+
+  if (!workspaceId || !channelSlug) {
+    return <Navigate to="/" replace />;
+  }
+
+  if (!channel) {
+    return (
+      <section className="flex h-full min-h-0 w-full">
+        <TaskRouteState
+          eyebrow="Workspace channel"
+          title={channelQuery.isLoading ? "Loading channel" : "Channel not found"}
+          description={
+            channelQuery.isLoading
+              ? "We are loading the latest channel state for this workspace."
+              : "This channel may have been archived, or the workspace channel list has not loaded yet."
+          }
+          actionLabel="Back to board"
+          onAction={() => navigate(workspaceBoardPath(resolvedWorkspaceId))}
+        />
+      </section>
+    );
+  }
+
+  if (resolvedChannelSlug !== channel.slug) {
+    return (
+      <Navigate
+        to={workspaceChannelPath(resolvedWorkspaceId, channel.slug)}
+        replace
+      />
+    );
+  }
+
+  return (
+    <WorkspaceChannelPage
+      workspace={workspace}
+      channel={channel}
+      task={task}
+      workspaceAgents={workspaceAgents}
+      scope={scope}
+      messages={messages.data ?? []}
+      messagesLoading={messages.isLoading}
+      messagesError={messages.error instanceof Error ? messages.error.message : null}
+      proposals={channel.kind === "all" ? proposals.data ?? [] : []}
+      proposalsLoading={channel.kind === "all" ? proposals.isLoading : false}
+      onSendMessage={
+        scope.kind !== "none"
+          ? (text) => postMessage.mutateAsync(text)
+          : undefined
+      }
+      runs={runs}
+      selectedRunId={board.selectedRunId}
+      runLogLoading={runLogQuery.isLoading}
+      onSelectRun={board.setSelectedRunId}
+      liveLog={liveLog}
+      runLog={runLogQuery.data ?? []}
+      onBackToBoard={() => navigate(workspaceBoardPath(resolvedWorkspaceId))}
+      onPlan={task ? () => void board.planTask(task.id) : undefined}
+      onStart={task ? () => void board.startTask(task.id) : undefined}
+      onRequestReview={task ? () => void board.requestTaskReview(task.id) : undefined}
+      onStop={task ? () => void board.stopTask(task.id) : undefined}
+      onMoveToTodo={task ? () => void board.moveToTodo(task.id) : undefined}
+      onMarkDone={task ? () => void board.markDone(task.id) : undefined}
+      onArchive={task ? () => void board.archiveTask(task.id) : undefined}
+      onCleanupWorktree={task ? () => void board.cleanupTaskWorktree(task.id) : undefined}
+      onDelete={
+        task
+          ? () => {
+              void board.deleteTask(task.id).then(() => {
+                navigate(workspaceBoardPath(resolvedWorkspaceId));
+              });
+            }
+          : undefined
+      }
+      onApproveSubtask={
+        task?.parentTaskId
+          ? () =>
+              void board.approveTask({
+                taskId: task.id,
+                teamId: task.teamId,
+                workspaceId: task.workspaceId,
+                parentTaskId: task.parentTaskId
+              })
+          : undefined
+      }
+      onRejectSubtask={
+        task?.parentTaskId
+          ? () => {
+              const reason = window.prompt(
+                `Why reject "${task.title}"? (optional)`,
+                ""
+              );
+              if (reason === null) {
+                return;
+              }
+              void board.rejectTask({
+                taskId: task.id,
+                teamId: task.teamId,
+                workspaceId: task.workspaceId,
+                parentTaskId: task.parentTaskId,
+                reason: reason || undefined
+              });
+            }
+          : undefined
+      }
+      onRetrySubtask={
+        task?.parentTaskId
+          ? () =>
+              void board.retryTask({
+                taskId: task.id,
+                teamId: task.teamId,
+                workspaceId: task.workspaceId,
+                parentTaskId: task.parentTaskId
+              })
+          : undefined
+      }
+      onCancelSubtask={
+        task?.parentTaskId
+          ? () => {
+              if (!window.confirm(`Cancel subtask "${task.title}"?`)) {
+                return;
+              }
+              void board.cancelSubtask({
+                taskId: task.id,
+                teamId: task.teamId,
+                workspaceId: task.workspaceId,
+                parentTaskId: task.parentTaskId
+              });
+            }
+          : undefined
+      }
+      reviewActionBusy={board.isBusy}
+    />
   );
 }
 

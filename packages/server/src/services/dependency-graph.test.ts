@@ -15,6 +15,7 @@ function makeTask(id: string, dependencies: string[] = [], order = 0): Task {
     runnerType: "shell",
     runnerConfig: { type: "shell", command: "echo done" },
     dependencies,
+    taskKind: "user",
     worktree: {
       baseRef: "origin/main",
       branchName: `task/${id}`,

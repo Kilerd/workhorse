@@ -1,12 +1,14 @@
 import type {
   AccountAgent,
   AgentTeam,
+  ChannelMessage,
   CoordinatorProposal,
   Run,
   RunLogEntry,
   Task,
   TaskMessage,
   Workspace,
+  WorkspaceChannel,
   WorkspaceAgent
 } from "./domain.js";
 
@@ -123,11 +125,26 @@ export interface WorkspaceAgentUpdatedEvent {
   agent?: WorkspaceAgent;
 }
 
+export interface WorkspaceChannelUpdatedEvent {
+  type: "workspace.channel.updated";
+  action: "created" | "updated" | "archived";
+  workspaceId: string;
+  channelId: string;
+  channel?: WorkspaceChannel;
+}
+
 export interface TaskMessageCreatedEvent {
   type: "task.message.created";
   workspaceId: string;
   parentTaskId: string;
   message: TaskMessage;
+}
+
+export interface ChannelMessageCreatedEvent {
+  type: "channel.message.created";
+  workspaceId: string;
+  channelId: string;
+  message: ChannelMessage;
 }
 
 export interface WorkspaceProposalCreatedEvent {
@@ -137,10 +154,24 @@ export interface WorkspaceProposalCreatedEvent {
   proposal: CoordinatorProposal;
 }
 
+export interface ChannelProposalCreatedEvent {
+  type: "channel.proposal.created";
+  workspaceId: string;
+  channelId: string;
+  proposal: CoordinatorProposal;
+}
+
 export interface WorkspaceProposalUpdatedEvent {
   type: "workspace.proposal.updated";
   workspaceId: string;
   parentTaskId: string;
+  proposal: CoordinatorProposal;
+}
+
+export interface ChannelProposalUpdatedEvent {
+  type: "channel.proposal.updated";
+  workspaceId: string;
+  channelId: string;
   proposal: CoordinatorProposal;
 }
 
@@ -161,6 +192,10 @@ export type ServerEvent =
   | TeamProposalUpdatedEvent
   | AgentUpdatedEvent
   | WorkspaceAgentUpdatedEvent
+  | WorkspaceChannelUpdatedEvent
   | TaskMessageCreatedEvent
+  | ChannelMessageCreatedEvent
   | WorkspaceProposalCreatedEvent
-  | WorkspaceProposalUpdatedEvent;
+  | WorkspaceProposalUpdatedEvent
+  | ChannelProposalCreatedEvent
+  | ChannelProposalUpdatedEvent;

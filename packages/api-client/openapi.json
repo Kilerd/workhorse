@@ -2290,6 +2290,375 @@
         }
       }
     },
+    "/api/workspaces/{workspaceId}/channels": {
+      "get": {
+        "operationId": "listWorkspaceChannels",
+        "summary": "List visible channels for a workspace",
+        "tags": [
+          "Workspace Channels"
+        ],
+        "responses": {
+          "200": {
+            "description": "Workspace channel collection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceChannelsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Workspace not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/workspaces/{workspaceId}/channels/{channelId}": {
+      "get": {
+        "operationId": "getWorkspaceChannel",
+        "summary": "Get a workspace channel",
+        "tags": [
+          "Workspace Channels"
+        ],
+        "responses": {
+          "200": {
+            "description": "Workspace channel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceChannelResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Channel not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channelId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/workspaces/{workspaceId}/channels/{channelId}/messages": {
+      "get": {
+        "operationId": "listChannelMessages",
+        "summary": "List chat messages for a workspace channel",
+        "tags": [
+          "Workspace Channels"
+        ],
+        "responses": {
+          "200": {
+            "description": "Channel message collection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelMessagesResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Channel not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channelId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "operationId": "postChannelMessage",
+        "summary": "Post a message into a workspace channel",
+        "tags": [
+          "Workspace Channels"
+        ],
+        "responses": {
+          "201": {
+            "description": "Created channel message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelMessageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Channel not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channelId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostChannelMessageBody"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces/{workspaceId}/channels/{channelId}/proposals": {
+      "get": {
+        "operationId": "listChannelProposals",
+        "summary": "List coordinator proposals for a workspace channel",
+        "tags": [
+          "Workspace Channels"
+        ],
+        "responses": {
+          "200": {
+            "description": "Proposal collection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListProposalsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Channel not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channelId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/workspaces/{workspaceId}/channels/{channelId}/proposals/{proposalId}/approve": {
+      "post": {
+        "operationId": "approveChannelProposal",
+        "summary": "Approve a workspace channel proposal",
+        "tags": [
+          "Workspace Channels"
+        ],
+        "responses": {
+          "200": {
+            "description": "Approved proposal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Proposal already decided",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channelId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "proposalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/workspaces/{workspaceId}/channels/{channelId}/proposals/{proposalId}/reject": {
+      "post": {
+        "operationId": "rejectChannelProposal",
+        "summary": "Reject a workspace channel proposal",
+        "tags": [
+          "Workspace Channels"
+        ],
+        "responses": {
+          "200": {
+            "description": "Rejected proposal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Proposal already decided",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channelId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "proposalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
     "/api/workspaces/{workspaceId}/task-messages": {
       "get": {
         "operationId": "listTaskMessages",
@@ -3086,6 +3455,21 @@
           "cancelledAt": {
             "type": "string",
             "description": "Present when a team subtask was explicitly cancelled by a user."
+          },
+          "taskKind": {
+            "oneOf": [
+              {
+                "enum": [
+                  "user"
+                ]
+              },
+              {
+                "enum": [
+                  "channel_backing"
+                ]
+              }
+            ],
+            "description": "Internal visibility bucket for UI-facing vs. system backing tasks. Defaults to `user`."
           },
           "teamId": {
             "type": "string",
@@ -5777,6 +6161,103 @@
         ],
         "description": "An account-level agent definition. Agents are created once and can be\nmounted to multiple workspaces with different roles."
       },
+      "WorkspaceChannel": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/WorkspaceChannelKind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "taskId": {
+            "type": "string",
+            "description": "`#all` uses this to point at its hidden backing coordinator task."
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "archivedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspaceId",
+          "kind",
+          "name",
+          "slug",
+          "createdAt"
+        ]
+      },
+      "WorkspaceChannelKind": {
+        "oneOf": [
+          {
+            "enum": [
+              "all"
+            ]
+          },
+          {
+            "enum": [
+              "task"
+            ]
+          }
+        ]
+      },
+      "ChannelMessage": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "channelId": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string"
+          },
+          "taskId": {
+            "type": "string"
+          },
+          "agentName": {
+            "type": "string"
+          },
+          "senderType": {
+            "$ref": "#/components/schemas/TeamMessageSenderType"
+          },
+          "messageType": {
+            "$ref": "#/components/schemas/TeamMessageType"
+          },
+          "content": {
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/Recordstringstring"
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "channelId",
+          "workspaceId",
+          "agentName",
+          "senderType",
+          "messageType",
+          "content",
+          "createdAt"
+        ]
+      },
       "WorkspaceAgent": {
         "type": "object",
         "properties": {
@@ -5913,6 +6394,63 @@
         },
         "required": [
           "agentId"
+        ]
+      },
+      "ListWorkspaceChannelsParams": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId"
+        ]
+      },
+      "WorkspaceChannelParams": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          },
+          "channelId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId",
+          "channelId"
+        ]
+      },
+      "WorkspaceChannelProposalParams": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          },
+          "channelId": {
+            "type": "string"
+          },
+          "proposalId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId",
+          "channelId",
+          "proposalId"
+        ]
+      },
+      "PostChannelMessageBody": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "maxLength": 10240
+          }
+        },
+        "required": [
+          "content"
         ]
       },
       "ListWorkspaceAgentsParams": {
@@ -6127,6 +6665,124 @@
         "required": [
           "ok",
           "data"
+        ]
+      },
+      "WorkspaceChannelsResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/ListWorkspaceChannelsData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "ListWorkspaceChannelsData": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceChannel"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "WorkspaceChannelResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/WorkspaceChannelData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "WorkspaceChannelData": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "$ref": "#/components/schemas/WorkspaceChannel"
+          }
+        },
+        "required": [
+          "channel"
+        ]
+      },
+      "ChannelMessagesResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/ChannelMessagesData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "ChannelMessagesData": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChannelMessage"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "ChannelMessageResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/ChannelMessageData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "ChannelMessageData": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/ChannelMessage"
+          }
+        },
+        "required": [
+          "item"
         ]
       },
       "WorkspaceAgentResponse": {
@@ -6370,8 +7026,14 @@
             "type": "string",
             "description": "Set for workspace-scoped proposals (new model)."
           },
+          "channelId": {
+            "type": "string"
+          },
           "parentTaskId": {
             "type": "string"
+          },
+          "proposalMode": {
+            "$ref": "#/components/schemas/CoordinatorProposalMode"
           },
           "status": {
             "$ref": "#/components/schemas/CoordinatorProposalStatus"
@@ -6394,11 +7056,26 @@
           "id",
           "teamId",
           "parentTaskId",
+          "proposalMode",
           "status",
           "drafts",
           "createdAt"
         ],
         "description": "A coordinator proposal holds the parsed subtask plan from a coordinator\nrun and waits for human approval before subtasks are actually created."
+      },
+      "CoordinatorProposalMode": {
+        "oneOf": [
+          {
+            "enum": [
+              "top_level_tasks"
+            ]
+          },
+          {
+            "enum": [
+              "subtasks"
+            ]
+          }
+        ]
       },
       "CoordinatorProposalStatus": {
         "oneOf": [

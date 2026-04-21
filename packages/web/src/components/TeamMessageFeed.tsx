@@ -11,6 +11,14 @@ interface Props {
   loading?: boolean;
   error?: string | null;
   onSendMessage?(content: string): Promise<unknown>;
+  title?: string;
+  description?: string;
+  emptyStateLabel?: string;
+  composerLabel?: string;
+  placeholder?: string;
+  unavailablePlaceholder?: string;
+  footerHint?: string;
+  fullHeight?: boolean;
 }
 
 interface ArtifactPayload {
@@ -68,7 +76,15 @@ export function TeamMessageFeed({
   messages,
   loading = false,
   error = null,
-  onSendMessage
+  onSendMessage,
+  title = "Coordination Feed",
+  description = "Live execution context for the current coordination thread.",
+  emptyStateLabel = "No coordination messages yet for this task thread.",
+  composerLabel = "Human reply",
+  placeholder = "Leave feedback for the coordinator or running agents...",
+  unavailablePlaceholder = "Coordination message input is unavailable.",
+  footerHint = "Press Ctrl/Cmd+Enter to send.",
+  fullHeight = false
 }: Props) {
   const [draft, setDraft] = useState("");
   const [submitState, setSubmitState] = useState<"idle" | "sending" | "failed">("idle");
@@ -103,14 +119,19 @@ export function TeamMessageFeed({
   }
 
   return (
-    <section className="grid gap-3">
+    <section
+      className={cn(
+        "grid gap-3",
+        fullHeight && "h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto]"
+      )}
+    >
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="section-kicker m-0">
-            Coordination Feed
+            {title}
           </p>
           <p className="m-0 mt-1 text-[0.82rem] text-[var(--muted)]">
-            Live execution context for the current coordination thread.
+            {description}
           </p>
         </div>
       </div>
@@ -121,10 +142,15 @@ export function TeamMessageFeed({
         <div className="text-[0.76rem] text-[var(--danger)]">{error}</div>
       ) : orderedMessages.length === 0 ? (
         <div className="rounded-[var(--radius)] border border-dashed border-border px-4 py-5 text-[0.84rem] text-[var(--muted)]">
-          No coordination messages yet for this task thread.
+          {emptyStateLabel}
         </div>
       ) : (
-        <div className="grid max-h-[22rem] gap-2 overflow-y-auto pr-1">
+        <div
+          className={cn(
+            "grid gap-2 overflow-y-auto pr-1",
+            fullHeight ? "min-h-0" : "max-h-[22rem]"
+          )}
+        >
           {orderedMessages.map((message) => {
             const artifact = message.messageType === "artifact"
               ? parseArtifactPayload(message.content)
@@ -233,7 +259,7 @@ export function TeamMessageFeed({
       <div className="grid gap-1.5">
         <div className="flex items-center justify-between gap-2">
           <span className="font-mono text-[0.62rem] uppercase tracking-[0.08em] text-[var(--muted)]">
-            Human reply
+            {composerLabel}
           </span>
           <span className="text-[0.74rem] text-[var(--muted)]">
             {titleCase(onSendMessage ? "feedback message" : "unavailable")}
@@ -266,15 +292,14 @@ export function TeamMessageFeed({
             disabled={!onSendMessage || submitState === "sending"}
             placeholder={
               onSendMessage
-                ? "Leave feedback for the coordinator or running agents..."
-                : "Coordination message input is unavailable."
+                ? placeholder
+                : unavailablePlaceholder
             }
             className="min-h-20 resize-y"
           />
           <div className="flex flex-wrap items-center justify-between gap-2 text-[0.68rem] text-[var(--muted)]">
             <span>
-              Press Ctrl/Cmd+Enter to send. v1 records the message only. {draft.length}/
-              {MAX_HUMAN_TEAM_MESSAGE_LENGTH}
+              {footerHint} {draft.length}/{MAX_HUMAN_TEAM_MESSAGE_LENGTH}
             </span>
             <Button
               type="submit"

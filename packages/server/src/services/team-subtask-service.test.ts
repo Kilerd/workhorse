@@ -13,6 +13,7 @@ function makeTask(overrides: Partial<{ id: string; title: string }> = {}) {
     runnerType: "claude" as const,
     runnerConfig: { type: "claude" as const, prompt: "" },
     dependencies: [],
+    taskKind: "user" as const,
     worktree: { baseRef: "origin/main", branchName: "team/t1/impl", status: "ready" as const },
     teamId: "team-1",
     parentTaskId: "parent-1",

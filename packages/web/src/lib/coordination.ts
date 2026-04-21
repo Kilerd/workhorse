@@ -1,6 +1,7 @@
 import type {
   AccountAgent,
   AgentTeam,
+  ChannelMessage,
   TaskMessage,
   TeamMessage,
   Workspace,
@@ -11,13 +12,16 @@ import type { DisplayTask } from "./task-view";
 
 export type CoordinationMessage = Pick<
   TaskMessage,
-  "id" | "parentTaskId" | "taskId" | "agentName" | "senderType" | "messageType" | "content" | "createdAt"
->;
+  "id" | "taskId" | "agentName" | "senderType" | "messageType" | "content" | "createdAt"
+> & {
+  parentTaskId?: string;
+};
 
 export type CoordinationScope =
   | { kind: "none" }
   | { kind: "legacy_team"; teamId: string; parentTaskId: string }
-  | { kind: "workspace"; workspaceId: string; parentTaskId: string };
+  | { kind: "workspace"; workspaceId: string; parentTaskId: string }
+  | { kind: "workspace_channel"; workspaceId: string; channelId: string };
 
 export function getCoordinatorWorkspaceAgent(
   agents: WorkspaceAgent[]
@@ -73,11 +77,11 @@ export function isCoordinationSubtask(task: DisplayTask, scope: CoordinationScop
 }
 
 export function normalizeCoordinationMessages(
-  messages: Array<TaskMessage | TeamMessage>
+  messages: Array<ChannelMessage | TaskMessage | TeamMessage>
 ): CoordinationMessage[] {
   return messages.map((message) => ({
     id: message.id,
-    parentTaskId: message.parentTaskId,
+    parentTaskId: "parentTaskId" in message ? message.parentTaskId : undefined,
     taskId: message.taskId,
     agentName: message.agentName,
     senderType: message.senderType,

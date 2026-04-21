@@ -68,7 +68,12 @@ import {
   validateListTaskMessagesParams,
   validateListTaskMessagesQuery,
   validatePostTaskMessageParams,
-  validatePostTaskMessageBody
+  validatePostTaskMessageBody,
+  validateListWorkspaceChannelsParams,
+  validateWorkspaceChannelSlugParams,
+  validateWorkspaceChannelParams,
+  validateWorkspaceChannelProposalParams,
+  validatePostChannelMessageBody
 } from "@workhorse/contracts";
 import type {
   ListTeamMessagesParams,
@@ -768,6 +773,124 @@ export function createApp(
     const workspace = service.updateWorkspaceConfig(params.workspaceId, body);
     return c.json(ok({ workspace }));
   });
+
+  // Workspace channels routes
+  app.get("/api/workspaces/:workspaceId/channels", (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateListWorkspaceChannelsParams,
+      "Invalid workspace params"
+    );
+    const items = service.listWorkspaceChannelsByWorkspace(params.workspaceId);
+    return c.json(ok({ items }));
+  });
+
+  app.get("/api/workspaces/:workspaceId/channels/by-slug/:channelSlug", (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateWorkspaceChannelSlugParams,
+      "Invalid workspace channel slug params"
+    );
+    const channel = service.getWorkspaceChannelBySlug(
+      params.workspaceId,
+      params.channelSlug
+    );
+    return c.json(ok({ channel }));
+  });
+
+  app.get("/api/workspaces/:workspaceId/channels/:channelId", (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateWorkspaceChannelParams,
+      "Invalid workspace channel params"
+    );
+    const channel = service.getWorkspaceChannelByWorkspace(
+      params.workspaceId,
+      params.channelId
+    );
+    return c.json(ok({ channel }));
+  });
+
+  app.get("/api/workspaces/:workspaceId/channels/:channelId/messages", (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateWorkspaceChannelParams,
+      "Invalid workspace channel params"
+    );
+    const items = service.listChannelMessagesByWorkspace(
+      params.workspaceId,
+      params.channelId
+    );
+    return c.json(ok({ items }));
+  });
+
+  app.post("/api/workspaces/:workspaceId/channels/:channelId/messages", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateWorkspaceChannelParams,
+      "Invalid workspace channel params"
+    );
+    const body = validateOrThrow(
+      await readOptionalJsonBody(c.req, "Invalid channel message body"),
+      validatePostChannelMessageBody,
+      "Invalid channel message body"
+    );
+    const item = await service.postChannelMessageByWorkspace(
+      params.workspaceId,
+      params.channelId,
+      body
+    );
+    return c.json(ok({ item }), 201);
+  });
+
+  app.get("/api/workspaces/:workspaceId/channels/:channelId/proposals", (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateWorkspaceChannelParams,
+      "Invalid workspace channel params"
+    );
+    const items = service.listChannelProposalsByWorkspace(
+      params.workspaceId,
+      params.channelId
+    );
+    return c.json(ok({ items }));
+  });
+
+  app.post(
+    "/api/workspaces/:workspaceId/channels/:channelId/proposals/:proposalId/approve",
+    async (c) => {
+      const params = validateOrThrow(
+        c.req.param(),
+        validateWorkspaceChannelProposalParams,
+        "Invalid channel proposal params"
+      );
+      await service.approveChannelProposalByWorkspace(
+        params.workspaceId,
+        params.channelId,
+        params.proposalId
+      );
+      const proposal = service.getProposalByWorkspace(params.workspaceId, params.proposalId);
+      return c.json(ok({ proposal }));
+    }
+  );
+
+  app.post(
+    "/api/workspaces/:workspaceId/channels/:channelId/proposals/:proposalId/reject",
+    (c) => {
+      const params = validateOrThrow(
+        c.req.param(),
+        validateWorkspaceChannelProposalParams,
+        "Invalid channel proposal params"
+      );
+      service.rejectChannelProposalByWorkspace(
+        params.workspaceId,
+        params.channelId,
+        params.proposalId
+      );
+      const proposal = service.getProposalByWorkspace(params.workspaceId, params.proposalId);
+      return c.json(ok({ proposal }));
+    }
+  );
 
   // Task Messages routes (Phase 4)
   app.get("/api/workspaces/:workspaceId/task-messages", (c) => {

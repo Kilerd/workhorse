@@ -4,6 +4,7 @@ import type {
   AccountAgent,
   AgentTeam,
   AgentRole,
+  ChannelMessage,
   AppState,
   CoordinatorProposal,
   GlobalSettings,
@@ -19,6 +20,7 @@ import type {
   Task,
   TaskColumn,
   TeamMessage,
+  WorkspaceChannel,
   WorkspaceGitRef,
   Workspace
 } from "./domain.js";
@@ -532,6 +534,53 @@ export interface WorkspaceCancelSubtaskParams {
   taskId: string;
 }
 
+// === Workspace Channels ===
+
+export interface ListWorkspaceChannelsParams {
+  workspaceId: string;
+}
+
+export interface WorkspaceChannelParams {
+  workspaceId: string;
+  channelId: string;
+}
+
+export interface WorkspaceChannelSlugParams {
+  workspaceId: string;
+  channelSlug: string;
+}
+
+export interface WorkspaceChannelProposalParams {
+  workspaceId: string;
+  channelId: string;
+  proposalId: string;
+}
+
+export interface PostChannelMessageBody {
+  content: string & tags.MaxLength<10_240>;
+}
+
+export interface ListWorkspaceChannelsData {
+  items: WorkspaceChannel[];
+}
+
+export interface WorkspaceChannelData {
+  channel: WorkspaceChannel;
+}
+
+export interface ChannelMessagesData {
+  items: ChannelMessage[];
+}
+
+export interface ChannelMessageData {
+  item: ChannelMessage;
+}
+
+export type WorkspaceChannelsResponse = ApiSuccess<ListWorkspaceChannelsData>;
+export type WorkspaceChannelResponse = ApiSuccess<WorkspaceChannelData>;
+export type ChannelMessagesResponse = ApiSuccess<ChannelMessagesData>;
+export type ChannelMessageResponse = ApiSuccess<ChannelMessageData>;
+
 // === Account-level Agents (Phase 4) ===
 
 export interface CreateAgentBody {
@@ -728,11 +777,18 @@ export type SchemaName =
   | "TeamMessagesResponse"
   | "TeamMessageResponse"
   | "AccountAgent"
+  | "WorkspaceChannel"
+  | "ChannelMessage"
   | "WorkspaceAgent"
   | "TaskMessage"
   | "CreateAgentBody"
   | "UpdateAgentBody"
   | "AgentParams"
+  | "ListWorkspaceChannelsParams"
+  | "WorkspaceChannelParams"
+  | "WorkspaceChannelSlugParams"
+  | "WorkspaceChannelProposalParams"
+  | "PostChannelMessageBody"
   | "ListWorkspaceAgentsParams"
   | "MountAgentBody"
   | "WorkspaceAgentParams"
@@ -746,6 +802,10 @@ export type SchemaName =
   | "AgentResponse"
   | "ListAgentsResponse"
   | "DeleteAgentResponse"
+  | "WorkspaceChannelsResponse"
+  | "WorkspaceChannelResponse"
+  | "ChannelMessagesResponse"
+  | "ChannelMessageResponse"
   | "WorkspaceAgentResponse"
   | "ListWorkspaceAgentsResponse"
   | "TaskMessagesResponse"
@@ -1839,6 +1899,172 @@ export const endpointRegistry: EndpointSpec[] = [
       {
         status: 404,
         description: "Workspace not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "listWorkspaceChannels",
+    method: "get",
+    path: "/api/workspaces/{workspaceId}/channels",
+    summary: "List visible channels for a workspace",
+    tag: "Workspace Channels",
+    paramsSchema: "ListWorkspaceChannelsParams",
+    responses: [
+      {
+        status: 200,
+        description: "Workspace channel collection",
+        schema: "WorkspaceChannelsResponse"
+      },
+      {
+        status: 404,
+        description: "Workspace not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "getWorkspaceChannelBySlug",
+    method: "get",
+    path: "/api/workspaces/{workspaceId}/channels/by-slug/{channelSlug}",
+    summary: "Get a workspace channel by slug",
+    tag: "Workspace Channels",
+    paramsSchema: "WorkspaceChannelSlugParams",
+    responses: [
+      {
+        status: 200,
+        description: "Workspace channel",
+        schema: "WorkspaceChannelResponse"
+      },
+      {
+        status: 404,
+        description: "Channel not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "getWorkspaceChannel",
+    method: "get",
+    path: "/api/workspaces/{workspaceId}/channels/{channelId}",
+    summary: "Get a workspace channel",
+    tag: "Workspace Channels",
+    paramsSchema: "WorkspaceChannelParams",
+    responses: [
+      {
+        status: 200,
+        description: "Workspace channel",
+        schema: "WorkspaceChannelResponse"
+      },
+      {
+        status: 404,
+        description: "Channel not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "listChannelMessages",
+    method: "get",
+    path: "/api/workspaces/{workspaceId}/channels/{channelId}/messages",
+    summary: "List chat messages for a workspace channel",
+    tag: "Workspace Channels",
+    paramsSchema: "WorkspaceChannelParams",
+    responses: [
+      {
+        status: 200,
+        description: "Channel message collection",
+        schema: "ChannelMessagesResponse"
+      },
+      {
+        status: 404,
+        description: "Channel not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "postChannelMessage",
+    method: "post",
+    path: "/api/workspaces/{workspaceId}/channels/{channelId}/messages",
+    summary: "Post a message into a workspace channel",
+    tag: "Workspace Channels",
+    paramsSchema: "WorkspaceChannelParams",
+    bodySchema: "PostChannelMessageBody",
+    responses: [
+      {
+        status: 201,
+        description: "Created channel message",
+        schema: "ChannelMessageResponse"
+      },
+      {
+        status: 400,
+        description: "Validation error",
+        schema: "ApiError"
+      },
+      {
+        status: 404,
+        description: "Channel not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "listChannelProposals",
+    method: "get",
+    path: "/api/workspaces/{workspaceId}/channels/{channelId}/proposals",
+    summary: "List coordinator proposals for a workspace channel",
+    tag: "Workspace Channels",
+    paramsSchema: "WorkspaceChannelParams",
+    responses: [
+      {
+        status: 200,
+        description: "Proposal collection",
+        schema: "ListProposalsResponse"
+      },
+      {
+        status: 404,
+        description: "Channel not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "approveChannelProposal",
+    method: "post",
+    path: "/api/workspaces/{workspaceId}/channels/{channelId}/proposals/{proposalId}/approve",
+    summary: "Approve a workspace channel proposal",
+    tag: "Workspace Channels",
+    paramsSchema: "WorkspaceChannelProposalParams",
+    responses: [
+      {
+        status: 200,
+        description: "Approved proposal",
+        schema: "ProposalResponse"
+      },
+      {
+        status: 409,
+        description: "Proposal already decided",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "rejectChannelProposal",
+    method: "post",
+    path: "/api/workspaces/{workspaceId}/channels/{channelId}/proposals/{proposalId}/reject",
+    summary: "Reject a workspace channel proposal",
+    tag: "Workspace Channels",
+    paramsSchema: "WorkspaceChannelProposalParams",
+    responses: [
+      {
+        status: 200,
+        description: "Rejected proposal",
+        schema: "ProposalResponse"
+      },
+      {
+        status: 409,
+        description: "Proposal already decided",
         schema: "ApiError"
       }
     ]
