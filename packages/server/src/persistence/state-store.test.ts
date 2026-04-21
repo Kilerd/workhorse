@@ -530,6 +530,57 @@ describe("StateStore — Workspace Agent Mounting (Phase 4)", () => {
     expect(list[0]?.role).toBe("worker");
   });
 
+  it("preserves mounted workspace agents across state saves", async () => {
+    const store = await storeWithWorkspace();
+
+    store.createAgent(makeAgent());
+    store.mountAgentToWorkspace(WS, "agent-a", "coordinator");
+    store.setTasks([makeTask(WS)]);
+    await store.save();
+
+    expect(store.listWorkspaceAgents(WS)).toEqual([
+      expect.objectContaining({
+        id: "agent-a",
+        role: "coordinator"
+      })
+    ]);
+  });
+
+  it("preserves workspace-scoped proposals across state saves", async () => {
+    const store = await storeWithWorkspace();
+    const task = makeTask(WS);
+    store.setTasks([task]);
+    await store.save();
+
+    store.saveProposal({
+      id: "proposal-1",
+      teamId: null,
+      workspaceId: WS,
+      parentTaskId: task.id,
+      status: "pending",
+      drafts: [
+        {
+          title: "Task A",
+          description: "First task",
+          assignedAgent: "agent-a",
+          dependencies: []
+        }
+      ],
+      createdAt: new Date().toISOString()
+    });
+
+    store.setTasks([{ ...task, description: "updated" }]);
+    await store.save();
+
+    expect(store.listProposalsByWorkspace(WS, task.id)).toEqual([
+      expect.objectContaining({
+        id: "proposal-1",
+        workspaceId: WS,
+        parentTaskId: task.id
+      })
+    ]);
+  });
+
   it("retrieves a single workspace agent", async () => {
     const store = await storeWithWorkspace();
 

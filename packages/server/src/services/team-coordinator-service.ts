@@ -25,6 +25,11 @@ export interface CoordinatorSubtaskDraft {
   dependencies: string[];
 }
 
+export interface CoordinatorChannelResult {
+  reply: string;
+  tasks: CoordinatorSubtaskDraft[];
+}
+
 export interface TeamMessageContext {
   fromAgentId: string;
   toAgentId?: string;
@@ -113,6 +118,12 @@ function extractJsonCandidates(output: string): string[] {
     candidates.push(normalized.slice(firstBracket, lastBracket + 1).trim());
   }
 
+  const firstBrace = normalized.indexOf("{");
+  const lastBrace = normalized.lastIndexOf("}");
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    candidates.push(normalized.slice(firstBrace, lastBrace + 1).trim());
+  }
+
   return [...new Set(candidates)];
 }
 
@@ -177,6 +188,35 @@ export function buildCoordinatorPrompt(input: CoordinatorPromptInput): string {
   ].join("\n");
 }
 
+export function buildWorkspaceChannelPrompt(input: {
+  agents: TeamAgentContext[];
+  transcript: string;
+}): string {
+  const transcript = ensureTrimmedValue(input.transcript, "transcript");
+  const agentLines = input.agents.length > 0
+    ? input.agents.map(formatAgent)
+    : ["- none configured"];
+
+  return [
+    SYSTEM_CONTEXT_MARKER,
+    "Workspace agents:",
+    ...agentLines,
+    "",
+    "You are the workspace coordinator for channel #all.",
+    "Two response modes are allowed:",
+    "1. For normal conversation, reply with plain text only.",
+    '2. Only when you are ready to propose new top-level tasks, reply in JSON with the exact shape: {"reply":"...", "tasks":[{ "title": "...", "description": "...", "assignedAgent": "agent-name", "dependencies": ["other-task-title"] }]}',
+    "If the user is just chatting, asking questions, or clarifying scope, do not emit JSON and do not create tasks yet.",
+    "Keep `reply` conversational and concise. Use exact configured agent names in `assignedAgent` whenever you emit tasks.",
+    YOUR_TASK_MARKER,
+    transcript
+  ].join("\n");
+}
+
+function buildProposalReply(count: number): string {
+  return `I drafted ${count} task${count === 1 ? "" : "s"} for approval.`;
+}
+
 export function parseCoordinatorSubtasks(output: string): CoordinatorSubtaskDraft[] {
   const candidates = extractJsonCandidates(output);
   let lastError: unknown = null;
@@ -221,7 +261,12 @@ export function parseCoordinatorSubtasks(output: string): CoordinatorSubtaskDraf
         };
       });
     } catch (error) {
-      lastError = error;
+      if (
+        error instanceof CoordinatorSubtaskParseError ||
+        !(lastError instanceof CoordinatorSubtaskParseError)
+      ) {
+        lastError = error;
+      }
     }
   }
 
@@ -232,6 +277,70 @@ export function parseCoordinatorSubtasks(output: string): CoordinatorSubtaskDraf
   throw new CoordinatorSubtaskParseError(
     "Coordinator output did not contain a valid JSON subtask array"
   );
+}
+
+export function parseCoordinatorChannelResult(
+  output: string
+): CoordinatorChannelResult {
+  const normalized = output.trim();
+  if (!normalized) {
+    throw new CoordinatorSubtaskParseError("Coordinator output cannot be empty");
+  }
+
+  const candidates = extractJsonCandidates(output);
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate) as unknown;
+      if (Array.isArray(parsed)) {
+        const tasks = parseCoordinatorSubtasks(JSON.stringify(parsed));
+        return {
+          reply: buildProposalReply(tasks.length),
+          tasks
+        };
+      }
+
+      if (!parsed || typeof parsed !== "object") {
+        throw new CoordinatorSubtaskParseError(
+          "Coordinator output JSON must be an object or array"
+        );
+      }
+
+      const record = parsed as Record<string, unknown>;
+      const tasks = record.tasks == null ? [] : parseCoordinatorSubtasks(JSON.stringify(record.tasks));
+      const replySource =
+        typeof record.reply === "string"
+          ? record.reply
+          : typeof record.message === "string"
+            ? record.message
+            : typeof record.content === "string"
+              ? record.content
+              : "";
+      const reply = replySource.trim();
+
+      if (reply) {
+        return { reply, tasks };
+      }
+
+      if (tasks.length > 0) {
+        return {
+          reply: buildProposalReply(tasks.length),
+          tasks
+        };
+      }
+
+      throw new CoordinatorSubtaskParseError(
+        "Coordinator response JSON must include a reply string or tasks"
+      );
+    } catch {
+      // Fall back to plain-text chat when the coordinator did not return structured JSON.
+    }
+  }
+
+  return {
+    reply: normalized,
+    tasks: []
+  };
 }
 
 export function buildSubtaskPrompt(input: SubtaskPromptInput): string {

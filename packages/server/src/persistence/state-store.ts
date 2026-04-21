@@ -1274,6 +1274,24 @@ export class StateStore {
   // prepare/run pattern is simpler and faster for bulk operations.
   private persistState(state: AppState): void {
     const persist = this.sqlite.transaction(() => {
+      const workspaceIds = new Set(state.workspaces.map((workspace) => workspace.id));
+      const taskIds = new Set(state.tasks.map((task) => task.id));
+      const preservedWorkspaceAgents = this.db
+        .select()
+        .from(schema.workspaceAgents)
+        .all()
+        .filter((row) => workspaceIds.has(row.workspaceId));
+      const preservedWorkspaceProposals = this.db
+        .select()
+        .from(schema.coordinatorProposals)
+        .all()
+        .filter(
+          (row) =>
+            row.workspaceId != null &&
+            workspaceIds.has(row.workspaceId) &&
+            taskIds.has(row.parentTaskId)
+        );
+
       // Defer FK constraint checks until COMMIT so the delete-all + re-insert
       // pattern doesn't produce intermediate FK violations.
       this.sqlite.prepare("PRAGMA defer_foreign_keys = ON").run();
@@ -1304,6 +1322,15 @@ export class StateStore {
             row.createdAt,
             row.updatedAt
           );
+      }
+
+      for (const row of preservedWorkspaceAgents) {
+        this.sqlite
+          .prepare(
+            `INSERT INTO workspace_agents (workspace_id, agent_id, role, created_at)
+             VALUES (?, ?, ?, ?)`
+          )
+          .run(row.workspaceId, row.agentId, row.role, row.createdAt);
       }
 
       // Runs: delete before tasks because runs.task_id REFERENCES tasks(id).
@@ -1382,6 +1409,24 @@ export class StateStore {
       this.sqlite
         .prepare("DELETE FROM run_log_entries WHERE run_id NOT IN (SELECT id FROM runs)")
         .run();
+
+      for (const row of preservedWorkspaceProposals) {
+        this.sqlite
+          .prepare(
+            `INSERT INTO coordinator_proposals (id, team_id, workspace_id, parent_task_id, status, drafts, created_at, decided_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+          )
+          .run(
+            row.id,
+            row.teamId ?? null,
+            row.workspaceId,
+            row.parentTaskId,
+            row.status,
+            row.drafts,
+            row.createdAt,
+            row.decidedAt ?? null
+          );
+      }
     });
 
     persist();

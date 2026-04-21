@@ -70,6 +70,36 @@ class HoldingRunner implements RunnerAdapter {
   }
 }
 
+class CoordinatorTextRunner implements RunnerAdapter {
+  public readonly type = "claude" as const;
+
+  public readonly contexts: RunnerStartContext[] = [];
+
+  public constructor(private readonly reply: string) {}
+
+  public async start(
+    context: RunnerStartContext,
+    hooks: RunnerLifecycleHooks
+  ): Promise<RunnerControl> {
+    this.contexts.push(context);
+    setTimeout(async () => {
+      await hooks.onOutput({
+        kind: "agent",
+        text: this.reply,
+        stream: "stdout",
+        title: "Coordinator reply",
+        source: "Claude CLI"
+      });
+      await hooks.onExit({ status: "succeeded", exitCode: 0 });
+    }, 10);
+
+    return {
+      command: "claude (coordinator text mock)",
+      async stop() {}
+    };
+  }
+}
+
 function createCodexAppServerStub(
   quota: HealthCodexQuotaData | null = null,
   overrides: {
@@ -501,6 +531,66 @@ describe("workhorse runtime", () => {
     const listPayload = await listResponse.json();
     expect(listPayload.data.items).toHaveLength(1);
     expect(listPayload.data.items[0]?.senderType).toBe("human");
+  });
+
+  it("treats plain-text workspace coordinator replies as chat instead of a parse error", async () => {
+    const coordinatorRunner = new CoordinatorTextRunner("你好，我是这个 workspace 的 coordinator。");
+    const codexServer = createCodexAppServerStub();
+    const { service, workspaceDir } = await createRuntime({
+      codexAppServer: codexServer,
+      runners: {
+        claude: coordinatorRunner,
+        shell: new ShellRunner(),
+        codex: new CodexAcpRunner(codexServer)
+      }
+    });
+    const workspace = await createWorkspace(service, workspaceDir);
+    const coordinator = service.createAgent({
+      name: "Workspace coordinator",
+      runnerConfig: {
+        type: "claude",
+        prompt: "Coordinate work"
+      }
+    });
+    service.mountAgent(workspace.id, {
+      agentId: coordinator.id,
+      role: "coordinator"
+    });
+
+    const task = await service.createTask({
+      title: "Workhorse Coordinator",
+      description: [
+        "--- SYSTEM CONTEXT ---",
+        "Workspace agents:",
+        "- coordinator: Codex worker (codex)",
+        "",
+        "--- YOUR TASK ---",
+        "[human/context] User: 你好啊，你是谁？"
+      ].join("\n"),
+      workspaceId: workspace.id,
+      column: "todo",
+      runnerType: "shell",
+      runnerConfig: {
+        type: "shell",
+        command: "echo should-be-overridden"
+      }
+    });
+
+    await service.startTask(task.id);
+    await waitForRunToFinish(service, task.id);
+
+    const messages = service.listTaskMessagesByWorkspace(workspace.id, task.id);
+    const proposals = service.listProposalsByWorkspace(workspace.id, { parentTaskId: task.id });
+    expect(messages).toEqual([
+      expect.objectContaining({
+        parentTaskId: task.id,
+        agentName: "Workspace coordinator",
+        senderType: "agent",
+        messageType: "context",
+        content: "你好，我是这个 workspace 的 coordinator。"
+      })
+    ]);
+    expect(proposals).toEqual([]);
   });
 
   it("rejects posting a human team message to a non-parent task thread", async () => {

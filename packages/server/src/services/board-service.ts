@@ -91,9 +91,11 @@ import { TaskScheduler } from "./task-scheduler.js";
 import {
   CoordinatorSubtaskParseError,
   buildCoordinatorPrompt,
+  buildWorkspaceChannelPrompt,
   buildSubtaskPrompt,
   buildTeamAgentMessageEvent,
   buildTeamTaskCreatedEvent,
+  parseCoordinatorChannelResult,
   parseCoordinatorSubtasks,
   truncateTeamMessagePayload,
   type TeamAgentContext
@@ -403,13 +405,9 @@ export class BoardService {
     agents: WorkspaceAgent[]
   ): Pick<StartTaskOptions, "runnerConfigOverride" | "runMetadata"> {
     const coordinator = this.resolveCoordinator(agents);
-    const userPromptParts = [
-      this.extractRunnerPrompt(coordinator.runnerConfig),
-      this.resolveUserTaskPrompt(task)
-    ].filter((value): value is string => Boolean(value?.trim()));
-    const prompt = buildCoordinatorPrompt({
+    const prompt = buildWorkspaceChannelPrompt({
       agents: this.buildAgentContexts(agents),
-      userPrompt: userPromptParts.join("\n\n")
+      transcript: this.buildWorkspaceCoordinatorTranscript(task, coordinator)
     });
 
     return {
@@ -421,6 +419,34 @@ export class BoardService {
         parentTaskId: task.id
       }
     };
+  }
+
+  private buildWorkspaceCoordinatorTranscript(
+    task: Task,
+    coordinator: WorkspaceAgent
+  ): string {
+    const entries: string[] = [];
+    const coordinatorPrompt = this.extractRunnerPrompt(coordinator.runnerConfig);
+    if (coordinatorPrompt) {
+      entries.push(`[system/context] Coordinator instructions: ${coordinatorPrompt}`);
+    }
+
+    const userPrompt = task.description.trim() || task.title.trim();
+    if (userPrompt.trim()) {
+      entries.push(`[human/context] User: ${userPrompt.trim()}`);
+    }
+
+    for (const message of this.store.listTaskMessages(task.id)) {
+      const sender =
+        message.senderType === "human"
+          ? "User"
+          : message.senderType === "agent"
+            ? message.agentName
+            : "System";
+      entries.push(`[${message.senderType}/${message.messageType}] ${sender}: ${message.content}`);
+    }
+
+    return entries.length > 0 ? entries.join("\n\n") : "No prior conversation yet.";
   }
 
   private buildSubtaskStartOptionsWs(
@@ -566,8 +592,12 @@ export class BoardService {
   }
 
   private async handleTeamRunFinished(task: Task, run: Run): Promise<void> {
+    const isWorkspaceCoordinatorTask =
+      !task.teamId &&
+      !task.parentTaskId &&
+      this.store.listWorkspaceAgents(task.workspaceId).some((agent) => agent.role === "coordinator");
     const isWorkspacePath =
-      !task.teamId && Boolean(run.metadata?.workspaceId);
+      !task.teamId && (Boolean(run.metadata?.workspaceId) || isWorkspaceCoordinatorTask);
     if (!task.teamId && !isWorkspacePath) {
       return;
     }
@@ -577,7 +607,10 @@ export class BoardService {
       return;
     }
 
-    if (run.status !== "succeeded" || run.metadata?.trigger !== "team_coordinator") {
+    const isCoordinatorRun =
+      run.metadata?.trigger === "team_coordinator" ||
+      (isWorkspaceCoordinatorTask && !run.metadata?.trigger);
+    if (run.status !== "succeeded" || !isCoordinatorRun) {
       return;
     }
 
@@ -633,15 +666,28 @@ export class BoardService {
       }
     } else {
       // Workspace-agent path
-      const workspaceId = ensure(
-        run.metadata?.workspaceId,
-        500,
-        "MISSING_WORKSPACE_ID",
-        "Run metadata missing workspaceId in workspace coordinator path"
-      );
+      const workspaceId = run.metadata?.workspaceId ?? task.workspaceId;
       try {
+        const agents = this.store.listWorkspaceAgents(workspaceId);
+        const coordinator = this.resolveCoordinator(agents);
         const output = await this.extractCoordinatorOutput(run.id);
-        const drafts = parseCoordinatorSubtasks(output);
+        const result = parseCoordinatorChannelResult(output);
+
+        this.publishTeamThreadMessage({
+          workspaceId,
+          parentTaskId: task.id,
+          taskId: task.id,
+          agentName: coordinator.name,
+          fromAgentId: coordinator.id,
+          senderType: "agent",
+          messageType: "context",
+          payload: result.reply,
+          createdAt: new Date().toISOString()
+        });
+
+        if (result.tasks.length === 0) {
+          return;
+        }
 
         const existingPending = this.store
           .listProposalsByWorkspace(workspaceId, task.id)
@@ -660,7 +706,7 @@ export class BoardService {
           workspaceId,
           parentTaskId: task.id,
           status: "pending",
-          drafts,
+          drafts: result.tasks,
           createdAt: new Date().toISOString()
         };
         this.store.saveProposal(proposal);
@@ -1811,8 +1857,12 @@ export class BoardService {
     taskId: string,
     input: StartTaskBody = {}
   ): Promise<{ task: Task; run: Run }> {
+    const task = this.requireTask(taskId);
+    const teamOptions = this.resolveTeamStartOptions(task);
     return this.startTaskInternal(taskId, {
-      targetOrder: input.order
+      targetOrder: input.order,
+      runnerConfigOverride: teamOptions?.runnerConfigOverride,
+      runMetadata: teamOptions?.runMetadata
     });
   }
 
