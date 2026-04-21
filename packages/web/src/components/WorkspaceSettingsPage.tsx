@@ -160,7 +160,7 @@ export function WorkspaceSettingsPage({ workspace, taskCount, onSubmit }: Props)
 
       {/* Tab content */}
       <div className="overflow-y-auto">
-        <div className="px-4 py-4">
+        <div className="px-4 py-3.5">
           {activeTab === "general" ? (
             <GeneralTab
               name={name}
@@ -321,7 +321,7 @@ function GeneralTab({
     SANDBOX_MODE_OPTIONS.find((o) => o.value === sandboxMode)?.hint ?? "";
 
   return (
-    <div className="grid gap-5">
+    <div className="grid gap-4">
       <Field label="Name">
         <Input className="max-w-xs" value={name} onChange={(e) => onNameChange(e.target.value)} />
       </Field>
@@ -536,7 +536,7 @@ function MetricCard({
       className={cn(
         "grid gap-3 rounded-[var(--radius-lg)] border p-4",
         accent
-          ? "border-[rgba(255,79,0,0.26)] bg-[rgba(255,79,0,0.06)]"
+          ? "border-[rgba(113,112,255,0.28)] bg-[rgba(113,112,255,0.1)]"
           : "border-border bg-[var(--panel)]"
       )}
     >
@@ -545,8 +545,8 @@ function MetricCard({
           className={cn(
             "grid size-8 place-items-center rounded-full border",
             accent
-              ? "border-[rgba(255,79,0,0.24)] bg-[rgba(255,79,0,0.08)] text-[var(--accent-strong)]"
-              : "border-border bg-[var(--surface-soft)] text-[var(--muted)]"
+              ? "tone-accent"
+              : "tone-muted"
           )}
         >
           <Icon className="size-4" />
@@ -567,8 +567,8 @@ function RoleBadge({ role }: { role: WorkspaceAgent["role"] }) {
       className={cn(
         "inline-flex min-h-7 items-center rounded-full border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em]",
         role === "coordinator"
-          ? "border-[rgba(255,79,0,0.24)] bg-[rgba(255,79,0,0.08)] text-[var(--accent-strong)]"
-          : "border-[rgba(79,92,98,0.2)] bg-[rgba(79,92,98,0.06)] text-[var(--info)]"
+          ? "tone-accent"
+          : "tone-info"
       )}
     >
       {titleCase(role)}
@@ -639,8 +639,8 @@ function AgentsTab({
     : "Mount a coordinator to enable workspace-level delegation in this workspace.";
 
   return (
-    <div className="grid gap-5">
-      <section className="surface-card-faint px-4 py-4">
+    <div className="grid gap-4">
+      <section className="surface-card-faint px-4 py-3.5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="grid gap-1">
             <span className="section-kicker">Workspace Agents</span>
@@ -708,7 +708,7 @@ function AgentsTab({
         ) : null}
       </section>
 
-      <section className="surface-card px-4 py-4">
+      <section className="surface-card px-4 py-3.5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="grid gap-1">
             <span className="section-kicker">Mounted Agents</span>
@@ -772,7 +772,7 @@ function AgentsTab({
                     className={cn(
                       "grid gap-4 px-4 py-4 xl:grid-cols-[minmax(0,1.8fr)_minmax(0,1.1fr)_220px_auto] xl:items-start xl:gap-4 xl:px-5",
                       index > 0 && "border-t border-border",
-                      agent.role === "coordinator" && "bg-[rgba(255,79,0,0.03)]"
+                      agent.role === "coordinator" && "bg-[rgba(113,112,255,0.06)]"
                     )}
                   >
                     <div className="min-w-0">
@@ -854,7 +854,7 @@ function AgentsTab({
         )}
       </section>
 
-      <section className="surface-card px-4 py-4">
+      <section className="surface-card px-4 py-3.5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="grid gap-1">
             <span className="section-kicker">Agent Library</span>
@@ -914,13 +914,13 @@ function AgentsTab({
                     className={cn(
                       "grid gap-3 rounded-[var(--radius-lg)] border p-4 text-left transition-[border-color,background-color,transform] hover:-translate-y-px",
                       isSelected
-                        ? "border-[var(--accent)] bg-[rgba(255,79,0,0.06)]"
+                        ? "border-[rgba(113,112,255,0.38)] bg-[rgba(113,112,255,0.12)]"
                         : "border-border bg-[var(--panel)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)]"
                     )}
                     onClick={() => setSelectedAgentId(agent.id)}
                   >
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="inline-flex min-h-7 items-center rounded-full border border-[rgba(255,79,0,0.24)] bg-[rgba(255,79,0,0.08)] px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] text-[var(--accent-strong)]">
+                      <span className="inline-flex min-h-7 items-center rounded-full border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] tone-accent">
                         Select
                       </span>
                       <span className="inline-flex min-h-7 items-center rounded-full border border-border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] text-[var(--muted)]">
@@ -942,7 +942,7 @@ function AgentsTab({
               })}
             </div>
 
-            <aside className="surface-card-faint grid content-start gap-4 px-4 py-4">
+            <aside className="surface-card-faint grid content-start gap-3.5 px-4 py-3.5">
               <div className="grid gap-1">
                 <span className="section-kicker">Mount Selection</span>
                 <h4 className="m-0 text-[0.98rem] font-semibold">
@@ -1006,7 +1006,7 @@ function AgentsTab({
         )}
       </section>
 
-      <section className="surface-card px-4 py-4">
+      <section className="surface-card px-4 py-3.5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="grid gap-1">
             <span className="section-kicker">Coordination Settings</span>

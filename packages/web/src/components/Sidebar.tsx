@@ -70,7 +70,7 @@ function ActionRow({
     <button
       type="button"
       onClick={onClick}
-      className="flex min-h-10 items-center justify-between rounded-[var(--radius)] border border-transparent px-3 text-left text-[0.86rem] font-medium text-[var(--muted)] transition-[border-color,background-color,color] hover:border-border hover:bg-[var(--surface-hover)] hover:text-foreground"
+      className="flex min-h-9 items-center justify-between rounded-[9px] border border-transparent px-3 text-left text-[0.78rem] font-[510] text-[var(--muted)] transition-[border-color,background-color,color] hover:border-border hover:bg-[var(--surface-hover)] hover:text-foreground"
     >
       <span>{label}</span>
       <span className="flex items-center gap-2">
@@ -98,9 +98,7 @@ function BadgeGroup({ badge, active }: { badge: WorkspaceBadge; active: boolean 
         <span
           className={cn(
             "inline-flex items-center rounded-full border px-2 py-0.5 text-[0.66rem] font-semibold",
-            active
-              ? "border-[rgba(255,79,0,0.22)] bg-[rgba(255,79,0,0.08)] text-[var(--accent-strong)]"
-              : "border-border bg-[var(--panel)] text-[var(--muted)]"
+            active ? "tone-accent" : "tone-muted"
           )}
         >
           Run {badge.inProgress}
@@ -110,9 +108,7 @@ function BadgeGroup({ badge, active }: { badge: WorkspaceBadge; active: boolean 
         <span
           className={cn(
             "inline-flex items-center rounded-full border px-2 py-0.5 text-[0.66rem] font-semibold",
-            active
-              ? "border-[rgba(47,117,88,0.24)] bg-[rgba(47,117,88,0.08)] text-[var(--success)]"
-              : "border-border bg-[var(--panel)] text-[var(--muted)]"
+            active ? "tone-success" : "tone-muted"
           )}
         >
           Review {badge.review}
@@ -140,19 +136,19 @@ function WorkspaceRow({
       type="button"
       onClick={onClick}
       className={cn(
-        "grid w-full gap-2 rounded-[var(--radius)] border px-3 py-3 text-left transition-[border-color,background-color]",
+        "grid w-full gap-1.5 rounded-[10px] border px-3 py-3 text-left transition-[border-color,background-color,transform] hover:-translate-y-px",
         active
-          ? "border-[var(--border-strong)] bg-[var(--surface-soft)]"
+          ? "border-[rgba(113,112,255,0.34)] bg-[rgba(113,112,255,0.12)]"
           : "border-transparent bg-transparent hover:border-border hover:bg-[var(--surface-hover)]"
       )}
     >
       <div className="flex items-start justify-between gap-3">
-        <span className="min-w-0 text-[0.9rem] font-semibold leading-[1.35] text-foreground">
+        <span className="min-w-0 text-[0.84rem] font-semibold leading-[1.3] text-foreground">
           {title}
         </span>
         {badge ? <BadgeGroup badge={badge} active={active} /> : null}
       </div>
-      <span className="truncate text-[0.74rem] text-[var(--muted)]">{subtitle}</span>
+      <span className="truncate text-[0.7rem] text-[var(--muted)]">{subtitle}</span>
     </button>
   );
 }
@@ -173,7 +169,7 @@ function ChannelRow({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex min-h-9 w-full items-center justify-between rounded-[var(--radius)] border px-3 py-2 text-left text-[0.8rem] transition-[border-color,background-color,color]",
+        "flex min-h-8 w-full items-center justify-between rounded-[9px] border px-2.5 py-1.5 text-left text-[0.74rem] transition-[border-color,background-color,color]",
         active
           ? "border-[var(--border-strong)] bg-[var(--surface-soft)] text-foreground"
           : "border-transparent bg-transparent text-[var(--muted)] hover:border-border hover:bg-[var(--surface-hover)] hover:text-foreground"
@@ -221,15 +217,15 @@ export function Sidebar({
 
   if (collapsed) {
     return (
-      <aside className="border-b border-border bg-background lg:h-screen lg:border-b-0 lg:border-r">
-        <div className="flex items-center justify-between px-4 py-4 lg:h-full lg:flex-col lg:justify-start lg:px-3 lg:py-4">
-          <div className="grid size-10 place-items-center rounded-full border border-border bg-[var(--panel)] font-display text-[0.95rem]">
+      <aside className="border-b border-border bg-background backdrop-blur-xl lg:h-screen lg:border-b-0 lg:border-r">
+        <div className="flex items-center justify-between px-3.5 py-3.5 lg:h-full lg:flex-col lg:justify-start lg:px-3 lg:py-4">
+          <div className="grid size-10 place-items-center rounded-[12px] border border-border bg-[var(--surface-soft)] font-display text-[0.76rem] font-[590] tracking-[0.14em] text-[var(--muted-strong)]">
             WH
           </div>
           <button
             type="button"
             onClick={onToggleCollapse}
-            className="grid size-10 place-items-center rounded-full border border-border bg-[var(--panel)] text-[var(--muted)] transition-colors hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] hover:text-foreground"
+            className="grid size-9 place-items-center rounded-[10px] border border-border bg-[var(--surface-soft)] text-[var(--muted)] transition-colors hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] hover:text-foreground"
             title="Expand sidebar"
           >
             <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -242,14 +238,29 @@ export function Sidebar({
   }
 
   return (
-    <aside className="border-b border-border bg-background lg:h-screen lg:border-b-0 lg:border-r">
-      <div className="grid h-full grid-rows-[auto_minmax(0,1fr)_auto] gap-4 px-4 py-4">
-        <div className="flex items-center justify-between">
-          <span className="text-[1rem] font-semibold">Workhorse</span>
+    <aside className="border-b border-border bg-background backdrop-blur-xl lg:h-screen lg:border-b-0 lg:border-r">
+      <div className="grid h-full grid-rows-[auto_minmax(0,1fr)_auto] gap-4 px-3.5 py-4">
+        <div className="relative grid gap-3">
+          <div className="grid gap-1">
+            <span className="section-kicker">Ops cockpit</span>
+            <div className="flex items-center gap-2.5">
+              <div className="grid size-10 place-items-center rounded-[12px] border border-border bg-[var(--surface-soft)] font-display text-[0.76rem] font-[590] tracking-[0.14em] text-[var(--muted-strong)]">
+                WH
+              </div>
+              <div className="grid gap-0.5">
+                <span className="text-[0.94rem] font-[590] tracking-[-0.03em] text-foreground">
+                  Workhorse
+                </span>
+                <p className="m-0 max-w-[11rem] text-[0.7rem] leading-[1.45] text-[var(--muted)]">
+                  Review queues, agent rooms, and workspace orchestration.
+                </p>
+              </div>
+            </div>
+          </div>
           <button
             type="button"
             onClick={onToggleCollapse}
-            className="grid size-8 place-items-center rounded-full border border-border bg-[var(--panel)] text-[var(--muted)] transition-colors hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] hover:text-foreground"
+            className="absolute right-0 top-0 grid size-8 place-items-center rounded-[10px] border border-border bg-[var(--surface-soft)] text-[var(--muted)] transition-colors hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] hover:text-foreground"
             title="Collapse sidebar"
           >
             <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -259,10 +270,13 @@ export function Sidebar({
         </div>
 
         <section className="surface-card grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden">
-          <div className="border-b border-border px-4 py-3">
-            <p className="section-kicker">Workspace channels</p>
+          <div className="border-b border-border px-3.5 py-3">
+            <p className="section-kicker m-0">Workspace channels</p>
+            <p className="mt-1.5 mb-0 text-[0.74rem] leading-[1.45] text-[var(--muted)]">
+              Jump between coordinator rooms and active task threads.
+            </p>
           </div>
-          <nav className="min-h-0 overflow-y-auto p-2">
+          <nav className="min-h-0 overflow-y-auto p-2.5">
             <div className="mb-3">
               <WorkspaceRow
                 title="All workspaces"
@@ -304,7 +318,7 @@ export function Sidebar({
                       onClick={() => onSelectWorkspace(workspace.id)}
                     />
 
-                    <div className="ml-3 grid gap-1 border-l border-border pl-3">
+                    <div className="ml-3 grid gap-1 border-l border-border pl-2.5">
                       {allChannel ? (
                         <ChannelRow
                           label="#all"
@@ -331,7 +345,7 @@ export function Sidebar({
           </nav>
         </section>
 
-        <section className="surface-card-soft px-2 py-2">
+        <section className="surface-card-faint px-2 py-2">
           <div className="grid gap-1">
             <ActionRow label="Add workspace" onClick={onAddWorkspace} />
             <ActionRow

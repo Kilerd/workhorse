@@ -10,7 +10,7 @@ function isThemeMode(value: unknown): value is ThemeMode {
 
 export function getPreferredTheme(): ThemeMode {
   const stored = readStoredValue<ThemeMode | null>(STORAGE_KEY, null);
-  return isThemeMode(stored) ? stored : "light";
+  return isThemeMode(stored) ? stored : "dark";
 }
 
 export function applyTheme(theme: ThemeMode, persist = true): void {

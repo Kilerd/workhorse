@@ -75,24 +75,24 @@ const chipClass =
   "inline-flex min-h-8 items-center rounded-full border px-3 font-mono text-[0.68rem] uppercase tracking-[0.08em]";
 
 const actionBtnClass =
-  "inline-flex min-h-11 items-center gap-2 rounded-[var(--radius-lg)] border border-border bg-[var(--panel)] px-4 text-[0.88rem] font-medium text-foreground transition-[border-color,background-color,transform] hover:-translate-y-px hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)]";
+  "inline-flex min-h-9 items-center gap-1.5 rounded-[var(--radius)] border border-border bg-[var(--surface-soft)] px-3.5 text-[0.78rem] font-[510] text-foreground transition-[border-color,background-color,transform] hover:-translate-y-px hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)]";
 
 type Tone = "muted" | "info" | "warning" | "accent" | "success" | "danger";
 
 function chipTone(tone: Tone) {
   switch (tone) {
     case "info":
-      return "border-[rgba(79,92,98,0.22)] bg-[rgba(79,92,98,0.06)] text-[var(--info)]";
+      return "tone-info";
     case "warning":
-      return "border-[rgba(166,109,26,0.24)] bg-[rgba(166,109,26,0.08)] text-[var(--warning)]";
+      return "tone-warning";
     case "accent":
-      return "border-[rgba(255,79,0,0.24)] bg-[rgba(255,79,0,0.08)] text-[var(--accent-strong)]";
+      return "tone-accent";
     case "success":
-      return "border-[rgba(47,117,88,0.24)] bg-[rgba(47,117,88,0.08)] text-[var(--success)]";
+      return "tone-success";
     case "danger":
-      return "border-[rgba(181,74,74,0.28)] bg-[rgba(181,74,74,0.08)] text-[var(--danger)]";
+      return "tone-danger";
     default:
-      return "border-border bg-[var(--surface-soft)] text-[var(--muted)]";
+      return "tone-muted";
   }
 }
 
@@ -409,8 +409,8 @@ export function TaskDetailsPanel({
 
   return (
     <aside className={cn(detailPanelClass, className)}>
-      <div className="flex min-h-0 flex-1 flex-col gap-4 p-3 sm:p-4 lg:flex-row lg:p-5">
-        <div className="flex w-full flex-none flex-col gap-4 overflow-y-auto lg:w-[360px]">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 px-3 pb-3 pt-2.5 sm:px-4 sm:pb-4 lg:flex-row lg:px-5 lg:pb-5 lg:pt-3.5">
+        <div className="flex w-full flex-none flex-col gap-4 overflow-y-auto lg:w-[340px]">
           <div className="surface-card grid gap-3 px-4 py-4">
             <div className="flex items-center gap-2">
               {onBack ? (
@@ -450,12 +450,12 @@ export function TaskDetailsPanel({
                   : titleCase(task.column)}
               </span>
             </div>
-            <h1 className="m-0 text-[2.25rem] leading-[0.92]">
-              {task.title}
-            </h1>
-          </div>
+              <h1 className="m-0 text-[2rem] leading-[0.92]">
+                {task.title}
+              </h1>
+            </div>
 
-          <div className="surface-card flex flex-wrap items-center gap-2 px-3 py-3">
+          <div className="surface-card flex flex-wrap items-center gap-1.5 px-3.5 py-3.5">
             {isReviewableSubtask || isCancelableSubtask ? (
               <SubtaskReviewActions
                 canApprove={canApproveReviewSubtask}
@@ -500,7 +500,7 @@ export function TaskDetailsPanel({
                 type="button"
                 className={cn(
                   actionBtnClass,
-                  "border-[rgba(255,79,0,0.28)] bg-[rgba(255,79,0,0.08)] text-[var(--accent-strong)] hover:border-[rgba(255,79,0,0.4)] hover:bg-[rgba(255,79,0,0.14)]"
+                  "tone-accent hover:border-[rgba(113,112,255,0.52)] hover:bg-[rgba(113,112,255,0.18)]"
                 )}
                 onClick={onRequestReview}
               >
@@ -511,7 +511,7 @@ export function TaskDetailsPanel({
               type="button"
               className={cn(
                 actionBtnClass,
-                "ml-auto text-[var(--danger)] hover:border-[rgba(181,74,74,0.32)] hover:bg-[rgba(181,74,74,0.08)]"
+                "ml-auto tone-danger hover:border-[rgba(239,98,108,0.52)] hover:bg-[rgba(239,98,108,0.18)]"
               )}
               onClick={onDelete}
             >
@@ -790,11 +790,11 @@ function WorkspaceAgentSummary({
   const workerCount = countWorkspaceWorkers(agents);
 
   return (
-    <article className="grid gap-3 rounded-[var(--radius-lg)] border border-border bg-[var(--panel)] p-4 text-left">
+    <article className="surface-card grid gap-3 p-4 text-left">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="inline-flex min-h-7 items-center rounded-full border border-[rgba(255,79,0,0.24)] bg-[rgba(255,79,0,0.08)] px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] text-[var(--accent-strong)]">
+            <span className="inline-flex min-h-7 items-center rounded-full border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] tone-accent">
               Agents
             </span>
             <span className="inline-flex min-h-7 items-center rounded-full border border-border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] text-[var(--muted)]">
@@ -812,7 +812,7 @@ function WorkspaceAgentSummary({
 
       <div className="flex flex-wrap items-center gap-1.5">
         {coordinator ? (
-          <span className="inline-flex min-h-7 items-center rounded-full border border-[rgba(255,79,0,0.28)] bg-[rgba(255,79,0,0.08)] px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] text-[var(--accent-strong)]">
+          <span className="inline-flex min-h-7 items-center rounded-full border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] tone-accent">
             coordinator · {coordinator.name}
           </span>
         ) : (
@@ -821,7 +821,7 @@ function WorkspaceAgentSummary({
           </span>
         )}
         {workerCount > 0 ? (
-          <span className="inline-flex min-h-7 items-center rounded-full border border-[rgba(79,92,98,0.24)] bg-[rgba(79,92,98,0.06)] px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] text-[var(--info)]">
+          <span className="inline-flex min-h-7 items-center rounded-full border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] tone-info">
             {workerCount} workers
           </span>
         ) : null}

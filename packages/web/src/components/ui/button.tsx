@@ -5,21 +5,21 @@ import type { ComponentProps } from "react";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-lg)] border text-[0.88rem] font-semibold text-foreground outline-none transition-[border-color,background-color,color,transform,opacity] hover:-translate-y-px disabled:pointer-events-none disabled:opacity-55 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+  "inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[var(--radius)] border border-transparent text-[0.78rem] font-[510] text-foreground outline-none backdrop-blur-xl transition-[border-color,background-color,color,transform,opacity] hover:-translate-y-px focus-visible:border-[var(--accent)] disabled:pointer-events-none disabled:opacity-55 [&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
     variants: {
       variant: {
         default:
-          "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-foreground)] hover:border-[var(--accent-strong)] hover:bg-[var(--accent-strong)]",
+          "border-[rgba(113,112,255,0.44)] bg-[var(--accent)] text-[var(--accent-foreground)] hover:border-[rgba(113,112,255,0.64)] hover:bg-[var(--accent-strong)]",
         secondary:
-          "border-border bg-[var(--surface-soft)] text-foreground hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)]",
+          "border-border bg-[var(--surface-soft)] text-[var(--muted-strong)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] hover:text-foreground",
         destructive:
-          "border-[rgba(181,74,74,0.3)] bg-[rgba(181,74,74,0.08)] text-[var(--danger)] hover:border-[rgba(181,74,74,0.52)] hover:bg-[rgba(181,74,74,0.14)]"
+          "border-[rgba(239,98,108,0.34)] bg-[rgba(239,98,108,0.12)] text-[var(--danger)] hover:border-[rgba(239,98,108,0.54)] hover:bg-[rgba(239,98,108,0.18)]"
       },
       size: {
-        default: "min-h-11 px-5",
-        sm: "min-h-8 px-3 text-[0.82rem]",
-        icon: "size-11 p-0"
+        default: "min-h-9 px-3.5",
+        sm: "min-h-8 px-2.5 text-[0.72rem]",
+        icon: "size-8 p-0"
       }
     },
     defaultVariants: {

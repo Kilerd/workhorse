@@ -20,8 +20,8 @@ function countWorkers(agents: TeamAgent[]) {
 
 function roleTone(role: AgentRole) {
   return role === "coordinator"
-    ? "border-[rgba(255,79,0,0.28)] bg-[rgba(255,79,0,0.08)] text-[var(--accent-strong)]"
-    : "border-[rgba(79,92,98,0.24)] bg-[rgba(79,92,98,0.06)] text-[var(--info)]";
+    ? "tone-accent"
+    : "tone-info";
 }
 
 export function TeamCard({
@@ -36,16 +36,16 @@ export function TeamCard({
   return (
     <article
       className={cn(
-        "grid gap-3 rounded-[var(--radius-lg)] border bg-[var(--panel)] p-4 text-left",
+        "surface-card grid gap-3 p-4 text-left",
         active
-          ? "border-[var(--accent)] bg-[rgba(255,79,0,0.05)]"
+          ? "border-[rgba(113,112,255,0.38)] bg-[rgba(113,112,255,0.12)]"
           : "border-border"
       )}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="inline-flex min-h-7 items-center rounded-full border border-[rgba(255,79,0,0.24)] bg-[rgba(255,79,0,0.08)] px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] text-[var(--accent-strong)]">
+            <span className="inline-flex min-h-7 items-center rounded-full border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] tone-accent">
               Legacy Team
             </span>
             <span className="inline-flex min-h-7 items-center rounded-full border border-border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] text-[var(--muted)]">

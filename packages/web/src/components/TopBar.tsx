@@ -71,14 +71,14 @@ function formatQuotaWindowLabel(windowDurationMins?: number): string {
 
 function quotaToneClass(window: HealthCodexQuotaWindowData): string {
   if (window.remainingPercent <= 15) {
-    return "border-[rgba(181,74,74,0.28)] bg-[rgba(181,74,74,0.08)] text-[var(--danger)]";
+    return "tone-danger";
   }
 
   if (window.remainingPercent <= 35) {
-    return "border-[rgba(166,109,26,0.28)] bg-[rgba(166,109,26,0.08)] text-[var(--warning)]";
+    return "tone-warning";
   }
 
-  return "border-[rgba(255,79,0,0.22)] bg-[rgba(255,79,0,0.08)] text-[var(--accent-strong)]";
+  return "tone-accent";
 }
 
 function buildQuotaTitle(
@@ -121,21 +121,18 @@ function MetaPill({
 }) {
   const toneClass =
     tone === "accent"
-      ? "border-[rgba(255,79,0,0.22)] bg-[rgba(255,79,0,0.08)] text-[var(--accent-strong)]"
+      ? "tone-accent"
       : tone === "success"
-        ? "border-[rgba(47,117,88,0.24)] bg-[rgba(47,117,88,0.08)] text-[var(--success)]"
+        ? "tone-success"
         : tone === "warning"
-          ? "border-[rgba(166,109,26,0.24)] bg-[rgba(166,109,26,0.08)] text-[var(--warning)]"
+          ? "tone-warning"
           : tone === "danger"
-            ? "border-[rgba(181,74,74,0.24)] bg-[rgba(181,74,74,0.08)] text-[var(--danger)]"
-            : "border-border bg-[var(--panel)] text-[var(--muted)]";
+            ? "tone-danger"
+            : "tone-muted";
 
   return (
     <span
-      className={cn(
-        "inline-flex min-h-7 items-center gap-1.5 rounded-full border px-2.5 text-[0.72rem] font-medium",
-        toneClass
-      )}
+      className={cn("status-pill text-[0.68rem]", toneClass)}
       title={title}
     >
       {children}
@@ -185,41 +182,11 @@ export function TopBar({
     (schedulerStatus.running > 0 || schedulerStatus.queued > 0 || schedulerStatus.blocked > 0);
 
   return (
-    <header className="border-b border-border bg-background">
-      <div className="grid gap-2 px-3 py-2 sm:px-4 lg:px-5">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <h1 className="m-0 text-[1.35rem] leading-[1] sm:text-[1.5rem]">
-            {selectedWorkspaceName}
-          </h1>
-
-          <div className="flex flex-wrap items-center gap-1.5">
-            <MetaPill tone={runtimeStatus === "ok" ? "success" : runtimeStatus === "connecting" ? "warning" : "danger"}>
-              <span
-                aria-hidden="true"
-                className={cn("size-2 rounded-full", runtimeDotClass(runtimeStatus))}
-              />
-              <span>{formatRuntimeStatus(runtimeStatus)}</span>
-            </MetaPill>
-            <MetaPill>{formatCount(boardCount, "task")}</MetaPill>
-            {hasSchedulerActivity ? (
-              <MetaPill>
-                {schedulerStatus.running} running / {schedulerStatus.queued} queued / {schedulerStatus.blocked} blocked
-              </MetaPill>
-            ) : null}
-            <MetaPill>Updated {formatRelativeTime(lastSyncedAt)}</MetaPill>
-            {quotaWindows.map(({ key, window }) => (
-              <MetaPill
-                key={key}
-                tone={window.remainingPercent <= 15 ? "danger" : window.remainingPercent <= 35 ? "warning" : "accent"}
-                title={buildQuotaTitle(window, codexQuota)}
-              >
-                Codex {formatQuotaWindowLabel(window.windowDurationMins)} {window.remainingPercent}%
-              </MetaPill>
-            ))}
-            {codexQuota === null ? <MetaPill>Codex unavailable</MetaPill> : null}
-          </div>
-
-          <div className="ml-auto flex items-center gap-2">
+    <header className="border-b border-border bg-background backdrop-blur-xl">
+      <div className="grid gap-3 px-3.5 py-3 sm:px-4 sm:py-3.5 lg:px-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className="section-kicker">{selectedWorkspaceName}</span>
+          <div className="flex items-center gap-1.5 self-start xl:self-center">
             <Button type="button" variant="secondary" size="sm" onClick={onRefresh}>
               Refresh
             </Button>
@@ -233,6 +200,47 @@ export function TopBar({
             </Button>
             <ThemeToggle theme={theme} onToggle={onToggleTheme} />
           </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          <MetaPill
+            tone={
+              runtimeStatus === "ok"
+                ? "success"
+                : runtimeStatus === "connecting"
+                  ? "warning"
+                  : "danger"
+            }
+          >
+            <span
+              aria-hidden="true"
+              className={cn("size-2 rounded-full", runtimeDotClass(runtimeStatus))}
+            />
+            <span>{formatRuntimeStatus(runtimeStatus)}</span>
+          </MetaPill>
+          <MetaPill>{formatCount(boardCount, "task")}</MetaPill>
+          {hasSchedulerActivity ? (
+            <MetaPill>
+              {schedulerStatus.running} running / {schedulerStatus.queued} queued / {schedulerStatus.blocked} blocked
+            </MetaPill>
+          ) : null}
+          <MetaPill>Updated {formatRelativeTime(lastSyncedAt)}</MetaPill>
+          {quotaWindows.map(({ key, window }) => (
+            <MetaPill
+              key={key}
+              tone={
+                window.remainingPercent <= 15
+                  ? "danger"
+                  : window.remainingPercent <= 35
+                    ? "warning"
+                    : "accent"
+              }
+              title={buildQuotaTitle(window, codexQuota)}
+            >
+              Codex {formatQuotaWindowLabel(window.windowDurationMins)} {window.remainingPercent}%
+            </MetaPill>
+          ))}
+          {codexQuota === null ? <MetaPill>Codex unavailable</MetaPill> : null}
         </div>
       </div>
     </header>

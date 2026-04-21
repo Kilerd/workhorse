@@ -51,11 +51,11 @@ function parseArtifactPayload(content: string): ArtifactPayload | null {
 function messageTone(message: CoordinationMessage) {
   switch (message.messageType) {
     case "artifact":
-      return "border-[rgba(79,92,98,0.22)] bg-[rgba(79,92,98,0.04)]";
+      return "border-[rgba(122,127,173,0.22)] bg-[rgba(122,127,173,0.08)]";
     case "status":
-      return "border-[rgba(255,79,0,0.24)] bg-[rgba(255,79,0,0.05)]";
+      return "border-[rgba(113,112,255,0.26)] bg-[rgba(113,112,255,0.08)]";
     case "feedback":
-      return "border-[rgba(166,109,26,0.24)] bg-[rgba(166,109,26,0.05)]";
+      return "border-[rgba(214,164,73,0.24)] bg-[rgba(214,164,73,0.08)]";
     default:
       return "border-border bg-[var(--panel)]";
   }
@@ -64,11 +64,11 @@ function messageTone(message: CoordinationMessage) {
 function senderTone(senderType: CoordinationMessage["senderType"]) {
   switch (senderType) {
     case "agent":
-      return "border-[rgba(255,79,0,0.24)] bg-[rgba(255,79,0,0.08)] text-[var(--accent-strong)]";
+      return "tone-accent";
     case "system":
-      return "border-border bg-[var(--surface-soft)] text-[var(--muted)]";
+      return "tone-muted";
     default:
-      return "border-[rgba(166,109,26,0.24)] bg-[rgba(166,109,26,0.08)] text-[var(--warning)]";
+      return "tone-warning";
   }
 }
 

@@ -36,7 +36,7 @@ function ProposalCard({ scope, proposal }: ProposalCardProps) {
   const isBusy = actions.isPending;
 
   return (
-    <div className="grid gap-3 rounded-[var(--radius)] border border-border bg-[var(--panel)] p-4">
+    <div className="grid gap-2.5 rounded-[var(--radius)] border border-border bg-[var(--panel)] p-3.5">
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-[0.68rem] uppercase tracking-[0.08em] text-[var(--muted)]">
           {formatRelativeTime(proposal.createdAt)}
@@ -55,7 +55,7 @@ function ProposalCard({ scope, proposal }: ProposalCardProps) {
         {proposal.drafts.map((draft, index) => (
           <div
             key={index}
-            className="grid gap-1 rounded-[var(--radius)] border border-border bg-[var(--surface-soft)] px-3 py-3"
+            className="grid gap-1 rounded-[var(--radius)] border border-border bg-[var(--surface-soft)] px-2.5 py-2.5"
           >
             <p className="m-0 text-[0.9rem] font-medium leading-snug">
               {draft.title}
@@ -95,7 +95,7 @@ function ProposalCard({ scope, proposal }: ProposalCardProps) {
                 });
             }}
             className={cn(
-              "inline-flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-full border border-[rgba(47,117,88,0.4)] bg-[rgba(47,117,88,0.08)] px-3 text-[0.82rem] font-semibold text-[var(--success)] transition-[border-color,background-color] hover:bg-[rgba(47,117,88,0.14)] disabled:cursor-not-allowed disabled:opacity-50"
+              "inline-flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-full border border-[rgba(47,117,88,0.4)] bg-[rgba(47,117,88,0.08)] px-2.5 text-[0.76rem] font-semibold text-[var(--success)] transition-[border-color,background-color] hover:bg-[rgba(47,117,88,0.14)] disabled:cursor-not-allowed disabled:opacity-50"
             )}
           >
             {actions.isPending ? "Saving…" : "Approve"}
@@ -114,7 +114,7 @@ function ProposalCard({ scope, proposal }: ProposalCardProps) {
                 });
             }}
             className={cn(
-              "inline-flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-full border border-[rgba(181,74,74,0.3)] bg-transparent px-3 text-[0.82rem] font-semibold text-[var(--danger)] transition-[border-color,background-color] hover:bg-[rgba(181,74,74,0.08)] disabled:cursor-not-allowed disabled:opacity-50"
+              "inline-flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-full border border-[rgba(181,74,74,0.3)] bg-transparent px-2.5 text-[0.76rem] font-semibold text-[var(--danger)] transition-[border-color,background-color] hover:bg-[rgba(181,74,74,0.08)] disabled:cursor-not-allowed disabled:opacity-50"
             )}
           >
             {actions.isPending ? "Saving…" : "Reject"}

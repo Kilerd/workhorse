@@ -15,7 +15,7 @@ interface Props {
 }
 
 const baseButtonClass =
-  "inline-flex min-h-10 items-center justify-center rounded-full border px-3 text-[0.8rem] font-semibold transition-[border-color,background-color,transform] hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
+  "inline-flex min-h-9 items-center justify-center rounded-full border px-2.5 text-[0.74rem] font-semibold transition-[border-color,background-color,transform] hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
 
 export function SubtaskReviewActions({
   canApprove = false,
@@ -30,7 +30,7 @@ export function SubtaskReviewActions({
   onRetry,
   onCancel
 }: Props) {
-  const sizeClass = compact ? "min-h-8 px-2.5 text-[0.68rem]" : "";
+  const sizeClass = compact ? "min-h-7 px-2 text-[0.64rem]" : "";
 
   return (
     <div className={cn("flex flex-wrap items-center gap-1.5", compact && "gap-1")}>

@@ -147,7 +147,7 @@ export function CompactPullRequestStatus({
             readiness === "success" && "text-[var(--success)]",
             readiness === "danger" && "text-[var(--danger)]",
             readiness === "pending" &&
-              "rounded-full bg-[radial-gradient(circle_at_center,var(--panel)_56%,transparent_60%),conic-gradient(var(--accent-strong)_var(--review-progress),rgba(255,79,0,0.12)_0)] shadow-[inset_0_0_0_1px_rgba(255,79,0,0.2)]"
+              "rounded-full border border-[rgba(113,112,255,0.24)] bg-[radial-gradient(circle_at_center,var(--panel)_56%,transparent_60%),conic-gradient(var(--accent-strong)_var(--review-progress),rgba(113,112,255,0.14)_0)]"
           )}
           aria-label={reviewIndicatorTitle}
           title={reviewIndicatorTitle}

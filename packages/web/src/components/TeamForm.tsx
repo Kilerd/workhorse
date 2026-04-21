@@ -337,8 +337,8 @@ export function TeamForm({
                     <span className={cn(
                       "inline-flex min-h-7 items-center rounded-full border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em]",
                       agent.role === "coordinator"
-                        ? "border-[rgba(255,79,0,0.28)] bg-[rgba(255,79,0,0.08)] text-[var(--accent-strong)]"
-                        : "border-[rgba(79,92,98,0.24)] bg-[rgba(79,92,98,0.06)] text-[var(--info)]"
+                        ? "tone-accent"
+                        : "tone-info"
                     )}>
                       {agent.role}
                     </span>

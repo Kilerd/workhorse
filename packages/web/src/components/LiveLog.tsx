@@ -173,9 +173,9 @@ function renderStreamEntry(entry: RunLogEntry) {
   const title = getEntryTitle(entry);
 
   if (entry.kind === "user") {
-    return (
+      return (
       <article key={entry.id} className="ml-auto grid max-w-[min(34rem,86%)] gap-1 justify-items-end">
-        <div className="rounded-[var(--radius)] border border-[rgba(255,79,0,0.24)] bg-[var(--panel)] px-4 py-3">
+        <div className="rounded-[var(--radius)] border border-[rgba(113,112,255,0.24)] bg-[var(--panel)] px-4 py-3">
           {renderProseBlock(entry.text, {
             className: "text-[0.86rem] leading-[1.68]"
           })}
@@ -634,7 +634,7 @@ export function LiveLog({
             {streamEntries.length > 0 ? (
               <button
                 type="button"
-                className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-transparent bg-transparent px-3 text-[0.76rem] font-medium text-[var(--muted)] transition-[border-color,background-color,transform] hover:-translate-y-px hover:border-border hover:bg-[var(--surface-soft)]"
+                className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-transparent bg-transparent px-2.5 text-[0.72rem] font-medium text-[var(--muted)] transition-[border-color,background-color,transform] hover:-translate-y-px hover:border-border hover:bg-[var(--surface-soft)]"
                 onClick={() => {
                   void handleCopyLog();
                 }}
@@ -699,7 +699,7 @@ export function LiveLog({
 
         {canSendInput && onSendInput ? (
           <form
-            className="grid gap-3 border-t border-border bg-[var(--panel)] px-4 py-4 max-[720px]:px-3"
+            className="grid gap-2.5 border-t border-border bg-[var(--panel)] px-4 py-3.5 max-[720px]:px-3"
             onSubmit={(event) => {
               event.preventDefault();
               void handleSendInput();

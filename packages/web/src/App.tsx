@@ -490,7 +490,7 @@ function ReactAppShell() {
   }
 
   const boardPage = (
-    <section className="min-h-0 overflow-hidden p-3 lg:p-3">
+    <section className="min-h-0 overflow-hidden px-3 pb-3 pt-2.5 sm:px-4 sm:pb-4 lg:px-5 lg:pb-5 lg:pt-3.5">
       <DragDropContext onDragEnd={handleDrop}>
         <Board
           tasks={boardTasks}
@@ -552,7 +552,9 @@ function ReactAppShell() {
   const isWorkspaceSettingsView = location.pathname === "/workspace-settings";
 
   return (
-    <div className={`bg-background text-foreground lg:grid lg:h-screen lg:overflow-hidden ${board.sidebarCollapsed ? "lg:grid-cols-[64px_minmax(0,1fr)]" : "lg:grid-cols-[272px_minmax(0,1fr)]"}`}>
+    <div
+      className={`min-h-screen bg-background text-foreground lg:grid lg:h-screen lg:overflow-hidden ${board.sidebarCollapsed ? "lg:grid-cols-[78px_minmax(0,1fr)]" : "lg:grid-cols-[312px_minmax(0,1fr)]"}`}
+    >
       <Sidebar
         workspaces={workspaces}
         allTasks={allTasks}

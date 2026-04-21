@@ -58,23 +58,21 @@ interface Props {
 }
 
 function channelBadgeTone(kind: WorkspaceChannel["kind"]) {
-  return kind === "all"
-    ? "border-[rgba(255,79,0,0.22)] bg-[rgba(255,79,0,0.08)] text-[var(--accent-strong)]"
-    : "border-border bg-[var(--surface-soft)] text-[var(--muted)]";
+  return kind === "all" ? "tone-accent" : "tone-muted";
 }
 
 function taskStatusTone(task: DisplayTask) {
   switch (task.column) {
     case "running":
-      return "border-[rgba(166,109,26,0.28)] bg-[rgba(166,109,26,0.08)] text-[var(--warning)]";
+      return "tone-warning";
     case "review":
-      return "border-[rgba(255,79,0,0.24)] bg-[rgba(255,79,0,0.08)] text-[var(--accent-strong)]";
+      return "tone-accent";
     case "done":
-      return "border-[rgba(47,117,88,0.26)] bg-[rgba(47,117,88,0.08)] text-[var(--success)]";
+      return "tone-success";
     case "blocked":
-      return "border-[rgba(181,74,74,0.24)] bg-[rgba(181,74,74,0.08)] text-[var(--danger)]";
+      return "tone-danger";
     default:
-      return "border-border bg-[var(--surface-soft)] text-[var(--muted)]";
+      return "tone-muted";
   }
 }
 
@@ -94,13 +92,13 @@ function ChannelHeader({
   onBackToBoard(): void;
 }) {
   return (
-    <header className="grid gap-4 border-b border-border px-5 py-5">
+    <header className="grid gap-4 border-b border-border px-4 py-4 lg:px-5 lg:py-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={onBackToBoard}
-            className="inline-flex min-h-9 items-center gap-2 rounded-full border border-border bg-[var(--panel)] px-3 text-[0.82rem] font-medium text-foreground transition-[border-color,background-color] hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)]"
+            className="inline-flex min-h-8 items-center gap-2 rounded-[9px] border border-border bg-[var(--surface-soft)] px-2.5 text-[0.76rem] font-[510] text-[var(--muted-strong)] transition-[border-color,background-color] hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] hover:text-foreground"
           >
             <svg viewBox="0 0 16 16" aria-hidden="true" className="size-3">
               <path
@@ -138,12 +136,12 @@ function ChannelHeader({
         </span>
       </div>
 
-      <div className="grid gap-1">
+      <div className="grid gap-1.5">
         <p className="section-kicker m-0">{workspace?.rootPath ?? "Workspace"}</p>
-        <h1 className="m-0 text-[2.2rem] leading-[0.94] text-foreground">
+        <h1 className="m-0 text-[2.05rem] leading-[0.94] text-foreground lg:text-[2.35rem]">
           #{channel.slug}
         </h1>
-        <p className="m-0 max-w-[56rem] text-[0.96rem] leading-[1.65] text-[var(--muted)]">
+        <p className="m-0 max-w-[52rem] text-[0.84rem] leading-[1.55] text-[var(--muted)]">
           {channel.kind === "all"
             ? "Chat with the mounted coordinator here. Approved proposals spin up new top-level tasks and their own task channels."
             : task?.description || "Execution updates, human follow-ups, and task artifacts collect in this channel."}
@@ -227,7 +225,7 @@ function TaskInspector({
 
   return (
     <>
-      <section className="surface-card grid gap-4 px-4 py-4">
+      <section className="surface-card grid gap-3.5 px-4 py-4">
         <div className="flex items-start justify-between gap-3">
           <div className="grid gap-1">
             <p className="section-kicker m-0">Task inspector</p>
@@ -292,7 +290,7 @@ function TaskInspector({
               <button
                 type="button"
                 onClick={() => onRequestReview?.()}
-                className="inline-flex min-h-8 items-center rounded-full border border-[rgba(255,79,0,0.24)] bg-[rgba(255,79,0,0.08)] px-3 text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-[var(--accent-strong)] transition-[border-color,background-color] hover:border-[rgba(255,79,0,0.36)] hover:bg-[rgba(255,79,0,0.12)]"
+                className="inline-flex min-h-8 items-center rounded-full border px-3 text-[0.68rem] font-semibold uppercase tracking-[0.06em] tone-accent transition-[border-color,background-color] hover:border-[rgba(113,112,255,0.52)] hover:bg-[rgba(113,112,255,0.18)]"
               >
                 Request review
               </button>
@@ -301,7 +299,7 @@ function TaskInspector({
               <button
                 type="button"
                 onClick={onCleanupWorktree}
-                className="inline-flex min-h-8 items-center rounded-full border border-border bg-[var(--panel)] px-3 text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-foreground transition-[border-color,background-color] hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)]"
+                className="inline-flex min-h-8 items-center rounded-full border border-border bg-[var(--surface-soft)] px-3 text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-foreground transition-[border-color,background-color] hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)]"
               >
                 Cleanup worktree
               </button>
@@ -310,7 +308,7 @@ function TaskInspector({
               <button
                 type="button"
                 onClick={onDelete}
-                className="inline-flex min-h-8 items-center rounded-full border border-[rgba(181,74,74,0.28)] bg-[rgba(181,74,74,0.08)] px-3 text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-[var(--danger)] transition-[border-color,background-color] hover:border-[rgba(181,74,74,0.42)] hover:bg-[rgba(181,74,74,0.12)]"
+                className="inline-flex min-h-8 items-center rounded-full border px-3 text-[0.68rem] font-semibold uppercase tracking-[0.06em] tone-danger transition-[border-color,background-color] hover:border-[rgba(239,98,108,0.52)] hover:bg-[rgba(239,98,108,0.18)]"
               >
                 Delete
               </button>
@@ -344,7 +342,7 @@ function TaskInspector({
                   "rounded-full border px-3 py-1.5 text-left text-[0.74rem] transition-[border-color,background-color]",
                   viewedRun?.id === run.id
                     ? "border-[var(--border-strong)] bg-[var(--surface-soft)] text-foreground"
-                    : "border-border bg-[var(--panel)] text-[var(--muted)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)]"
+                    : "border-border bg-[var(--surface-faint)] text-[var(--muted)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)]"
                 )}
               >
                 {formatRunLabel(run)}
@@ -428,7 +426,7 @@ export function WorkspaceChannelPage({
   const coordinator = workspaceAgents.find((agent) => agent.role === "coordinator") ?? null;
 
   return (
-    <section className="grid h-full min-h-0 gap-4 p-3 lg:grid-cols-[minmax(0,1fr)_380px] lg:p-4">
+    <section className="grid h-full min-h-0 gap-4 px-3 pb-3 pt-2.5 sm:px-4 sm:pb-4 lg:grid-cols-[minmax(0,1fr)_380px] lg:px-5 lg:pb-5 lg:pt-3.5">
       <div className="surface-card grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden">
         <ChannelHeader
           workspace={workspace}
@@ -437,7 +435,7 @@ export function WorkspaceChannelPage({
           onBackToBoard={onBackToBoard}
         />
 
-        <div className="min-h-0 overflow-hidden p-5">
+        <div className="min-h-0 overflow-hidden p-4 lg:p-4.5">
           <TeamMessageFeed
             messages={messages}
             loading={messagesLoading}
@@ -538,7 +536,7 @@ export function WorkspaceChannelPage({
             reviewActionBusy={reviewActionBusy}
           />
         ) : (
-          <section className="surface-card rounded-[var(--radius)] border border-dashed border-border px-4 py-5 text-[0.84rem] text-[var(--muted)]">
+          <section className="surface-card rounded-[var(--radius)] border border-dashed border-border px-4 py-5 text-[0.82rem] text-[var(--muted)]">
             This task channel is waiting for its task record to appear.
           </section>
         )}

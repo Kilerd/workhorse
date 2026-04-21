@@ -160,9 +160,9 @@ const lineNumClass =
 function DiffLineRow({ line }: { line: DiffLine }) {
   if (line.type === "hunk") {
     return (
-      <tr className="bg-[rgba(255,79,0,0.08)]">
-        <td className={cn(lineNumClass, "bg-[rgba(255,79,0,0.12)]")} />
-        <td className={cn(lineNumClass, "bg-[rgba(255,79,0,0.12)]")} />
+      <tr className="bg-[rgba(113,112,255,0.08)]">
+        <td className={cn(lineNumClass, "bg-[rgba(113,112,255,0.12)]")} />
+        <td className={cn(lineNumClass, "bg-[rgba(113,112,255,0.12)]")} />
         <td className="whitespace-pre px-3 text-[var(--accent-strong)]">{line.text}</td>
       </tr>
     );

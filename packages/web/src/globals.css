@@ -32,60 +32,68 @@
 }
 
 :root {
-  color-scheme: light;
-  --bg: #fffefb;
-  --bg-elevated: #fffdf9;
-  --panel: #fffefb;
-  --panel-strong: #fff6ea;
-  --panel-muted: #f4efe6;
-  --border: #c5c0b1;
-  --border-strong: #36342e;
-  --text: #201515;
-  --muted: #7d7567;
-  --accent: #ff4f00;
-  --accent-strong: #d84300;
-  --accent-soft: rgba(255, 79, 0, 0.11);
-  --accent-foreground: #fffefb;
-  --warning: #a66d1a;
-  --danger: #b54a4a;
-  --success: #2f7558;
-  --info: #4f5c62;
-  --shadow: none;
+  color-scheme: dark;
+  --bg: #08090a;
+  --bg-elevated: #0f1011;
+  --panel: rgba(15, 16, 17, 0.86);
+  --panel-strong: #191a1b;
+  --panel-muted: rgba(255, 255, 255, 0.03);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --text: #f7f8f8;
+  --muted: #8a8f98;
+  --muted-strong: #d0d6e0;
+  --accent: #5e6ad2;
+  --accent-strong: #7170ff;
+  --accent-soft: rgba(113, 112, 255, 0.16);
+  --accent-foreground: #ffffff;
+  --warning: #d6a449;
+  --danger: #ef626c;
+  --success: #27a644;
+  --info: #7a7fad;
   --radius: 5px;
-  --radius-lg: 8px;
-  --font-sans: "Inter", "Avenir Next", "Segoe UI", Helvetica, Arial, sans-serif;
-  --font-display: "Degular Display", "Avenir Next Condensed", "Arial Narrow", "Inter", sans-serif;
-  --font-editorial: "GT Alpina", "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
-  --font-mono: "Geist Mono", "SFMono-Regular", ui-monospace, monospace;
-  --surface-soft: #fff9f0;
-  --surface-faint: #fffdf9;
-  --surface-hover: #f3ede1;
-  --backdrop: rgba(32, 21, 21, 0.34);
+  --radius-lg: 10px;
+  --font-sans:
+    "Inter Variable", "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  --font-display: var(--font-sans);
+  --font-editorial: var(--font-sans);
+  --font-mono: "Berkeley Mono", "SFMono-Regular", ui-monospace, Menlo, monospace;
+  --surface-soft: rgba(255, 255, 255, 0.03);
+  --surface-faint: rgba(255, 255, 255, 0.018);
+  --surface-hover: rgba(255, 255, 255, 0.05);
+  --backdrop: rgba(0, 0, 0, 0.85);
+  --accent-rgb: 113 112 255;
+  --success-rgb: 39 166 68;
+  --warning-rgb: 214 164 73;
+  --danger-rgb: 239 98 108;
+  --info-rgb: 122 127 173;
 }
 
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --bg: #18110f;
-  --bg-elevated: #221917;
-  --panel: #211816;
-  --panel-strong: #2b1f1b;
-  --panel-muted: #2b211d;
-  --border: rgba(229, 217, 201, 0.18);
-  --border-strong: rgba(255, 234, 211, 0.7);
-  --text: #fff8ef;
-  --muted: #c8b7a6;
-  --accent: #ff6b2b;
-  --accent-strong: #ff8a55;
-  --accent-soft: rgba(255, 107, 43, 0.16);
-  --accent-foreground: #fff8ef;
-  --warning: #f2b356;
-  --danger: #f38b8b;
-  --success: #78c89c;
-  --info: #adc6d0;
-  --surface-soft: rgba(255, 255, 255, 0.04);
-  --surface-faint: rgba(255, 255, 255, 0.02);
-  --surface-hover: rgba(255, 255, 255, 0.06);
-  --backdrop: rgba(9, 6, 5, 0.62);
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f7f8f8;
+  --bg-elevated: #ffffff;
+  --panel: rgba(255, 255, 255, 0.92);
+  --panel-strong: #ffffff;
+  --panel-muted: rgba(94, 106, 210, 0.05);
+  --border: rgba(26, 28, 33, 0.1);
+  --border-strong: rgba(26, 28, 33, 0.18);
+  --text: #14161a;
+  --muted: #62666d;
+  --muted-strong: #34343a;
+  --accent: #5e6ad2;
+  --accent-strong: #4f58cc;
+  --accent-soft: rgba(94, 106, 210, 0.1);
+  --accent-foreground: #ffffff;
+  --warning: #996c20;
+  --danger: #cc4b5a;
+  --success: #218838;
+  --info: #59607d;
+  --surface-soft: rgba(94, 106, 210, 0.05);
+  --surface-faint: rgba(94, 106, 210, 0.025);
+  --surface-hover: rgba(94, 106, 210, 0.08);
+  --backdrop: rgba(11, 14, 20, 0.45);
 }
 
 @layer base {
@@ -109,6 +117,7 @@
     font-size: 16px;
     line-height: 1.45;
     letter-spacing: -0.01em;
+    font-feature-settings: "cv01", "ss03";
   }
 
   body::before {
@@ -117,15 +126,17 @@
     inset: 0;
     z-index: -1;
     background:
-      radial-gradient(circle at top right, rgba(255, 79, 0, 0.1), transparent 26rem),
-      linear-gradient(180deg, rgba(236, 234, 227, 0.72) 0%, transparent 20rem);
+      radial-gradient(circle at 14% 0%, rgba(113, 112, 255, 0.2), transparent 28rem),
+      radial-gradient(circle at 84% 12%, rgba(255, 255, 255, 0.05), transparent 24rem),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, transparent 22rem);
     pointer-events: none;
   }
 
-  :root[data-theme="dark"] body::before {
+  :root[data-theme="light"] body::before {
     background:
-      radial-gradient(circle at top right, rgba(255, 107, 43, 0.12), transparent 24rem),
-      linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, transparent 18rem);
+      radial-gradient(circle at 14% 0%, rgba(113, 112, 255, 0.12), transparent 26rem),
+      radial-gradient(circle at 84% 12%, rgba(94, 106, 210, 0.08), transparent 22rem),
+      linear-gradient(180deg, rgba(94, 106, 210, 0.05) 0%, transparent 18rem);
   }
 
   body,
@@ -140,8 +151,9 @@
   h2 {
     font-family: var(--font-display);
     color: var(--text);
-    letter-spacing: -0.04em;
-    line-height: 0.94;
+    font-weight: 510;
+    letter-spacing: -0.044em;
+    line-height: 0.98;
   }
 
   h3,
@@ -149,17 +161,17 @@
   h5,
   h6 {
     color: var(--text);
+    font-weight: 590;
     letter-spacing: -0.02em;
   }
 
   a {
-    color: inherit;
+    color: var(--accent-strong);
     text-decoration: none;
   }
 
   a:hover {
-    text-decoration: underline;
-    text-decoration-color: var(--border-strong);
+    color: color-mix(in srgb, var(--accent-strong) 88%, white);
   }
 
   code,
@@ -168,7 +180,7 @@
   }
 
   ::selection {
-    background: rgba(255, 79, 0, 0.18);
+    background: rgba(113, 112, 255, 0.26);
     color: var(--text);
   }
 
@@ -201,46 +213,91 @@
 
   .section-kicker {
     color: var(--muted);
-    font-size: 0.74rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
+    font-size: 0.71rem;
+    font-weight: 510;
+    letter-spacing: 0.11em;
     text-transform: uppercase;
   }
 
   .surface-card {
-    background: var(--panel);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.022) 0%, rgba(255, 255, 255, 0.012) 100%),
+      var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
+    backdrop-filter: blur(20px);
   }
 
   .surface-card-soft {
-    background: var(--surface-soft);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.012) 100%),
+      var(--surface-soft);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
+    backdrop-filter: blur(18px);
   }
 
   .surface-card-faint {
-    background: var(--surface-faint);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.016) 0%, rgba(255, 255, 255, 0.008) 100%),
+      var(--surface-faint);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
+    backdrop-filter: blur(16px);
   }
 
   .status-pill {
     display: inline-flex;
     align-items: center;
     gap: 0.45rem;
-    min-height: 1.9rem;
+    min-height: 1.7rem;
     border: 1px solid var(--border);
     border-radius: 999px;
-    background: var(--panel);
-    padding: 0 0.85rem;
-    font-size: 0.76rem;
-    font-weight: 500;
+    background: rgba(255, 255, 255, 0.02);
+    padding: 0 0.72rem;
+    font-size: 0.68rem;
+    font-weight: 510;
     line-height: 1;
   }
 
   .editorial-rule {
     height: 1px;
     background: var(--border);
+  }
+
+  .tone-muted {
+    border-color: var(--border);
+    background: var(--surface-soft);
+    color: var(--muted);
+  }
+
+  .tone-accent {
+    border-color: rgb(var(--accent-rgb) / 0.34);
+    background: rgb(var(--accent-rgb) / 0.14);
+    color: var(--accent-strong);
+  }
+
+  .tone-success {
+    border-color: rgb(var(--success-rgb) / 0.32);
+    background: rgb(var(--success-rgb) / 0.12);
+    color: var(--success);
+  }
+
+  .tone-warning {
+    border-color: rgb(var(--warning-rgb) / 0.34);
+    background: rgb(var(--warning-rgb) / 0.12);
+    color: var(--warning);
+  }
+
+  .tone-danger {
+    border-color: rgb(var(--danger-rgb) / 0.34);
+    background: rgb(var(--danger-rgb) / 0.12);
+    color: var(--danger);
+  }
+
+  .tone-info {
+    border-color: rgb(var(--info-rgb) / 0.32);
+    background: rgb(var(--info-rgb) / 0.12);
+    color: var(--info);
   }
 }
