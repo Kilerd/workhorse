@@ -237,7 +237,7 @@ export class TeamPrService {
       });
     } else {
       // Workspace-agent path: use task_messages keyed by workspaceId
-      this.store.appendTaskMessage({
+      const message = {
         id: createId(),
         parentTaskId: task.parentTaskId!,
         taskId: task.id,
@@ -246,15 +246,13 @@ export class TeamPrService {
         messageType: "status",
         content: truncated,
         createdAt: now
-      });
-      // HACK: reuse teamId field for workspaceId until PR-D event rename
+      } as const;
+      this.store.appendTaskMessage(message);
       this.events.publish({
-        type: "team.agent.message",
-        teamId: task.workspaceId,
+        type: "task.message.created",
+        workspaceId: task.workspaceId,
         parentTaskId: task.parentTaskId!,
-        fromAgentId: "system",
-        messageType: "status",
-        payload: truncated
+        message
       });
     }
   }

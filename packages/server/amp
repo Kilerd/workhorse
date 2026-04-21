@@ -1,0 +1,44 @@
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/git-worktree.test.ts > git worktree lifecycle > publishes Claude reviewer output back to the pull request as a GitHub review
+ FAIL  src/git-worktree.test.ts > git worktree lifecycle > publishes Claude reviewer output back to the pull request as a GitHub review
+AssertionError: expected [] to have a length of 1 but got +0
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/git-worktree.test.ts:974:28
+ ❯ src/git-worktree.test.ts:974:28
+    972|
+    973|     expect(reviewRun.status).toBe("succeeded");
+    974|     expect(github.reviews).toHaveLength(1);
+       |                            ^
+    975|     expect(github.reviews[0]).toMatchObject({
+    976|       repositoryFullName,
+    972|
+    973|     expect(reviewRun.status).toBe("succeeded");
+    974|     expect(github.reviews).toHaveLength(1);
+       |                            ^
+    975|     expect(github.reviews[0]).toMatchObject({
+    976|       repositoryFullName,
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+

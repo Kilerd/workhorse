@@ -632,6 +632,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{workspaceId}/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List coordinator proposals for a workspace */
+        get: operations["listWorkspaceProposals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{workspaceId}/proposals/{proposalId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a coordinator proposal by workspace */
+        get: operations["getWorkspaceProposal"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{workspaceId}/proposals/{proposalId}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve a workspace coordinator proposal */
+        post: operations["approveWorkspaceProposal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{workspaceId}/proposals/{proposalId}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject a workspace coordinator proposal */
+        post: operations["rejectWorkspaceProposal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{workspaceId}/tasks/{taskId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a workspace subtask */
+        post: operations["cancelSubtaskByWorkspace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -742,7 +827,7 @@ export interface components {
             createdAt: string;
             updatedAt: string;
         };
-        TaskColumn: "backlog" | "todo" | "blocked" | "running" | "review" | "done" | "archived";
+        TaskColumn: "review" | "backlog" | "todo" | "blocked" | "running" | "done" | "archived";
         RunnerType: "claude" | "codex" | "shell";
         RunnerConfig: components["schemas"]["ShellRunnerConfig"] | components["schemas"]["ClaudeRunnerConfig"] | components["schemas"]["CodexRunnerConfig"];
         ShellRunnerConfig: {
@@ -752,6 +837,11 @@ export interface components {
              */
             type: "shell";
             command: string;
+            env?: components["schemas"]["Recordstringstring"];
+        };
+        /** @description Construct a type with a set of properties K of type T */
+        Recordstringstring: {
+            [key: string]: string;
         };
         ClaudeRunnerConfig: {
             /**
@@ -761,8 +851,26 @@ export interface components {
             type: "claude";
             prompt: string;
             agent?: string;
-            model?: string;
-            permissionMode?: "plan" | "default" | "acceptEdits" | "bypassPermissions" | "dontAsk";
+            model?: components["schemas"]["BuiltinModelConfig"] | components["schemas"]["CustomModelConfig"];
+            permissionMode?: "plan" | "acceptEdits" | "bypassPermissions" | "default" | "dontAsk";
+            env?: components["schemas"]["Recordstringstring"];
+        };
+        BuiltinModelConfig: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            mode: "builtin";
+            id: string;
+            reasoningEffort?: "low" | "medium" | "high" | "xhigh";
+        };
+        CustomModelConfig: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            mode: "custom";
+            id: string;
         };
         CodexRunnerConfig: {
             /**
@@ -771,7 +879,7 @@ export interface components {
              */
             type: "codex";
             prompt: string;
-            model?: string;
+            model?: components["schemas"]["BuiltinModelConfig"] | components["schemas"]["CustomModelConfig"];
             approvalMode?: "default" | "auto";
         };
         TaskPullRequest: {
@@ -819,10 +927,6 @@ export interface components {
             metadata?: components["schemas"]["Recordstringstring"];
         };
         RunStatus: "running" | "queued" | "succeeded" | "failed" | "interrupted" | "canceled";
-        /** @description Construct a type with a set of properties K of type T */
-        Recordstringstring: {
-            [key: string]: string;
-        };
         UpdateSettingsBody: {
             language: string;
             openRouter: {
@@ -869,7 +973,7 @@ export interface components {
             workspaceId: string;
             teamId?: string;
             worktreeBaseRef?: string;
-            column?: "backlog" | "todo" | "blocked" | "running" | "review" | "done" | "archived";
+            column?: "review" | "backlog" | "todo" | "blocked" | "running" | "done" | "archived";
             order?: number;
             runnerType: components["schemas"]["RunnerType"];
             runnerConfig: components["schemas"]["RunnerConfig"];
@@ -898,7 +1002,7 @@ export interface components {
             description?: string;
             workspaceId?: string;
             worktreeBaseRef?: string;
-            column?: "backlog" | "todo" | "blocked" | "running" | "review" | "done" | "archived";
+            column?: "review" | "backlog" | "todo" | "blocked" | "running" | "done" | "archived";
             order?: number;
             runnerType?: "claude" | "codex" | "shell";
             runnerConfig?: components["schemas"]["ShellRunnerConfig"] | components["schemas"]["ClaudeRunnerConfig"] | components["schemas"]["CodexRunnerConfig"];
@@ -1140,8 +1244,8 @@ export interface components {
             source?: string;
             metadata?: components["schemas"]["Recordstringstring"];
         };
-        RunLogStream: "system" | "stdout" | "stderr";
-        RunLogKind: "agent" | "system" | "status" | "text" | "plan" | "user" | "tool_call" | "tool_output";
+        RunLogStream: "stdout" | "stderr" | "system";
+        RunLogKind: "plan" | "system" | "text" | "user" | "agent" | "tool_call" | "tool_output" | "status";
         HealthResponse: {
             /** @enum {unknown} */
             ok: true;
@@ -1248,7 +1352,7 @@ export interface components {
             content: string;
             createdAt: string;
         };
-        TeamMessageSenderType: "agent" | "human" | "system";
+        TeamMessageSenderType: "system" | "agent" | "human";
         TeamMessageType: "status" | "artifact" | "context" | "feedback";
         CreateTeamBody: {
             name: string;
@@ -1474,6 +1578,69 @@ export interface components {
         };
         TaskMessageData: {
             item: components["schemas"]["TaskMessage"];
+        };
+        WorkspaceListProposalsParams: {
+            workspaceId: string;
+        };
+        WorkspaceGetProposalParams: {
+            workspaceId: string;
+            proposalId: string;
+        };
+        WorkspaceApproveProposalParams: {
+            workspaceId: string;
+            proposalId: string;
+        };
+        WorkspaceRejectProposalParams: {
+            workspaceId: string;
+            proposalId: string;
+        };
+        WorkspaceCancelSubtaskParams: {
+            workspaceId: string;
+            taskId: string;
+        };
+        ListProposalsResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["ListProposalsData"];
+        };
+        ListProposalsData: {
+            items: components["schemas"]["CoordinatorProposal"][];
+        };
+        /**
+         * @description A coordinator proposal holds the parsed subtask plan from a coordinator
+         *     run and waits for human approval before subtasks are actually created.
+         */
+        CoordinatorProposal: {
+            id: string;
+            /** @description Legacy: team-scoped proposals. Null for workspace-scoped proposals. */
+            teamId: null | string;
+            /** @description Set for workspace-scoped proposals (new model). */
+            workspaceId?: string;
+            parentTaskId: string;
+            status: components["schemas"]["CoordinatorProposalStatus"];
+            drafts: components["schemas"]["CoordinatorProposalDraft"][];
+            createdAt: string;
+            /** @description ISO timestamp of when the proposal was approved or rejected. */
+            decidedAt?: string;
+        };
+        CoordinatorProposalStatus: "pending" | "approved" | "rejected";
+        /** @description A single subtask draft produced by the coordinator LLM output. */
+        CoordinatorProposalDraft: {
+            title: string;
+            description: string;
+            assignedAgent: string;
+            dependencies: string[];
+        };
+        ProposalResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["ProposalData"];
+        };
+        ProposalData: {
+            proposal: components["schemas"]["CoordinatorProposal"];
+        };
+        ListProposalsQuery: {
+            parentTaskId?: string;
         };
     };
     responses: never;
@@ -3290,6 +3457,167 @@ export interface operations {
             };
             /** @description Workspace not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    listWorkspaceProposals: {
+        parameters: {
+            query?: {
+                parentTaskId?: string;
+            };
+            header?: never;
+            path: {
+                workspaceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Proposal collection */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListProposalsResponse"];
+                };
+            };
+            /** @description Workspace not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getWorkspaceProposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: string;
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Coordinator proposal */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalResponse"];
+                };
+            };
+            /** @description Proposal not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    approveWorkspaceProposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: string;
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Approved proposal */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalResponse"];
+                };
+            };
+            /** @description Proposal already decided */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    rejectWorkspaceProposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: string;
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rejected proposal */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalResponse"];
+                };
+            };
+            /** @description Proposal already decided */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    cancelSubtaskByWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: string;
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cancelled subtask */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            /** @description Task cannot be cancelled */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

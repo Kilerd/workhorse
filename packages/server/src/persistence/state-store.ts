@@ -17,6 +17,7 @@ import type {
   GlobalSettings,
   Run,
   RunLogEntry,
+  RunnerConfig,
   Task,
   TaskMessage,
   TeamMessage,
@@ -155,10 +156,24 @@ function rowToAgent(row: AgentRow): AccountAgent {
     id: row.id,
     name: row.name,
     description: row.description ?? undefined,
-    runnerConfig: JSON.parse(row.runnerConfig),
+    runnerConfig: normalizeRunnerConfig(JSON.parse(row.runnerConfig)),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt
   };
+}
+
+function normalizeRunnerConfig(raw: unknown): RunnerConfig {
+  if (!raw || typeof raw !== "object") {
+    return raw as RunnerConfig;
+  }
+
+  const config = raw as Record<string, unknown>;
+
+  if (typeof config.model === "string") {
+    config.model = { mode: "custom", id: config.model };
+  }
+
+  return config as unknown as RunnerConfig;
 }
 
 function agentToRow(agent: AccountAgent): typeof schema.agents.$inferInsert {
@@ -201,7 +216,7 @@ function rowToTask(row: TaskRow, depIds: string[]): Task {
     column: row.column as Task["column"],
     order: row.taskOrder,
     runnerType: row.runnerType as Task["runnerType"],
-    runnerConfig: JSON.parse(row.runnerConfig),
+    runnerConfig: normalizeRunnerConfig(JSON.parse(row.runnerConfig)),
     dependencies: depIds,
     plan: row.plan ?? undefined,
     worktree: JSON.parse(row.worktree),
@@ -250,12 +265,16 @@ function taskToRow(task: Task): typeof schema.tasks.$inferInsert {
 }
 
 function rowToTeam(row: TeamRow): AgentTeam {
+  const rawAgents = JSON.parse(row.agents) as AgentTeam["agents"];
   return {
     id: row.id,
     name: row.name,
     description: row.description,
     workspaceId: row.workspaceId,
-    agents: JSON.parse(row.agents),
+    agents: rawAgents.map((teamAgent) => ({
+      ...teamAgent,
+      runnerConfig: normalizeRunnerConfig(teamAgent.runnerConfig)
+    })),
     prStrategy: row.prStrategy as AgentTeam["prStrategy"],
     autoApproveSubtasks: row.autoApproveSubtasks,
     createdAt: row.createdAt,

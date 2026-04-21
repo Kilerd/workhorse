@@ -104,6 +104,14 @@ async function waitForTask(
   return waitFor(() => service.listTasks({}).find((t) => t.id === taskId && predicate(t)));
 }
 
+async function waitForTeamProposal(
+  service: BoardService,
+  teamId: string,
+  parentTaskId: string
+) {
+  return waitFor(() => service.listProposals(teamId, { parentTaskId })[0]);
+}
+
 // ---------------------------------------------------------------------------
 // Runtime helpers
 // ---------------------------------------------------------------------------
@@ -422,6 +430,9 @@ describe("team PR creation integration", () => {
     });
 
     await service.startTask(parentTask.id);
+    await waitForTask(service, parentTask.id, (task) => task.column === "review");
+    const proposal = await waitForTeamProposal(service, team.id, parentTask.id);
+    await service.approveProposal(team.id, proposal.id);
 
     // Wait for subtask to appear and then complete
     const subtask = await waitFor(() => {
@@ -489,6 +500,9 @@ describe("team PR creation integration", () => {
     });
 
     await service.startTask(parentTask.id);
+    await waitForTask(service, parentTask.id, (task) => task.column === "review");
+    const proposal = await waitForTeamProposal(service, team.id, parentTask.id);
+    await service.approveProposal(team.id, proposal.id);
 
     const subtask = await waitFor(() => {
       return service.listTasks({}).find((t) => t.parentTaskId === parentTask.id);

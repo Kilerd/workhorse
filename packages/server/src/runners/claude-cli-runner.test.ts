@@ -66,7 +66,7 @@ describe("ClaudeCliRunner", () => {
         type: "claude",
         prompt: "Review the changes.",
         agent: "code-reviewer",
-        model: "claude-sonnet-4-6",
+        model: { mode: "custom", id: "claude-sonnet-4-6" },
         permissionMode: "plan"
       })
     ).toEqual([
@@ -81,6 +81,36 @@ describe("ClaudeCliRunner", () => {
       "--model",
       "claude-sonnet-4-6"
     ]);
+  });
+
+  it("adds --effort for builtin Claude models and clamps xhigh to high", () => {
+    const runner = new ClaudeCliRunner();
+    expect(
+      runner.buildCommandArgs({
+        type: "claude",
+        prompt: "Review the changes.",
+        model: { mode: "builtin", id: "claude-sonnet-4-6", reasoningEffort: "high" }
+      })
+    ).toEqual([
+      "-p",
+      "--verbose",
+      "--output-format",
+      "stream-json",
+      "--permission-mode",
+      "default",
+      "--model",
+      "claude-sonnet-4-6",
+      "--effort",
+      "high"
+    ]);
+
+    expect(
+      runner.buildCommandArgs({
+        type: "claude",
+        prompt: "Review the changes.",
+        model: { mode: "builtin", id: "claude-sonnet-4-6", reasoningEffort: "xhigh" }
+      })
+    ).toContain("high");
   });
 
   it("includes task context and follow-up instructions in the prompt payload", () => {

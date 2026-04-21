@@ -64,6 +64,7 @@ import {
 } from "../runners/codex-app-server-manager.js";
 import { CodexAcpRunner } from "../runners/codex-acp-runner.js";
 import { ClaudeCliRunner } from "../runners/claude-cli-runner.js";
+import { synthesizeAgentPrompt } from "../runners/builtin-prompts.js";
 import type { RunnerAdapter } from "../runners/types.js";
 import { ShellRunner } from "../runners/shell-runner.js";
 import { EventBus } from "../ws/event-bus.js";
@@ -125,6 +126,17 @@ function validateTeamAgents(agents: TeamAgent[]): void {
       `Team must have exactly 1 coordinator, got ${coordinators.length}`
     );
   }
+}
+
+function applyAgentPromptSynthesis(
+  runnerConfig: RunnerConfig,
+  description: string | undefined
+): RunnerConfig {
+  if (runnerConfig.type === "shell") {
+    return runnerConfig;
+  }
+  const synthesized = synthesizeAgentPrompt(runnerConfig.type, description);
+  return { ...runnerConfig, prompt: synthesized };
 }
 
 const COLUMN_ORDER: Record<Task["column"], number> = {
@@ -665,10 +677,9 @@ export class BoardService {
         };
         this.store.saveProposal(proposal);
 
-        // HACK: reuse teamId field for workspaceId until PR-D event rename
         this.events.publish({
-          type: "team.proposal.created",
-          teamId: workspaceId,
+          type: "workspace.proposal.created",
+          workspaceId,
           parentTaskId: task.id,
           proposal
         });
@@ -1052,16 +1063,12 @@ export class BoardService {
         createdAt
       };
       this.store.appendTaskMessage(item);
-      // HACK: reuse teamId field for workspaceId until PR-D event rename
-      this.events.publish(
-        buildTeamAgentMessageEvent({
-          teamId: input.workspaceId,
-          parentTaskId: input.parentTaskId,
-          fromAgentId: input.fromAgentId,
-          messageType: input.messageType,
-          payload: input.payload
-        })
-      );
+      this.events.publish({
+        type: "task.message.created",
+        workspaceId: input.workspaceId,
+        parentTaskId: input.parentTaskId,
+        message: item
+      });
     } else {
       // Legacy team path: write to team_messages
       const teamId = input.teamId!;
@@ -2889,24 +2896,17 @@ export class BoardService {
       subtasks,
       (subtask) => this.resolveAssignedAgent(agents, subtask).name
     );
-    // HACK: reuse teamId field for workspaceId until PR-D event rename
-    const messageEvent = buildTeamAgentMessageEvent({
-      teamId: workspaceId,
-      parentTaskId: parentTask.id,
-      fromAgentId: coordinator.id,
-      messageType: "context",
-      payload: summaryPayload
-    });
-    this.store.appendTaskMessage({
+    const message: TaskMessage = {
       id: createId(),
       parentTaskId: parentTask.id,
       taskId: parentTask.id,
       agentName: coordinator.name,
       senderType: "agent",
-      messageType: messageEvent.messageType,
-      content: messageEvent.payload,
+      messageType: "context",
+      content: truncateTeamMessagePayload(summaryPayload),
       createdAt: new Date().toISOString()
-    });
+    };
+    this.store.appendTaskMessage(message);
 
     this.events.publish({
       type: "task.updated",
@@ -2922,23 +2922,15 @@ export class BoardService {
         task: subtask
       });
     }
-    this.events.publish(messageEvent);
-    // HACK: reuse teamId field for workspaceId until PR-D event rename
-    this.events.publish(
-      buildTeamTaskCreatedEvent({
-        teamId: workspaceId,
-        parentTaskId: parentTask.id,
-        subtasks: subtasks.map((subtask) => ({
-          taskId: subtask.id,
-          title: subtask.title,
-          agentName: this.resolveAssignedAgent(agents, subtask).name
-        }))
-      })
-    );
-    // HACK: reuse teamId field for workspaceId until PR-D event rename
     this.events.publish({
-      type: "team.proposal.updated",
-      teamId: workspaceId,
+      type: "task.message.created",
+      workspaceId,
+      parentTaskId: parentTask.id,
+      message
+    });
+    this.events.publish({
+      type: "workspace.proposal.updated",
+      workspaceId,
       parentTaskId: parentTask.id,
       proposal: claimed
     });
@@ -2954,10 +2946,9 @@ export class BoardService {
     const now = new Date().toISOString();
     const updated = this.store.updateProposalStatus(proposalId, "rejected", now);
     if (updated) {
-      // HACK: reuse teamId field for workspaceId until PR-D event rename
       this.events.publish({
-        type: "team.proposal.updated",
-        teamId: workspaceId,
+        type: "workspace.proposal.updated",
+        workspaceId,
         parentTaskId: proposal.parentTaskId,
         proposal: updated
       });
@@ -2998,11 +2989,18 @@ export class BoardService {
       id: createId(),
       name: body.name,
       description: body.description,
-      runnerConfig: body.runnerConfig,
+      runnerConfig: applyAgentPromptSynthesis(body.runnerConfig, body.description),
       createdAt: now,
       updatedAt: now
     };
-    return this.store.createAgent(agent);
+    const created = this.store.createAgent(agent);
+    this.events.publish({
+      type: "agent.updated",
+      action: "created",
+      agentId: created.id,
+      agent: created
+    });
+    return created;
   }
 
   public getAgent(agentId: string): AccountAgent {
@@ -3014,10 +3012,30 @@ export class BoardService {
   }
 
   public updateAgent(agentId: string, body: UpdateAgentBody): AccountAgent {
-    const updated = this.store.updateAgent(agentId, body);
+    const existing = this.store.getAgent(agentId);
+    if (!existing) {
+      throw new AppError(404, "AGENT_NOT_FOUND", `Agent not found: ${agentId}`);
+    }
+    const nextDescription =
+      body.description !== undefined ? body.description : existing.description;
+    const nextRunnerConfig = body.runnerConfig
+      ? applyAgentPromptSynthesis(body.runnerConfig, nextDescription)
+      : existing.runnerConfig.type === "shell"
+        ? existing.runnerConfig
+        : applyAgentPromptSynthesis(existing.runnerConfig, nextDescription);
+    const updated = this.store.updateAgent(agentId, {
+      ...body,
+      runnerConfig: nextRunnerConfig
+    });
     if (!updated) {
       throw new AppError(404, "AGENT_NOT_FOUND", `Agent not found: ${agentId}`);
     }
+    this.events.publish({
+      type: "agent.updated",
+      action: "updated",
+      agentId: updated.id,
+      agent: updated
+    });
     return updated;
   }
 
@@ -3026,6 +3044,11 @@ export class BoardService {
     if (!deleted) {
       throw new AppError(404, "AGENT_NOT_FOUND", `Agent not found: ${agentId}`);
     }
+    this.events.publish({
+      type: "agent.updated",
+      action: "deleted",
+      agentId
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -3039,15 +3062,31 @@ export class BoardService {
 
   public mountAgent(workspaceId: string, body: MountAgentBody): WorkspaceAgent {
     this.requireWorkspace(workspaceId);
-    return this.store.mountAgentToWorkspace(workspaceId, body.agentId, body.role as AgentRole);
+    const agent = this.store.mountAgentToWorkspace(workspaceId, body.agentId, body.role as AgentRole);
+    this.events.publish({
+      type: "workspace.agent.updated",
+      action: "mounted",
+      workspaceId,
+      agentId: agent.id,
+      agent
+    });
+    return agent;
   }
 
   public unmountAgent(workspaceId: string, agentId: string): void {
     this.requireWorkspace(workspaceId);
+    const existing = this.store.getWorkspaceAgent(workspaceId, agentId);
     const removed = this.store.unmountAgentFromWorkspace(workspaceId, agentId);
     if (!removed) {
       throw new AppError(404, "WORKSPACE_AGENT_NOT_FOUND", `Agent ${agentId} not mounted in workspace ${workspaceId}`);
     }
+    this.events.publish({
+      type: "workspace.agent.updated",
+      action: "unmounted",
+      workspaceId,
+      agentId,
+      ...(existing ? { agent: existing } : {})
+    });
   }
 
   public updateAgentRole(
@@ -3060,6 +3099,13 @@ export class BoardService {
     if (!updated) {
       throw new AppError(404, "WORKSPACE_AGENT_NOT_FOUND", `Agent ${agentId} not mounted in workspace ${workspaceId}`);
     }
+    this.events.publish({
+      type: "workspace.agent.updated",
+      action: "updated",
+      workspaceId,
+      agentId: updated.id,
+      agent: updated
+    });
     return updated;
   }
 
@@ -3072,6 +3118,12 @@ export class BoardService {
     if (!updated) {
       throw new AppError(404, "WORKSPACE_NOT_FOUND", `Workspace not found: ${workspaceId}`);
     }
+    this.events.publish({
+      type: "workspace.updated",
+      action: "updated",
+      workspaceId: updated.id,
+      workspace: updated
+    });
     return updated;
   }
 
@@ -3103,6 +3155,12 @@ export class BoardService {
       createdAt: new Date().toISOString()
     };
     this.store.appendTaskMessage(message);
+    this.events.publish({
+      type: "task.message.created",
+      workspaceId,
+      parentTaskId: message.parentTaskId,
+      message
+    });
     return message;
   }
 

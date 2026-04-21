@@ -207,6 +207,19 @@ function isCommandLikeItemType(type: string | undefined): boolean {
   return Boolean(type?.toLowerCase().includes("command"));
 }
 
+function resolveCodexEffortConfig(
+  config: CodexRunnerConfig
+): Record<string, unknown> | undefined {
+  if (!config.model || config.model.mode !== "builtin") {
+    return undefined;
+  }
+  const effort = config.model.reasoningEffort;
+  if (!effort) {
+    return undefined;
+  }
+  return { model_reasoning_effort: effort };
+}
+
 function buildGitRequirementsPrompt(context: RunnerStartContext): string {
   const description = context.task.description.trim();
   const plan = context.task.plan?.trim();
@@ -835,15 +848,17 @@ export class CodexAcpRunner implements RunnerAdapter {
 
   private buildThreadStartParams(context: RunnerStartContext, config: CodexRunnerConfig) {
     const settings = resolveWorkspaceCodexSettings(context.workspace);
+    const effortConfig = resolveCodexEffortConfig(config);
 
     return {
-      model: config.model ?? null,
+      model: config.model?.id ?? null,
       cwd: context.workspace.rootPath,
       approvalPolicy: settings.approvalPolicy,
       sandbox: settings.sandboxMode,
       ephemeral: false,
       experimentalRawEvents: false,
-      persistExtendedHistory: true
+      persistExtendedHistory: true,
+      ...(effortConfig ? { config: effortConfig } : {})
     };
   }
 
@@ -853,14 +868,16 @@ export class CodexAcpRunner implements RunnerAdapter {
     threadId: string
   ) {
     const settings = resolveWorkspaceCodexSettings(context.workspace);
+    const effortConfig = resolveCodexEffortConfig(config);
 
     return {
       threadId,
-      model: config.model ?? null,
+      model: config.model?.id ?? null,
       cwd: context.workspace.rootPath,
       approvalPolicy: settings.approvalPolicy,
       sandbox: settings.sandboxMode,
-      persistExtendedHistory: true
+      persistExtendedHistory: true,
+      ...(effortConfig ? { config: effortConfig } : {})
     };
   }
 

@@ -6,7 +6,6 @@ import {
 } from "@tanstack/react-query";
 
 import type {
-  AgentTeam,
   GlobalSettings,
   Run,
   StartTaskBody,
@@ -27,10 +26,11 @@ import {
 import { applyOptimisticStartTask } from "@/lib/start-task";
 import { type DisplayTask, type TaskFormValues } from "@/lib/task-view";
 
+import { coordinationQueryKeys } from "./useCoordination";
 import { useLiveLog } from "./useLiveLog";
 import { useModalState } from "./useModalState";
 import { useSelectionState } from "./useSelectionState";
-import { useTeams, teamQueryKeys } from "./useTeams";
+
 
 function queryKey(name: string, extra?: string) {
   return extra ? [name, extra] : [name];
@@ -58,15 +58,40 @@ export function useBoardData() {
     }
   });
 
-  const invalidateTeamThread = useCallback(
-    async (teamId?: string, parentTaskId?: string) => {
-      if (!teamId || !parentTaskId) {
+  const invalidateCoordinationThread = useCallback(
+    async ({
+      teamId,
+      workspaceId,
+      parentTaskId
+    }: {
+      teamId?: string;
+      workspaceId?: string;
+      parentTaskId?: string;
+    }) => {
+      if (!parentTaskId) {
         return;
       }
 
-      await queryClient.invalidateQueries({
-        queryKey: teamQueryKeys.messages(teamId, parentTaskId)
-      });
+      if (teamId) {
+        await queryClient.invalidateQueries({
+          queryKey: coordinationQueryKeys.messages({
+            kind: "legacy_team",
+            teamId,
+            parentTaskId
+          })
+        });
+        return;
+      }
+
+      if (workspaceId) {
+        await queryClient.invalidateQueries({
+          queryKey: coordinationQueryKeys.messages({
+            kind: "workspace",
+            workspaceId,
+            parentTaskId
+          })
+        });
+      }
     },
     [queryClient]
   );
@@ -115,8 +140,6 @@ export function useBoardData() {
       return response.settings;
     }
   });
-
-  const teamsQuery = useTeams();
 
   const displayedTasks = useMemo<DisplayTask[]>(
     () => tasksQuery.data ?? [],
@@ -376,6 +399,7 @@ export function useBoardData() {
     }: {
       taskId: string;
       teamId?: string;
+      workspaceId?: string;
       parentTaskId?: string;
     }) => {
       const response = await api.approveTask(taskId);
@@ -383,7 +407,7 @@ export function useBoardData() {
     },
     onSuccess: async (_task, variables) => {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
-      await invalidateTeamThread(variables.teamId, variables.parentTaskId);
+      await invalidateCoordinationThread(variables);
     }
   });
 
@@ -395,6 +419,7 @@ export function useBoardData() {
       taskId: string;
       reason?: string;
       teamId?: string;
+      workspaceId?: string;
       parentTaskId?: string;
     }) => {
       const response = await api.rejectTask(taskId, { reason });
@@ -402,7 +427,7 @@ export function useBoardData() {
     },
     onSuccess: async (_task, variables) => {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
-      await invalidateTeamThread(variables.teamId, variables.parentTaskId);
+      await invalidateCoordinationThread(variables);
     }
   });
 
@@ -412,6 +437,7 @@ export function useBoardData() {
     }: {
       taskId: string;
       teamId?: string;
+      workspaceId?: string;
       parentTaskId?: string;
     }) => {
       const response = await api.retryTask(taskId);
@@ -420,26 +446,33 @@ export function useBoardData() {
     onSuccess: async (_task, variables) => {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
       await queryClient.invalidateQueries({ queryKey: queryKey("runs") });
-      await invalidateTeamThread(variables.teamId, variables.parentTaskId);
+      await invalidateCoordinationThread(variables);
     }
   });
 
   const cancelSubtaskMutation = useMutation({
     mutationFn: async ({
       taskId,
-      teamId
+      teamId,
+      workspaceId
     }: {
       taskId: string;
-      teamId: string;
+      teamId?: string;
+      workspaceId?: string;
       parentTaskId?: string;
     }) => {
-      const response = await api.cancelSubtask(teamId, taskId);
+      if (!teamId && !workspaceId) {
+        throw new Error("Subtask cancellation context is unavailable.");
+      }
+      const response = teamId
+        ? await api.cancelSubtask(teamId, taskId)
+        : await api.cancelWorkspaceSubtask(workspaceId!, taskId);
       return response.task;
     },
     onSuccess: async (_task, variables) => {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
       await queryClient.invalidateQueries({ queryKey: queryKey("runs") });
-      await invalidateTeamThread(variables.teamId, variables.parentTaskId);
+      await invalidateCoordinationThread(variables);
     }
   });
 
@@ -531,8 +564,6 @@ export function useBoardData() {
     workspacesQuery,
     tasksQuery,
     settingsQuery,
-    teamsQuery,
-    teams: teamsQuery.data ?? ([] as AgentTeam[]),
     workspaceGitStatus: workspaceGitStatusQuery.data ?? null,
     pullWorkspace: pullWorkspaceMutation.mutateAsync,
     isPulling: pullWorkspaceMutation.isPending,

@@ -1,8 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { AgentTeam, CoordinatorProposal, Run, RunLogEntry, TeamMessage, Workspace } from "@workhorse/contracts";
+import type { AgentTeam, CoordinatorProposal, Run, RunLogEntry, Workspace, WorkspaceAgent } from "@workhorse/contracts";
 
 import { formatCount, formatRelativeTime, titleCase } from "@/lib/format";
+import {
+  countWorkspaceWorkers,
+  getCoordinatorWorkspaceAgent,
+  type CoordinationMessage,
+  type CoordinationScope,
+  resolveCoordinationAgentName
+} from "@/lib/coordination";
 import type { DisplayTask } from "@/lib/task-view";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
@@ -20,12 +27,14 @@ interface Props {
   allTasks: DisplayTask[];
   runs: Run[];
   workspaces: Workspace[];
-  team: AgentTeam | null;
-  teamMessages: TeamMessage[];
-  teamMessagesLoading?: boolean;
-  teamMessagesError?: string | null;
-  teamProposals?: CoordinatorProposal[];
-  teamProposalsLoading?: boolean;
+  legacyTeam: AgentTeam | null;
+  workspaceAgents: WorkspaceAgent[];
+  coordinationScope: CoordinationScope;
+  coordinationMessages: CoordinationMessage[];
+  coordinationMessagesLoading?: boolean;
+  coordinationMessagesError?: string | null;
+  coordinationProposals?: CoordinatorProposal[];
+  coordinationProposalsLoading?: boolean;
   selectedRunId: string | null;
   runLogLoading?: boolean;
   onBack?(): void;
@@ -34,7 +43,7 @@ interface Props {
   runLog: RunLogEntry[];
   onPlan(): void;
   onSendPlanFeedback(text: string): Promise<unknown>;
-  onSendTeamMessage?(text: string): Promise<unknown>;
+  onSendCoordinationMessage?(text: string): Promise<unknown>;
   onApproveSubtask?(): void;
   onRejectSubtask?(reason?: string): void;
   onRetrySubtask?(): void;
@@ -266,12 +275,14 @@ export function TaskDetailsPanel({
   allTasks,
   runs,
   workspaces,
-  team,
-  teamMessages,
-  teamMessagesLoading = false,
-  teamMessagesError = null,
-  teamProposals = [],
-  teamProposalsLoading = false,
+  legacyTeam,
+  workspaceAgents,
+  coordinationScope,
+  coordinationMessages,
+  coordinationMessagesLoading = false,
+  coordinationMessagesError = null,
+  coordinationProposals = [],
+  coordinationProposalsLoading = false,
   selectedRunId,
   runLogLoading = false,
   onBack,
@@ -280,7 +291,7 @@ export function TaskDetailsPanel({
   runLog,
   onPlan,
   onSendPlanFeedback,
-  onSendTeamMessage,
+  onSendCoordinationMessage,
   onApproveSubtask,
   onRejectSubtask,
   onRetrySubtask,
@@ -378,15 +389,23 @@ export function TaskDetailsPanel({
     task.column === "review" &&
     !activeRun &&
     Boolean(showWorktree && task.worktree.status !== "removed");
-  const isReviewableSubtask = Boolean(task.teamId && task.parentTaskId && task.column === "review");
+  const hasCoordination = coordinationScope.kind !== "none";
+  const isReviewableSubtask = Boolean(hasCoordination && task.parentTaskId && task.column === "review");
   const isCancelableSubtask = Boolean(
-    task.teamId &&
+    hasCoordination &&
       task.parentTaskId &&
       !task.cancelledAt &&
       task.column !== "done" &&
       task.column !== "archived"
   );
   const canApproveReviewSubtask = task.lastRunStatus === "succeeded";
+  const assignedAgentName = resolveCoordinationAgentName({
+    task,
+    legacyTeam,
+    workspaceAgents
+  });
+  const workspaceCoordinator = getCoordinatorWorkspaceAgent(workspaceAgents);
+  const workspaceWorkerCount = countWorkspaceWorkers(workspaceAgents);
 
   return (
     <aside className={cn(detailPanelClass, className)}>
@@ -506,47 +525,52 @@ export function TaskDetailsPanel({
             </p>
           </SidebarSection>
 
-          {team ? (
+          {hasCoordination ? (
             <>
-              <SidebarSection title="Team Context">
-                <TeamCard
-                  team={team}
-                  workspaceName={workspace?.name}
-                  compact
-                />
+              <SidebarSection title="Coordination Context">
+                {legacyTeam ? (
+                  <TeamCard team={legacyTeam} workspaceName={workspace?.name} compact />
+                ) : (
+                  <WorkspaceAgentSummary
+                    workspaceName={workspace?.name}
+                    agents={workspaceAgents}
+                    prStrategy={workspace?.prStrategy ?? "independent"}
+                    autoApproveSubtasks={workspace?.autoApproveSubtasks ?? false}
+                  />
+                )}
                 <div className="mt-3 grid gap-1 text-[0.72rem] text-[var(--muted)]">
+                  {legacyTeam ? <span>Mode · legacy team compatibility</span> : null}
                   {task.parentTaskId ? (
                     <span>Subtask thread · parent {task.parentTaskId}</span>
                   ) : (
                     <span>Coordinator thread · parent task</span>
                   )}
                   {task.rejected ? <span>Decision · rejected</span> : null}
-                  {task.teamAgentId ? (
+                  {assignedAgentName ? <span>Assigned agent · {assignedAgentName}</span> : null}
+                  {!legacyTeam && workspaceCoordinator ? (
                     <span>
-                      Assigned agent ·{" "}
-                      {team.agents.find((agent) => agent.id === task.teamAgentId)?.agentName ??
-                        task.teamAgentId}
+                      Workspace coordinator · {workspaceCoordinator.name}
+                      {workspaceWorkerCount > 0 ? ` · ${workspaceWorkerCount} workers` : ""}
                     </span>
                   ) : null}
                 </div>
               </SidebarSection>
 
-              <SidebarSection title="Team Activity">
+              <SidebarSection title="Coordination Activity">
                 <TeamMessageFeed
-                  messages={teamMessages}
-                  loading={teamMessagesLoading}
-                  error={teamMessagesError}
-                  onSendMessage={onSendTeamMessage}
+                  messages={coordinationMessages}
+                  loading={coordinationMessagesLoading}
+                  error={coordinationMessagesError}
+                  onSendMessage={onSendCoordinationMessage}
                 />
               </SidebarSection>
 
               {!task.parentTaskId ? (
                 <SidebarSection title="Coordinator Proposals">
                   <CoordinatorProposalPanel
-                    teamId={team.id}
-                    parentTaskId={task.id}
-                    proposals={teamProposals}
-                    loading={teamProposalsLoading}
+                    scope={coordinationScope}
+                    proposals={coordinationProposals}
+                    loading={coordinationProposalsLoading}
                   />
                 </SidebarSection>
               ) : null}
@@ -748,6 +772,64 @@ export function TaskDetailsPanel({
         </div>
       </div>
     </aside>
+  );
+}
+
+function WorkspaceAgentSummary({
+  workspaceName,
+  agents,
+  prStrategy,
+  autoApproveSubtasks
+}: {
+  workspaceName?: string;
+  agents: WorkspaceAgent[];
+  prStrategy: string;
+  autoApproveSubtasks: boolean;
+}) {
+  const coordinator = getCoordinatorWorkspaceAgent(agents);
+  const workerCount = countWorkspaceWorkers(agents);
+
+  return (
+    <article className="grid gap-3 rounded-[var(--radius-lg)] border border-border bg-[var(--panel)] p-4 text-left">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="inline-flex min-h-7 items-center rounded-full border border-[rgba(255,79,0,0.24)] bg-[rgba(255,79,0,0.08)] px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] text-[var(--accent-strong)]">
+              Agents
+            </span>
+            <span className="inline-flex min-h-7 items-center rounded-full border border-border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] text-[var(--muted)]">
+              {agents.length} mounted
+            </span>
+          </div>
+          <h3 className="mt-3 m-0 text-[1rem] font-semibold leading-[1.35]">
+            {workspaceName ?? "Workspace coordination"}
+          </h3>
+        </div>
+        <span className="rounded-full border border-border px-2.5 py-1 font-mono text-[0.62rem] uppercase tracking-[0.08em] text-[var(--muted)]">
+          {titleCase(prStrategy)}
+        </span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1.5">
+        {coordinator ? (
+          <span className="inline-flex min-h-7 items-center rounded-full border border-[rgba(255,79,0,0.28)] bg-[rgba(255,79,0,0.08)] px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] text-[var(--accent-strong)]">
+            coordinator · {coordinator.name}
+          </span>
+        ) : (
+          <span className="inline-flex min-h-7 items-center rounded-full border border-border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] text-[var(--muted)]">
+            no coordinator
+          </span>
+        )}
+        {workerCount > 0 ? (
+          <span className="inline-flex min-h-7 items-center rounded-full border border-[rgba(79,92,98,0.24)] bg-[rgba(79,92,98,0.06)] px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] text-[var(--info)]">
+            {workerCount} workers
+          </span>
+        ) : null}
+        <span className="inline-flex min-h-7 items-center rounded-full border border-border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] text-[var(--muted)]">
+          {autoApproveSubtasks ? "Auto-approve subtasks" : "Manual subtask review"}
+        </span>
+      </div>
+    </article>
   );
 }
 

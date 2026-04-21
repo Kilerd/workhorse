@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type {
-  AgentTeam,
   ClaudePermissionMode,
   GlobalSettings,
   Workspace,
@@ -26,12 +25,14 @@ import {
   EMPTY_WORKSPACE_PROMPT_TEMPLATES,
   serializeWorkspacePromptTemplates
 } from "@/lib/workspace-prompt-templates";
+import { getCoordinatorWorkspaceAgent } from "@/lib/coordination";
 import { resolveTaskWorkspaceId } from "@/lib/workspace-selection";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
+import { useWorkspaceAgents } from "@/hooks/useAgents";
 
 const DEFAULT_CODEX_PROMPT = "请完成用户请求的任务。";
 const DEFAULT_CLAUDE_PROMPT =
@@ -161,7 +162,6 @@ interface GlobalSettingsModalProps {
 interface TaskModalProps {
   open: boolean;
   workspaces: Workspace[];
-  teams: AgentTeam[];
   selectedWorkspaceId: string | "all";
   settings: GlobalSettings | null;
   submitting: boolean;
@@ -490,7 +490,6 @@ export function GlobalSettingsModal({
 export function TaskModal({
   open,
   workspaces,
-  teams,
   selectedWorkspaceId,
   settings,
   submitting,
@@ -502,7 +501,6 @@ export function TaskModal({
   const [workspaceId, setWorkspaceId] = useState(() =>
     resolveTaskWorkspaceId(workspaces, selectedWorkspaceId)
   );
-  const [teamId, setTeamId] = useState("");
   const [runnerType, setRunnerType] = useState<"claude" | "shell" | "codex">("codex");
   const [shellCommand, setShellCommand] = useState(DEFAULT_SHELL_COMMAND);
   const [prompt, setPrompt] = useState(DEFAULT_CODEX_PROMPT);
@@ -516,20 +514,7 @@ export function TaskModal({
   const defaultWorkspaceId = resolveTaskWorkspaceId(workspaces, selectedWorkspaceId);
   const resolvedSettings = settings ?? DEFAULT_GLOBAL_SETTINGS;
   const canGenerateTitle = hasCompleteOpenRouterConfig(resolvedSettings);
-  const previousTeamIdRef = useRef("");
-  const availableTeams = useMemo(
-    () => teams.filter((team) => team.workspaceId === workspaceId),
-    [teams, workspaceId]
-  );
-  const selectedTeam = useMemo(
-    () => availableTeams.find((team) => team.id === teamId) ?? null,
-    [availableTeams, teamId]
-  );
-  const coordinatorAgent = useMemo(
-    () => selectedTeam?.agents.find((agent) => agent.role === "coordinator") ?? null,
-    [selectedTeam]
-  );
-  const isTeamTask = Boolean(selectedTeam && coordinatorAgent);
+  const previousCoordinatorIdRef = useRef("");
 
   function resetRunnerConfig() {
     setRunnerType("codex");
@@ -546,6 +531,13 @@ export function TaskModal({
     () => workspaces.find((workspace) => workspace.id === workspaceId),
     [workspaceId, workspaces]
   );
+  const workspaceAgentsQuery = useWorkspaceAgents(selectedWorkspace?.id ?? null);
+  const workspaceAgents = workspaceAgentsQuery.data ?? [];
+  const coordinatorAgent = useMemo(
+    () => getCoordinatorWorkspaceAgent(workspaceAgents),
+    [workspaceAgents]
+  );
+  const usesWorkspaceCoordinator = Boolean(coordinatorAgent);
   const gitRefsQuery = useQuery({
     queryKey: ["workspace-git-refs", selectedWorkspace?.id ?? ""],
     queryFn: async () => {
@@ -563,12 +555,11 @@ export function TaskModal({
       setTitle("");
       setDescription("");
       setWorkspaceId(defaultWorkspaceId);
-      setTeamId("");
       resetRunnerConfig();
       setColumn("backlog");
       setWorktreeBaseRef("");
       setSubmitLocked(false);
-      previousTeamIdRef.current = "";
+      previousCoordinatorIdRef.current = "";
     }
   }, [defaultWorkspaceId, open]);
 
@@ -590,40 +581,29 @@ export function TaskModal({
   }, [defaultWorkspaceId, workspaceId, workspaces]);
 
   useEffect(() => {
-    if (!teamId) {
-      return;
-    }
-    if (!availableTeams.some((team) => team.id === teamId)) {
-      setTeamId("");
-    }
-  }, [availableTeams, teamId]);
-
-  useEffect(() => {
     if (!coordinatorAgent) {
-      if (previousTeamIdRef.current && !teamId) {
+      if (previousCoordinatorIdRef.current) {
         resetRunnerConfig();
       }
-      previousTeamIdRef.current = teamId;
+      previousCoordinatorIdRef.current = "";
       return;
     }
     setRunnerType(coordinatorAgent.runnerConfig.type);
     if (coordinatorAgent.runnerConfig.type === "shell") {
       setShellCommand(coordinatorAgent.runnerConfig.command);
-      previousTeamIdRef.current = teamId;
+      previousCoordinatorIdRef.current = coordinatorAgent.id;
       return;
     }
     setPrompt(coordinatorAgent.runnerConfig.prompt);
     if (coordinatorAgent.runnerConfig.type === "claude") {
       setClaudeAgent(coordinatorAgent.runnerConfig.agent ?? "");
-      setClaudeModel(coordinatorAgent.runnerConfig.model ?? "");
+      setClaudeModel(coordinatorAgent.runnerConfig.model?.id ?? "");
       setClaudePermissionMode(coordinatorAgent.runnerConfig.permissionMode ?? "default");
-      previousTeamIdRef.current = teamId;
+      previousCoordinatorIdRef.current = coordinatorAgent.id;
       return;
     }
-    setClaudeModel("");
-    setClaudePermissionMode("default");
-    previousTeamIdRef.current = teamId;
-  }, [coordinatorAgent, teamId]);
+    previousCoordinatorIdRef.current = coordinatorAgent.id;
+  }, [coordinatorAgent]);
 
   useEffect(() => {
     if (!selectedWorkspace?.isGitRepo) {
@@ -688,10 +668,9 @@ export function TaskModal({
               title,
               description,
               workspaceId,
-              teamId: selectedTeam?.id,
               runnerType,
               runnerConfig:
-                isTeamTask && coordinatorAgent
+                usesWorkspaceCoordinator && coordinatorAgent
                   ? coordinatorAgent.runnerConfig
                   : runnerType === "shell"
                   ? { type: "shell", command: shellCommand }
@@ -700,7 +679,9 @@ export function TaskModal({
                         type: "claude",
                         prompt,
                         agent: claudeAgent.trim() || undefined,
-                        model: claudeModel.trim() || undefined,
+                        model: claudeModel.trim()
+                          ? { mode: "custom", id: claudeModel.trim() }
+                          : undefined,
                         permissionMode: claudePermissionMode
                       }
                     : { type: "codex", prompt },
@@ -742,20 +723,6 @@ export function TaskModal({
                 ))}
             </NativeSelect>
           </label>
-          <label className={modalLabelClass}>
-            <span className={modalLabelTextClass}>Team</span>
-            <NativeSelect
-              value={teamId}
-              onChange={(event) => setTeamId(event.target.value)}
-            >
-              <option value="">No team</option>
-              {availableTeams.map((team) => (
-                <option key={team.id} value={team.id}>
-                  {team.name}
-                </option>
-              ))}
-            </NativeSelect>
-          </label>
           <label className={cn(modalLabelClass, span2Class)}>
             <span className={modalLabelTextClass}>Description</span>
             <Textarea
@@ -777,7 +744,7 @@ export function TaskModal({
             <span className={modalLabelTextClass}>Runner</span>
             <NativeSelect
               value={runnerType}
-              disabled={isTeamTask}
+              disabled={usesWorkspaceCoordinator}
               onChange={(event) => {
                 const nextRunnerType = event.target.value as "claude" | "shell" | "codex";
                 setRunnerType(nextRunnerType);
@@ -834,13 +801,13 @@ export function TaskModal({
               </div>
             </>
           ) : null}
-          {isTeamTask ? (
+          {usesWorkspaceCoordinator ? (
             <div className={cn(modalNoteClass, span2Class)}>
-              <span className={modalLabelTextClass}>Team coordinator</span>
+              <span className={modalLabelTextClass}>Workspace coordinator</span>
               <p>
-                Team tasks inherit the coordinator runner automatically. This task will run with{" "}
+                This workspace has a mounted coordinator. The task will inherit{" "}
                 <code>{coordinatorAgent?.runnerConfig.type}</code> from{" "}
-                <code>{coordinatorAgent?.agentName}</code>.
+                <code>{coordinatorAgent?.name}</code>.
               </p>
             </div>
           ) : runnerType === "shell" ? (
@@ -934,6 +901,11 @@ export function TaskModal({
           {selectedWorkspace?.isGitRepo && gitRefsQuery.isError ? (
             <p className={cn("m-0", mutedTextClass, span2Class)}>
               Git refs could not be loaded right now.
+            </p>
+          ) : null}
+          {selectedWorkspace && workspaceAgentsQuery.isLoading ? (
+            <p className={cn("m-0", mutedTextClass, span2Class)}>
+              Checking mounted workspace agents…
             </p>
           ) : null}
         </div>

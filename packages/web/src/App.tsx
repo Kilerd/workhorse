@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd";
 import {
   Navigate,
@@ -9,13 +9,13 @@ import {
   useNavigate,
   useParams
 } from "react-router-dom";
-import type { RunLogEntry, ServerEvent, Workspace } from "@workhorse/contracts";
+import type { RunLogEntry, ServerEvent, Workspace, WorkspaceAgent } from "@workhorse/contracts";
 
 import { Board } from "@/components/Board";
 import { Sidebar } from "@/components/Sidebar";
 import { TaskDetailsPanel } from "@/components/TaskDetailsPanel";
-import { TeamsPage } from "@/components/TeamsPage";
-import { TeamEditPage } from "@/components/TeamEditPage";
+import { AgentsPage } from "@/components/AgentsPage";
+import { AgentEditPage } from "@/components/AgentEditPage";
 import {
   GlobalSettingsModal,
   TaskModal,
@@ -32,12 +32,17 @@ import { queryClient } from "@/lib/query";
 import { applyTheme, getPreferredTheme, type ThemeMode } from "@/lib/theme";
 import { Button } from "@/components/ui/button";
 import { prepareLiveLogEntries } from "@/components/live-log-entries";
+import { getTaskCoordinationScope } from "@/lib/coordination";
+import { useAgents, workspaceAgentQueryKeys } from "@/hooks/useAgents";
+import {
+  coordinationQueryKeys,
+  useCoordinationMessages,
+  useCoordinationProposals,
+  usePostCoordinationMessage
+} from "@/hooks/useCoordination";
 import {
   teamQueryKeys,
-  usePostTeamMessage,
-  useTeam,
-  useTeamMessages,
-  useTeamProposals
+  useTeam
 } from "@/hooks/useTeams";
 
 export default function App() {
@@ -54,7 +59,8 @@ function ReactAppShell() {
   >();
   const [searchQuery, setSearchQuery] = useState("");
   const [theme, setTheme] = useState<ThemeMode>(() => getPreferredTheme());
-  const { selectedWorkspaceTasks, displayedTasks, workspacesQuery, teams } = board;
+  const { selectedWorkspaceTasks, displayedTasks, workspacesQuery } = board;
+  const agentsQuery = useAgents();
 
   useEffect(() => {
     applyTheme(theme);
@@ -130,19 +136,59 @@ function ReactAppShell() {
           break;
         case "team.agent.message":
           queryClient.invalidateQueries({
-            queryKey: teamQueryKeys.messages(event.teamId, event.parentTaskId)
+            queryKey: coordinationQueryKeys.messages({
+              kind: "legacy_team",
+              teamId: event.teamId,
+              parentTaskId: event.parentTaskId
+            })
           });
           break;
         case "team.task.created":
           queryClient.invalidateQueries({ queryKey: ["tasks"] });
           queryClient.invalidateQueries({
-            queryKey: teamQueryKeys.messages(event.teamId, event.parentTaskId)
+            queryKey: coordinationQueryKeys.messages({
+              kind: "legacy_team",
+              teamId: event.teamId,
+              parentTaskId: event.parentTaskId
+            })
           });
           break;
         case "team.proposal.created":
         case "team.proposal.updated":
           queryClient.invalidateQueries({
-            queryKey: teamQueryKeys.proposals(event.teamId, event.parentTaskId)
+            queryKey: coordinationQueryKeys.proposals({
+              kind: "legacy_team",
+              teamId: event.teamId,
+              parentTaskId: event.parentTaskId
+            })
+          });
+          break;
+        case "agent.updated":
+          queryClient.invalidateQueries({ queryKey: ["agents"] });
+          queryClient.invalidateQueries({ queryKey: workspaceAgentQueryKeys.lists() });
+          break;
+        case "workspace.agent.updated":
+          queryClient.invalidateQueries({
+            queryKey: workspaceAgentQueryKeys.list(event.workspaceId)
+          });
+          break;
+        case "task.message.created":
+          queryClient.invalidateQueries({
+            queryKey: coordinationQueryKeys.messages({
+              kind: "workspace",
+              workspaceId: event.workspaceId,
+              parentTaskId: event.parentTaskId
+            })
+          });
+          break;
+        case "workspace.proposal.created":
+        case "workspace.proposal.updated":
+          queryClient.invalidateQueries({
+            queryKey: coordinationQueryKeys.proposals({
+              kind: "workspace",
+              workspaceId: event.workspaceId,
+              parentTaskId: event.parentTaskId
+            })
           });
           break;
         default:
@@ -155,14 +201,26 @@ function ReactAppShell() {
   useWorkspaceSocket({ onEvent: handleEvent });
 
   const workspaces = workspacesQuery.data ?? [];
+  const accountAgents = agentsQuery.data ?? [];
+  const workspaceAgentQueries = useQueries({
+    queries: workspaces.map((workspace) => ({
+      queryKey: workspaceAgentQueryKeys.list(workspace.id),
+      queryFn: async () => (await api.listWorkspaceAgents(workspace.id)).items,
+      enabled: workspaces.length > 0
+    }))
+  });
+  const workspaceAgentsByWorkspaceId = useMemo(() => {
+    const map = new Map<string, WorkspaceAgent[]>();
+    for (const [index, workspace] of workspaces.entries()) {
+      map.set(workspace.id, workspaceAgentQueries[index]?.data ?? []);
+    }
+    return map;
+  }, [workspaceAgentQueries, workspaces]);
   const tasks = selectedWorkspaceTasks;
   const allTasks = displayedTasks;
   const workspaceNames = useMemo(() => {
     return new Map(workspaces.map((workspace) => [workspace.id, workspace.name]));
   }, [workspaces]);
-  const teamNames = useMemo(() => {
-    return new Map(teams.map((team) => [team.id, team.name]));
-  }, [teams]);
   const visibleBoardTasks = useMemo(
     () => tasks.filter((task) => isBoardVisibleColumn(task.column)),
     [tasks]
@@ -176,13 +234,20 @@ function ReactAppShell() {
 
     return visibleBoardTasks.filter((task) => {
       const workspaceName = workspaceNames.get(task.workspaceId) ?? "";
-      const teamName = task.teamId ? teamNames.get(task.teamId) ?? "" : "";
-      return [task.title, task.description, workspaceName, teamName, task.runnerType, task.column]
+      const coordinationTag = task.teamId
+        ? "legacy team"
+        : task.parentTaskId ||
+            (workspaceAgentsByWorkspaceId.get(task.workspaceId) ?? []).some(
+              (agent) => agent.role === "coordinator"
+            )
+          ? "agents coordination"
+          : "";
+      return [task.title, task.description, workspaceName, coordinationTag, task.runnerType, task.column]
         .join(" ")
         .toLowerCase()
         .includes(query);
     });
-  }, [searchQuery, teamNames, visibleBoardTasks, workspaceNames]);
+  }, [searchQuery, visibleBoardTasks, workspaceAgentsByWorkspaceId, workspaceNames]);
 
   const selectedWorkspaceName = useMemo(() => {
     if (board.selectedWorkspaceId === "all") {
@@ -278,7 +343,7 @@ function ReactAppShell() {
   }
 
   const isTaskDetailView = location.pathname.startsWith("/tasks/");
-  const isTeamsView = location.pathname.startsWith("/teams");
+  const isAgentsView = location.pathname.startsWith("/agents");
   const isWorkspaceSettingsView = location.pathname === "/workspace-settings";
 
   return (
@@ -286,13 +351,13 @@ function ReactAppShell() {
       <Sidebar
         workspaces={workspaces}
         allTasks={allTasks}
-        teamCount={teams.length}
+        agentCount={accountAgents.length}
         selectedWorkspaceId={board.selectedWorkspaceId}
         collapsed={board.sidebarCollapsed}
         onToggleCollapse={board.toggleSidebarCollapsed}
         onSelectWorkspace={board.setWorkspaceSelection}
         onAddWorkspace={() => board.setWorkspaceModalOpen(true)}
-        onOpenTeams={() => navigate("/teams")}
+        onOpenAgents={() => navigate("/agents")}
         onOpenWorkspaceSettings={() => navigate("/workspace-settings")}
         onOpenGlobalSettings={() => board.setGlobalSettingsModalOpen(true)}
       />
@@ -304,7 +369,7 @@ function ReactAppShell() {
             : "relative z-[1] grid min-h-screen min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden lg:min-h-0"
         }
       >
-        {isTaskDetailView || isTeamsView || isWorkspaceSettingsView ? null : (
+        {isTaskDetailView || isAgentsView || isWorkspaceSettingsView ? null : (
           <TopBar
             onCreateTask={() => board.setTaskModalOpen(true)}
             onRefresh={() => {
@@ -343,7 +408,8 @@ function ReactAppShell() {
                   <Board
                     tasks={boardTasks}
                     allTasks={allTasks}
-                    teams={teams}
+                    accountAgents={accountAgents}
+                    workspaceAgentsByWorkspaceId={workspaceAgentsByWorkspaceId}
                     workspaces={workspaces}
                     reviewMonitor={reviewMonitor}
                     selectedTaskId={board.selectedTask?.id ?? null}
@@ -354,17 +420,38 @@ function ReactAppShell() {
                     onMoveToTodo={(taskId) => board.moveToTodo(taskId)}
                     onMarkDone={(taskId) => board.markDone(taskId)}
                     onArchive={(taskId) => board.archiveTask(taskId)}
-                    onApproveSubtask={(taskId, teamId, parentTaskId) =>
-                      void board.approveTask({ taskId, teamId, parentTaskId })
+                    onApproveSubtask={(task) =>
+                      void board.approveTask({
+                        taskId: task.id,
+                        teamId: task.teamId,
+                        workspaceId: task.workspaceId,
+                        parentTaskId: task.parentTaskId
+                      })
                     }
-                    onRejectSubtask={(taskId, teamId, parentTaskId, reason) =>
-                      void board.rejectTask({ taskId, teamId, parentTaskId, reason })
+                    onRejectSubtask={(task, reason) =>
+                      void board.rejectTask({
+                        taskId: task.id,
+                        teamId: task.teamId,
+                        workspaceId: task.workspaceId,
+                        parentTaskId: task.parentTaskId,
+                        reason
+                      })
                     }
-                    onRetrySubtask={(taskId, teamId, parentTaskId) =>
-                      void board.retryTask({ taskId, teamId, parentTaskId })
+                    onRetrySubtask={(task) =>
+                      void board.retryTask({
+                        taskId: task.id,
+                        teamId: task.teamId,
+                        workspaceId: task.workspaceId,
+                        parentTaskId: task.parentTaskId
+                      })
                     }
-                    onCancelSubtask={(taskId, teamId, parentTaskId) =>
-                      void board.cancelSubtask({ taskId, teamId, parentTaskId })
+                    onCancelSubtask={(task) =>
+                      void board.cancelSubtask({
+                        taskId: task.id,
+                        teamId: task.teamId,
+                        workspaceId: task.workspaceId,
+                        parentTaskId: task.parentTaskId
+                      })
                     }
                     reviewActionBusy={board.isBusy}
                   />
@@ -375,33 +462,33 @@ function ReactAppShell() {
           <Route
             path="/tasks/:taskId"
             element={
-              <TaskDetailsRoute board={board} allTasks={allTasks} workspaces={workspaces} />
+              <TaskDetailsRoute
+                board={board}
+                allTasks={allTasks}
+                workspaces={workspaces}
+                workspaceAgentsByWorkspaceId={workspaceAgentsByWorkspaceId}
+              />
             }
           />
           <Route
-            path="/teams"
+            path="/agents"
             element={
-              <TeamsPage
-                teams={teams}
-                workspaces={workspaces}
-                loading={board.teamsQuery.isLoading}
+              <AgentsPage
+                agents={accountAgents}
+                loading={agentsQuery.isLoading}
                 error={
-                  board.teamsQuery.error instanceof Error
-                    ? board.teamsQuery.error.message
+                  agentsQuery.error instanceof Error
+                    ? agentsQuery.error.message
                     : null
                 }
               />
             }
           />
           <Route
-            path="/teams/:teamId"
-            element={
-              <TeamEditPage
-                workspaces={workspaces}
-                selectedWorkspaceId={board.selectedWorkspaceId}
-              />
-            }
+            path="/agents/:agentId"
+            element={<AgentEditPage />}
           />
+          <Route path="/teams/*" element={<Navigate to="/agents" replace />} />
           <Route
             path="/workspace-settings"
             element={
@@ -448,7 +535,6 @@ function ReactAppShell() {
       <TaskModal
         open={board.taskModalOpen}
         workspaces={workspaces}
-        teams={teams}
         selectedWorkspaceId={board.selectedWorkspaceId}
         settings={board.settingsQuery.data ?? null}
         submitting={board.isCreatingTask}
@@ -468,12 +554,14 @@ interface TaskDetailsRouteProps {
   board: BoardData;
   allTasks: BoardData["displayedTasks"];
   workspaces: Workspace[];
+  workspaceAgentsByWorkspaceId: Map<string, WorkspaceAgent[]>;
 }
 
 function TaskDetailsRoute({
   board,
   allTasks,
-  workspaces
+  workspaces,
+  workspaceAgentsByWorkspaceId
 }: TaskDetailsRouteProps) {
   const navigate = useNavigate();
   const { taskId } = useParams<{ taskId: string }>();
@@ -485,18 +573,18 @@ function TaskDetailsRoute({
   }, [board.selectedTask?.id, board.setTaskSelection, taskId]);
 
   const task = taskId ? allTasks.find((entry) => entry.id === taskId) ?? null : null;
-  const teamThreadTaskId = task ? task.parentTaskId ?? task.id : null;
-  const team = useTeam(task?.teamId ?? null);
-  const teamMessages = useTeamMessages(
-    task?.teamId ?? null,
-    teamThreadTaskId ?? undefined
+  const workspaceAgents = task
+    ? workspaceAgentsByWorkspaceId.get(task.workspaceId) ?? []
+    : [];
+  const coordinationScope = getTaskCoordinationScope(task, workspaceAgents);
+  const proposalScope =
+    task && !task.parentTaskId ? coordinationScope : ({ kind: "none" } as const);
+  const legacyTeam = useTeam(
+    coordinationScope.kind === "legacy_team" ? coordinationScope.teamId : null
   );
-  const postTeamMessage = usePostTeamMessage(task?.teamId ?? null, teamThreadTaskId);
-  // Proposals are only relevant for coordinator (non-subtask) parent tasks
-  const teamProposals = useTeamProposals(
-    task?.teamId && !task.parentTaskId ? task.teamId : null,
-    task?.id
-  );
+  const coordinationMessages = useCoordinationMessages(coordinationScope);
+  const postCoordinationMessage = usePostCoordinationMessage(coordinationScope);
+  const coordinationProposals = useCoordinationProposals(proposalScope);
   const isSelectedTaskActive = task ? board.selectedTask?.id === task.id : false;
   const runs = isSelectedTaskActive ? board.selectedTaskRunsQuery.data ?? [] : [];
   const activeRunId = isSelectedTaskActive ? board.activeRunId : null;
@@ -559,14 +647,16 @@ function TaskDetailsRoute({
         allTasks={allTasks}
         runs={runs}
         workspaces={workspaces}
-        team={team.data ?? null}
-        teamMessages={teamMessages.data ?? []}
-        teamMessagesLoading={teamMessages.isLoading}
-        teamMessagesError={
-          teamMessages.error instanceof Error ? teamMessages.error.message : null
+        legacyTeam={legacyTeam.data ?? null}
+        workspaceAgents={workspaceAgents}
+        coordinationScope={coordinationScope}
+        coordinationMessages={coordinationMessages.data ?? []}
+        coordinationMessagesLoading={coordinationMessages.isLoading}
+        coordinationMessagesError={
+          coordinationMessages.error instanceof Error ? coordinationMessages.error.message : null
         }
-        teamProposals={teamProposals.data ?? []}
-        teamProposalsLoading={teamProposals.isLoading}
+        coordinationProposals={coordinationProposals.data ?? []}
+        coordinationProposalsLoading={coordinationProposals.isLoading}
         selectedRunId={board.selectedRunId}
         runLogLoading={runLogQuery.isLoading}
         onBack={() => navigate("/")}
@@ -575,45 +665,53 @@ function TaskDetailsRoute({
         runLog={runLog}
         onPlan={() => board.planTask(task.id)}
         onSendPlanFeedback={(text) => board.sendPlanFeedback({ taskId: task.id, text })}
-        onSendTeamMessage={task.teamId ? (text) => postTeamMessage.mutateAsync(text) : undefined}
+        onSendCoordinationMessage={
+          coordinationScope.kind !== "none"
+            ? (text) => postCoordinationMessage.mutateAsync(text)
+            : undefined
+        }
         onApproveSubtask={
-          task.teamId && task.parentTaskId
+          task.parentTaskId && coordinationScope.kind !== "none"
             ? () =>
                 board.approveTask({
                   taskId: task.id,
-                  teamId: task.teamId!,
-                  parentTaskId: task.parentTaskId!
+                  teamId: task.teamId,
+                  workspaceId: task.workspaceId,
+                  parentTaskId: task.parentTaskId
                 })
             : undefined
         }
         onRejectSubtask={
-          task.teamId && task.parentTaskId
+          task.parentTaskId && coordinationScope.kind !== "none"
             ? (reason) =>
                 board.rejectTask({
                   taskId: task.id,
-                  teamId: task.teamId!,
-                  parentTaskId: task.parentTaskId!,
+                  teamId: task.teamId,
+                  workspaceId: task.workspaceId,
+                  parentTaskId: task.parentTaskId,
                   reason
                 })
             : undefined
         }
         onRetrySubtask={
-          task.teamId && task.parentTaskId
+          task.parentTaskId && coordinationScope.kind !== "none"
             ? () =>
                 board.retryTask({
                   taskId: task.id,
-                  teamId: task.teamId!,
-                  parentTaskId: task.parentTaskId!
+                  teamId: task.teamId,
+                  workspaceId: task.workspaceId,
+                  parentTaskId: task.parentTaskId
                 })
             : undefined
         }
         onCancelSubtask={
-          task.teamId && task.parentTaskId
+          task.parentTaskId && coordinationScope.kind !== "none"
             ? () =>
                 board.cancelSubtask({
                   taskId: task.id,
-                  teamId: task.teamId!,
-                  parentTaskId: task.parentTaskId!
+                  teamId: task.teamId,
+                  workspaceId: task.workspaceId,
+                  parentTaskId: task.parentTaskId
                 })
             : undefined
         }

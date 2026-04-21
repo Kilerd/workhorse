@@ -1,13 +1,13 @@
 import { useMemo, useState } from "react";
-import type { TeamMessage } from "@workhorse/contracts";
 
 import { formatRelativeTime, titleCase } from "@/lib/format";
+import type { CoordinationMessage } from "@/lib/coordination";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
 interface Props {
-  messages: TeamMessage[];
+  messages: CoordinationMessage[];
   loading?: boolean;
   error?: string | null;
   onSendMessage?(content: string): Promise<unknown>;
@@ -40,7 +40,7 @@ function parseArtifactPayload(content: string): ArtifactPayload | null {
   }
 }
 
-function messageTone(message: TeamMessage) {
+function messageTone(message: CoordinationMessage) {
   switch (message.messageType) {
     case "artifact":
       return "border-[rgba(79,92,98,0.22)] bg-[rgba(79,92,98,0.04)]";
@@ -53,7 +53,7 @@ function messageTone(message: TeamMessage) {
   }
 }
 
-function senderTone(senderType: TeamMessage["senderType"]) {
+function senderTone(senderType: CoordinationMessage["senderType"]) {
   switch (senderType) {
     case "agent":
       return "border-[rgba(255,79,0,0.24)] bg-[rgba(255,79,0,0.08)] text-[var(--accent-strong)]";
@@ -97,7 +97,7 @@ export function TeamMessageFeed({
     } catch (nextError) {
       setSubmitState("failed");
       setSubmitError(
-        nextError instanceof Error ? nextError.message : "Unable to send team message."
+        nextError instanceof Error ? nextError.message : "Unable to send coordination message."
       );
     }
   }
@@ -107,21 +107,21 @@ export function TeamMessageFeed({
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="section-kicker m-0">
-            Team Message Feed
+            Coordination Feed
           </p>
           <p className="m-0 mt-1 text-[0.82rem] text-[var(--muted)]">
-            Live execution context for the current parent task.
+            Live execution context for the current coordination thread.
           </p>
         </div>
       </div>
 
       {loading ? (
-        <div className="text-[0.76rem] text-[var(--muted)]">Loading team activity…</div>
+        <div className="text-[0.76rem] text-[var(--muted)]">Loading coordination activity…</div>
       ) : error ? (
         <div className="text-[0.76rem] text-[var(--danger)]">{error}</div>
       ) : orderedMessages.length === 0 ? (
         <div className="rounded-[var(--radius)] border border-dashed border-border px-4 py-5 text-[0.84rem] text-[var(--muted)]">
-          No team messages yet for this task thread.
+          No coordination messages yet for this task thread.
         </div>
       ) : (
         <div className="grid max-h-[22rem] gap-2 overflow-y-auto pr-1">
@@ -267,7 +267,7 @@ export function TeamMessageFeed({
             placeholder={
               onSendMessage
                 ? "Leave feedback for the coordinator or running agents..."
-                : "Team message input is unavailable."
+                : "Coordination message input is unavailable."
             }
             className="min-h-20 resize-y"
           />

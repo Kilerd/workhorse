@@ -139,6 +139,17 @@ async function waitForTask(
   return waitFor(() => service.listTasks({}).find((entry) => entry.id === taskId && predicate(entry)));
 }
 
+async function waitForTeamProposal(
+  service: BoardService,
+  teamId: string,
+  parentTaskId: string
+) {
+  return waitFor(() => {
+    const items = service.listProposals(teamId, { parentTaskId });
+    return items[0];
+  });
+}
+
 async function createRuntime(
   codexRunner: ScriptedCodexRunner,
   options: { events?: RecordingEventBus } = {}
@@ -374,6 +385,9 @@ describe("team execution integration", () => {
 
     const started = await service.startTask(parentTask.id);
     const run = await waitForRunToFinish(service, parentTask.id);
+    const reviewParent = await waitForTask(service, parentTask.id, (task) => task.column === "review");
+    const proposal = await waitForTeamProposal(service, team.id, parentTask.id);
+    await service.approveProposal(team.id, proposal.id);
     const finalParent = await waitForTask(service, parentTask.id, (task) => task.column === "running");
     const subtasks = service
       .listTasks({})
@@ -396,6 +410,7 @@ describe("team execution integration", () => {
       "Plan and delegate the implementation."
     );
     expect(run.status).toBe("succeeded");
+    expect(reviewParent.column).toBe("review");
     expect(finalParent.column).toBe("running");
     expect(subtasks).toHaveLength(2);
     expect(subtasks[0]).toMatchObject({
@@ -416,6 +431,16 @@ describe("team execution integration", () => {
     });
     expect(events.published).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({
+          type: "team.proposal.created",
+          teamId: team.id,
+          parentTaskId: parentTask.id
+        }),
+        expect.objectContaining({
+          type: "team.proposal.updated",
+          teamId: team.id,
+          parentTaskId: parentTask.id
+        }),
         expect.objectContaining({
           type: "team.agent.message",
           teamId: team.id,
@@ -466,9 +491,12 @@ describe("team execution integration", () => {
 
     await service.startTask(parentTask.id);
     await waitForRunToFinish(service, parentTask.id);
+    const proposal = await waitForTeamProposal(service, team.id, parentTask.id);
+    await service.approveProposal(team.id, proposal.id);
     const subtask = await waitFor(() =>
       service.listTasks({}).find((task) => task.parentTaskId === parentTask.id)
     );
+    await service.startTask(subtask.id);
 
     const childRun = await waitForRunToFinish(service, subtask.id);
 
@@ -527,14 +555,12 @@ describe("team execution integration", () => {
 
     await service.startTask(parentTask.id);
     await waitForRunToFinish(service, parentTask.id);
-    const proposals = await waitFor(() => {
-      const items = service.listProposals(team.id, { parentTaskId: parentTask.id });
-      return items.length > 0 ? items : undefined;
-    });
-    await service.approveProposal(team.id, proposals[0]!.id);
+    const proposal = await waitForTeamProposal(service, team.id, parentTask.id);
+    await service.approveProposal(team.id, proposal.id);
     const subtask = await waitFor(() =>
       service.listTasks({}).find((task) => task.parentTaskId === parentTask.id)
     );
+    await service.startTask(subtask.id);
     await waitForRunToFinish(service, subtask.id);
 
     const reviewSubtask = await waitForTask(service, subtask.id, (task) => task.column === "review");
@@ -583,14 +609,12 @@ describe("team execution integration", () => {
 
     await service.startTask(parentTask.id);
     await waitForRunToFinish(service, parentTask.id);
-    const proposals = await waitFor(() => {
-      const items = service.listProposals(team.id, { parentTaskId: parentTask.id });
-      return items.length > 0 ? items : undefined;
-    });
-    await service.approveProposal(team.id, proposals[0]!.id);
+    const proposal = await waitForTeamProposal(service, team.id, parentTask.id);
+    await service.approveProposal(team.id, proposal.id);
     const subtask = await waitFor(() =>
       service.listTasks({}).find((task) => task.parentTaskId === parentTask.id)
     );
+    await service.startTask(subtask.id);
 
     const doneSubtask = await waitForTask(service, subtask.id, (task) => task.column === "done");
     const parent = await waitForTask(service, parentTask.id, (task) => task.column === "review");
@@ -638,14 +662,12 @@ describe("team execution integration", () => {
 
     await service.startTask(parentTask.id);
     await waitForRunToFinish(service, parentTask.id);
-    const proposals = await waitFor(() => {
-      const items = service.listProposals(team.id, { parentTaskId: parentTask.id });
-      return items.length > 0 ? items : undefined;
-    });
-    await service.approveProposal(team.id, proposals[0]!.id);
+    const proposal = await waitForTeamProposal(service, team.id, parentTask.id);
+    await service.approveProposal(team.id, proposal.id);
     const subtask = await waitFor(() =>
       service.listTasks({}).find((task) => task.parentTaskId === parentTask.id)
     );
+    await service.startTask(subtask.id);
 
     const doneSubtask = await waitForTask(service, subtask.id, (task) => task.column === "done");
     const parent = await waitForTask(service, parentTask.id, (task) => task.column === "review");
@@ -701,11 +723,8 @@ describe("team execution integration", () => {
 
     await service.startTask(parentTask.id);
     await waitForRunToFinish(service, parentTask.id);
-    const proposals = await waitFor(() => {
-      const items = service.listProposals(team.id, { parentTaskId: parentTask.id });
-      return items.length > 0 ? items : undefined;
-    });
-    await service.approveProposal(team.id, proposals[0]!.id);
+    const proposal = await waitForTeamProposal(service, team.id, parentTask.id);
+    await service.approveProposal(team.id, proposal.id);
     const subtasks = await waitFor(() => {
       const items = service
         .listTasks({})
@@ -713,6 +732,8 @@ describe("team execution integration", () => {
         .sort((left, right) => left.order - right.order);
       return items.length === 2 ? items : undefined;
     });
+    await service.startTask(subtasks[0]!.id);
+    await service.startTask(subtasks[1]!.id);
     await waitForRunToFinish(service, subtasks[0]!.id);
     await waitForRunToFinish(service, subtasks[1]!.id);
     await waitForTask(service, subtasks[0]!.id, (task) => task.column === "review");
@@ -774,21 +795,22 @@ describe("team execution integration", () => {
 
     await service.startTask(parentTask.id);
     await waitForRunToFinish(service, parentTask.id);
-    const retryProposals = await waitFor(() => {
-      const items = service.listProposals(team.id, { parentTaskId: parentTask.id });
-      return items.length > 0 ? items : undefined;
-    });
-    await service.approveProposal(team.id, retryProposals[0]!.id);
+    const proposal = await waitForTeamProposal(service, team.id, parentTask.id);
+    await service.approveProposal(team.id, proposal.id);
     const subtask = await waitFor(() =>
       service.listTasks({}).find((task) => task.parentTaskId === parentTask.id)
     );
+    await service.startTask(subtask.id);
     await waitForRunToFinish(service, subtask.id);
     await waitForTask(service, subtask.id, (task) => task.column === "review");
 
     const retriedTask = await service.retryTask(subtask.id);
-    expect(["todo", "running", "review"]).toContain(retriedTask.column);
+    expect(retriedTask.column).toBe("todo");
 
-    await waitFor(() => (service.listRuns(subtask.id).length >= 2 ? service.listRuns(subtask.id) : undefined));
+    await service.startTask(subtask.id);
+    await waitFor(() =>
+      service.listRuns(subtask.id).length >= 2 ? service.listRuns(subtask.id) : undefined
+    );
     await waitFor(() => {
       const task = service.getTask(subtask.id);
       return task.column === "review" && task.lastRunStatus === "succeeded" ? task : undefined;
@@ -838,7 +860,7 @@ describe("team execution integration", () => {
     );
   });
 
-  it("returns the parent task to review if post-commit event publication fails", async () => {
+  it("returns the parent task to review if proposal publication fails", async () => {
     const coordinatorOutput = JSON.stringify([
       {
         title: "Implement data model",
@@ -853,7 +875,7 @@ describe("team execution integration", () => {
         exit: { status: "succeeded", exitCode: 0 }
       }
     ]);
-    const events = new RecordingEventBus("team.agent.message");
+    const events = new RecordingEventBus("team.proposal.created");
     const { service, workspace } = await createRuntime(codexRunner, { events });
     const team = service.createTeam(makeTeam(workspace.id));
     const parentTask = await service.createTask({
@@ -871,11 +893,13 @@ describe("team execution integration", () => {
     const started = await service.startTask(parentTask.id);
     await waitForRunToFinish(service, parentTask.id);
     const reviewTask = await waitForTask(service, parentTask.id, (task) => task.column === "review");
+    const proposals = service.listProposals(team.id, { parentTaskId: parentTask.id });
     const subtasks = service.listTasks({}).filter((task) => task.parentTaskId === parentTask.id);
     const log = await service.getRunLog(started.run.id);
 
     expect(reviewTask.column).toBe("review");
-    expect(subtasks).toHaveLength(1);
+    expect(proposals).toHaveLength(1);
+    expect(subtasks).toHaveLength(0);
     expect(log).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

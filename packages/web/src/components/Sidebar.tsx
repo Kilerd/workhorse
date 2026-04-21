@@ -7,13 +7,13 @@ import { cn } from "@/lib/utils";
 interface Props {
   workspaces: Workspace[];
   allTasks: DisplayTask[];
-  teamCount: number;
+  agentCount: number;
   selectedWorkspaceId: string | "all";
   collapsed: boolean;
   onToggleCollapse(): void;
   onSelectWorkspace(id: string | "all"): void;
   onAddWorkspace(): void;
-  onOpenTeams(): void;
+  onOpenAgents(): void;
   onOpenWorkspaceSettings(): void;
   onOpenGlobalSettings(): void;
 }
@@ -79,13 +79,13 @@ function ActionRow({
 export function Sidebar({
   workspaces,
   allTasks,
-  teamCount,
+  agentCount,
   selectedWorkspaceId,
   collapsed,
   onToggleCollapse,
   onSelectWorkspace,
   onAddWorkspace,
-  onOpenTeams,
+  onOpenAgents,
   onOpenWorkspaceSettings,
   onOpenGlobalSettings
 }: Props) {
@@ -167,9 +167,9 @@ export function Sidebar({
           <div className="grid gap-1">
             <ActionRow label="Add workspace" onClick={onAddWorkspace} />
             <ActionRow
-              label="Manage teams"
-              trailing={teamCount > 0 ? String(teamCount) : undefined}
-              onClick={onOpenTeams}
+              label="Agents"
+              trailing={agentCount > 0 ? String(agentCount) : undefined}
+              onClick={onOpenAgents}
             />
             {selectedWorkspaceId !== "all" ? (
               <ActionRow label="Workspace settings" onClick={onOpenWorkspaceSettings} />

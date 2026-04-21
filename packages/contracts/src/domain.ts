@@ -150,9 +150,46 @@ export interface Workspace {
   updatedAt: string;
 }
 
+export type ReasoningEffort = "low" | "medium" | "high" | "xhigh";
+
+export interface BuiltinModelConfig {
+  mode: "builtin";
+  id: string;
+  reasoningEffort?: ReasoningEffort;
+}
+
+export interface CustomModelConfig {
+  mode: "custom";
+  id: string;
+}
+
+export type ModelConfig = BuiltinModelConfig | CustomModelConfig;
+
+export const CLAUDE_BUILTIN_MODELS = [
+  "claude-opus-4-7",
+  "claude-sonnet-4-6",
+  "claude-haiku-4-5"
+] as const;
+
+export const CODEX_BUILTIN_MODELS = ["gpt-5.4"] as const;
+
+export const CLAUDE_REASONING_EFFORTS: readonly ReasoningEffort[] = [
+  "low",
+  "medium",
+  "high"
+];
+
+export const CODEX_REASONING_EFFORTS: readonly ReasoningEffort[] = [
+  "low",
+  "medium",
+  "high",
+  "xhigh"
+];
+
 export interface ShellRunnerConfig {
   type: "shell";
   command: string;
+  env?: Record<string, string>;
 }
 
 export type ClaudePermissionMode =
@@ -166,14 +203,15 @@ export interface ClaudeRunnerConfig {
   type: "claude";
   prompt: string;
   agent?: string;
-  model?: string;
+  model?: ModelConfig;
   permissionMode?: ClaudePermissionMode;
+  env?: Record<string, string>;
 }
 
 export interface CodexRunnerConfig {
   type: "codex";
   prompt: string;
-  model?: string;
+  model?: ModelConfig;
   approvalMode?: "default" | "auto";
 }
 

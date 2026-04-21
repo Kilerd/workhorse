@@ -95,13 +95,17 @@ function normalizeTeamPayload(input: TeamFormPayload): TeamFormPayload {
                 type: "claude",
                 prompt: agent.runnerConfig.prompt.trim(),
                 agent: agent.runnerConfig.agent?.trim() || undefined,
-                model: agent.runnerConfig.model?.trim() || undefined,
+                model: agent.runnerConfig.model?.id.trim()
+                  ? { mode: "custom", id: agent.runnerConfig.model.id.trim() }
+                  : undefined,
                 permissionMode: agent.runnerConfig.permissionMode
               }
             : {
                 type: "codex",
                 prompt: agent.runnerConfig.prompt.trim(),
-                model: agent.runnerConfig.model?.trim() || undefined,
+                model: agent.runnerConfig.model?.id.trim()
+                  ? { mode: "custom", id: agent.runnerConfig.model.id.trim() }
+                  : undefined,
                 approvalMode: agent.runnerConfig.approvalMode
               }
     }))
@@ -488,7 +492,7 @@ export function TeamForm({
                               Model override
                             </span>
                             <Input
-                              value={agent.runnerConfig.model ?? ""}
+                              value={agent.runnerConfig.model?.id ?? ""}
                               onChange={(event) =>
                                 setPayload((current) => ({
                                   ...current,
@@ -500,6 +504,8 @@ export function TeamForm({
                                           runnerConfig: {
                                             ...entry.runnerConfig,
                                             model: event.target.value
+                                              ? { mode: "custom", id: event.target.value }
+                                              : undefined
                                           }
                                         }
                                       : entry
@@ -571,7 +577,7 @@ export function TeamForm({
                               Model override
                             </span>
                             <Input
-                              value={agent.runnerConfig.model ?? ""}
+                              value={agent.runnerConfig.model?.id ?? ""}
                               onChange={(event) =>
                                 setPayload((current) => ({
                                   ...current,
@@ -583,6 +589,8 @@ export function TeamForm({
                                           runnerConfig: {
                                             ...entry.runnerConfig,
                                             model: event.target.value
+                                              ? { mode: "custom", id: event.target.value }
+                                              : undefined
                                           }
                                         }
                                       : entry

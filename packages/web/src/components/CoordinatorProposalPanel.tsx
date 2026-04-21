@@ -1,15 +1,13 @@
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { CoordinatorProposal } from "@workhorse/contracts";
 
-import { api } from "@/lib/api";
 import { formatRelativeTime } from "@/lib/format";
+import type { CoordinationScope } from "@/lib/coordination";
 import { cn } from "@/lib/utils";
-import { teamQueryKeys } from "@/hooks/useTeams";
+import { useCoordinationProposalActions } from "@/hooks/useCoordination";
 
 interface Props {
-  teamId: string;
-  parentTaskId: string;
+  scope: CoordinationScope;
   proposals: CoordinatorProposal[];
   loading?: boolean;
 }
@@ -26,48 +24,16 @@ function statusChip(status: CoordinatorProposal["status"]) {
 }
 
 interface ProposalCardProps {
-  teamId: string;
+  scope: CoordinationScope;
   proposal: CoordinatorProposal;
 }
 
-function ProposalCard({ teamId, proposal }: ProposalCardProps) {
-  const queryClient = useQueryClient();
+function ProposalCard({ scope, proposal }: ProposalCardProps) {
+  const actions = useCoordinationProposalActions(scope);
   const [error, setError] = useState<string | null>(null);
 
-  function invalidate() {
-    void queryClient.invalidateQueries({
-      queryKey: teamQueryKeys.proposals(teamId, proposal.parentTaskId)
-    });
-    // Also invalidate tasks so the parent task column update is reflected
-    void queryClient.invalidateQueries({ queryKey: ["tasks"] });
-  }
-
-  const approveMutation = useMutation({
-    mutationFn: () => api.approveProposal(teamId, proposal.id),
-    onSuccess: () => {
-      setError(null);
-      invalidate();
-    },
-    onError: (err: unknown) => {
-      const msg = err instanceof Error ? err.message : "Failed to approve proposal";
-      setError(msg);
-    }
-  });
-
-  const rejectMutation = useMutation({
-    mutationFn: () => api.rejectProposal(teamId, proposal.id),
-    onSuccess: () => {
-      setError(null);
-      invalidate();
-    },
-    onError: (err: unknown) => {
-      const msg = err instanceof Error ? err.message : "Failed to reject proposal";
-      setError(msg);
-    }
-  });
-
   const isPending = proposal.status === "pending";
-  const isBusy = approveMutation.isPending || rejectMutation.isPending;
+  const isBusy = actions.isPending;
 
   return (
     <div className="grid gap-3 rounded-[var(--radius)] border border-border bg-[var(--panel)] p-4">
@@ -111,31 +77,47 @@ function ProposalCard({ teamId, proposal }: ProposalCardProps) {
         ))}
       </div>
 
-      {error ? (
-        <p className="m-0 text-[0.78rem] text-[var(--danger)]">{error}</p>
-      ) : null}
+      {error ? <p className="m-0 text-[0.78rem] text-[var(--danger)]">{error}</p> : null}
 
       {isPending ? (
         <div className="flex gap-2">
           <button
             type="button"
             disabled={isBusy}
-            onClick={() => approveMutation.mutate()}
+            onClick={() => {
+              setError(null);
+              void actions
+                .approve(proposal.id)
+                .catch((nextError) => {
+                  setError(
+                    nextError instanceof Error ? nextError.message : "Failed to approve proposal"
+                  );
+                });
+            }}
             className={cn(
               "inline-flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-full border border-[rgba(47,117,88,0.4)] bg-[rgba(47,117,88,0.08)] px-3 text-[0.82rem] font-semibold text-[var(--success)] transition-[border-color,background-color] hover:bg-[rgba(47,117,88,0.14)] disabled:cursor-not-allowed disabled:opacity-50"
             )}
           >
-            {approveMutation.isPending ? "Approving…" : "Approve"}
+            {actions.isPending ? "Saving…" : "Approve"}
           </button>
           <button
             type="button"
             disabled={isBusy}
-            onClick={() => rejectMutation.mutate()}
+            onClick={() => {
+              setError(null);
+              void actions
+                .reject(proposal.id)
+                .catch((nextError) => {
+                  setError(
+                    nextError instanceof Error ? nextError.message : "Failed to reject proposal"
+                  );
+                });
+            }}
             className={cn(
               "inline-flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-full border border-[rgba(181,74,74,0.3)] bg-transparent px-3 text-[0.82rem] font-semibold text-[var(--danger)] transition-[border-color,background-color] hover:bg-[rgba(181,74,74,0.08)] disabled:cursor-not-allowed disabled:opacity-50"
             )}
           >
-            {rejectMutation.isPending ? "Rejecting…" : "Reject"}
+            {actions.isPending ? "Saving…" : "Reject"}
           </button>
         </div>
       ) : null}
@@ -144,8 +126,7 @@ function ProposalCard({ teamId, proposal }: ProposalCardProps) {
 }
 
 export function CoordinatorProposalPanel({
-  teamId,
-  parentTaskId,
+  scope,
   proposals,
   loading = false
 }: Props) {
@@ -164,7 +145,7 @@ export function CoordinatorProposalPanel({
   return (
     <div className="grid gap-2">
       {proposals.map((proposal) => (
-        <ProposalCard key={proposal.id} teamId={teamId} proposal={proposal} />
+        <ProposalCard key={proposal.id} scope={scope} proposal={proposal} />
       ))}
     </div>
   );

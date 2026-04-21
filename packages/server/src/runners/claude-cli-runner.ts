@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 
-import type { ClaudeRunnerConfig, RunStatus } from "@workhorse/contracts";
+import type { ClaudeRunnerConfig, ReasoningEffort, RunStatus } from "@workhorse/contracts";
 
 import { AppError } from "../lib/errors.js";
 import { extractReviewResult, type ParsedReviewResult } from "../lib/review-parser.js";
@@ -54,6 +54,36 @@ function ensureTrailingNewline(value: string): string {
   return value.endsWith("\n") ? value : `${value}\n`;
 }
 
+const CLAUDE_SUPPORTED_EFFORTS: ReadonlySet<ReasoningEffort> = new Set([
+  "low",
+  "medium",
+  "high"
+]);
+
+function resolveClaudeEffort(config: ClaudeRunnerConfig): ReasoningEffort | undefined {
+  if (!config.model || config.model.mode !== "builtin") {
+    return undefined;
+  }
+  const effort = config.model.reasoningEffort;
+  if (!effort) {
+    return undefined;
+  }
+  if (CLAUDE_SUPPORTED_EFFORTS.has(effort)) {
+    return effort;
+  }
+  return "high";
+}
+
+function mergeEnv(
+  base: NodeJS.ProcessEnv,
+  overrides: Record<string, string> | undefined
+): NodeJS.ProcessEnv {
+  if (!overrides || Object.keys(overrides).length === 0) {
+    return base;
+  }
+  return { ...base, ...overrides };
+}
+
 
 export class ClaudeCliRunner implements RunnerAdapter {
   public readonly type = "claude" as const;
@@ -79,8 +109,14 @@ export class ClaudeCliRunner implements RunnerAdapter {
       args.push("--agent", config.agent.trim());
     }
 
-    if (config.model?.trim()) {
-      args.push("--model", config.model.trim());
+    const modelId = config.model?.id.trim();
+    if (modelId) {
+      args.push("--model", modelId);
+    }
+
+    const effort = resolveClaudeEffort(config);
+    if (effort) {
+      args.push("--effort", effort);
     }
 
     return args;
@@ -119,15 +155,18 @@ export class ClaudeCliRunner implements RunnerAdapter {
     const prompt = this.buildPrompt(context, claudeConfig);
     const child = spawn("claude", args, {
       cwd: context.workspace.rootPath,
-      env: process.env
+      env: mergeEnv(process.env, claudeConfig.env)
     });
     const command = this.buildCommand(args);
+    const requestedModelId = claudeConfig.model?.id.trim();
+    const effort = resolveClaudeEffort(claudeConfig);
     const state: ClaudeRunnerState = {
       emittedAssistantTexts: new Set<string>(),
       metadata: {
         claudePermissionMode: claudeConfig.permissionMode ?? "default",
         ...(claudeConfig.agent?.trim() ? { claudeAgent: claudeConfig.agent.trim() } : {}),
-        ...(claudeConfig.model?.trim() ? { claudeRequestedModel: claudeConfig.model.trim() } : {})
+        ...(requestedModelId ? { claudeRequestedModel: requestedModelId } : {}),
+        ...(effort ? { claudeReasoningEffort: effort } : {})
       }
     };
     let stdoutBuffer = "";

@@ -22,10 +22,13 @@ export class ShellRunner implements RunnerAdapter {
     }
 
     const shellConfig = config as ShellRunnerConfig;
+    const env = shellConfig.env && Object.keys(shellConfig.env).length > 0
+      ? { ...process.env, ...shellConfig.env }
+      : process.env;
     const child = spawn(shellConfig.command, {
       cwd: context.workspace.rootPath,
       shell: true,
-      env: process.env
+      env
     });
     let settled = false;
 

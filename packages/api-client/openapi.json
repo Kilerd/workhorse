@@ -2397,6 +2397,251 @@
           }
         }
       }
+    },
+    "/api/workspaces/{workspaceId}/proposals": {
+      "get": {
+        "operationId": "listWorkspaceProposals",
+        "summary": "List coordinator proposals for a workspace",
+        "tags": [
+          "Workspace Agents"
+        ],
+        "responses": {
+          "200": {
+            "description": "Proposal collection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListProposalsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Workspace not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "parentTaskId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/workspaces/{workspaceId}/proposals/{proposalId}": {
+      "get": {
+        "operationId": "getWorkspaceProposal",
+        "summary": "Get a coordinator proposal by workspace",
+        "tags": [
+          "Workspace Agents"
+        ],
+        "responses": {
+          "200": {
+            "description": "Coordinator proposal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Proposal not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "proposalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/workspaces/{workspaceId}/proposals/{proposalId}/approve": {
+      "post": {
+        "operationId": "approveWorkspaceProposal",
+        "summary": "Approve a workspace coordinator proposal",
+        "tags": [
+          "Workspace Agents"
+        ],
+        "responses": {
+          "200": {
+            "description": "Approved proposal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Proposal already decided",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "proposalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/workspaces/{workspaceId}/proposals/{proposalId}/reject": {
+      "post": {
+        "operationId": "rejectWorkspaceProposal",
+        "summary": "Reject a workspace coordinator proposal",
+        "tags": [
+          "Workspace Agents"
+        ],
+        "responses": {
+          "200": {
+            "description": "Rejected proposal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Proposal already decided",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "proposalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/workspaces/{workspaceId}/tasks/{taskId}/cancel": {
+      "post": {
+        "operationId": "cancelSubtaskByWorkspace",
+        "summary": "Cancel a workspace subtask",
+        "tags": [
+          "Workspace Agents"
+        ],
+        "responses": {
+          "200": {
+            "description": "Cancelled subtask",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Task cannot be cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -2880,6 +3125,11 @@
         "oneOf": [
           {
             "enum": [
+              "review"
+            ]
+          },
+          {
+            "enum": [
               "backlog"
             ]
           },
@@ -2896,11 +3146,6 @@
           {
             "enum": [
               "running"
-            ]
-          },
-          {
-            "enum": [
-              "review"
             ]
           },
           {
@@ -2965,12 +3210,24 @@
           },
           "command": {
             "type": "string"
+          },
+          "env": {
+            "$ref": "#/components/schemas/Recordstringstring"
           }
         },
         "required": [
           "type",
           "command"
         ]
+      },
+      "Recordstringstring": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "description": "Construct a type with a set of properties K of type T",
+        "additionalProperties": {
+          "type": "string"
+        }
       },
       "ClaudeRunnerConfig": {
         "type": "object",
@@ -2987,18 +3244,27 @@
             "type": "string"
           },
           "model": {
-            "type": "string"
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BuiltinModelConfig"
+              },
+              {
+                "$ref": "#/components/schemas/CustomModelConfig"
+              }
+            ],
+            "discriminator": {
+              "propertyName": "mode",
+              "mapping": {
+                "builtin": "#/components/schemas/BuiltinModelConfig",
+                "custom": "#/components/schemas/CustomModelConfig"
+              }
+            }
           },
           "permissionMode": {
             "oneOf": [
               {
                 "enum": [
                   "plan"
-                ]
-              },
-              {
-                "enum": [
-                  "default"
                 ]
               },
               {
@@ -3013,15 +3279,81 @@
               },
               {
                 "enum": [
+                  "default"
+                ]
+              },
+              {
+                "enum": [
                   "dontAsk"
+                ]
+              }
+            ]
+          },
+          "env": {
+            "$ref": "#/components/schemas/Recordstringstring"
+          }
+        },
+        "required": [
+          "type",
+          "prompt"
+        ]
+      },
+      "BuiltinModelConfig": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "enum": [
+              "builtin"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "reasoningEffort": {
+            "oneOf": [
+              {
+                "enum": [
+                  "low"
+                ]
+              },
+              {
+                "enum": [
+                  "medium"
+                ]
+              },
+              {
+                "enum": [
+                  "high"
+                ]
+              },
+              {
+                "enum": [
+                  "xhigh"
                 ]
               }
             ]
           }
         },
         "required": [
-          "type",
-          "prompt"
+          "mode",
+          "id"
+        ]
+      },
+      "CustomModelConfig": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "enum": [
+              "custom"
+            ]
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "id"
         ]
       },
       "CodexRunnerConfig": {
@@ -3036,7 +3368,21 @@
             "type": "string"
           },
           "model": {
-            "type": "string"
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BuiltinModelConfig"
+              },
+              {
+                "$ref": "#/components/schemas/CustomModelConfig"
+              }
+            ],
+            "discriminator": {
+              "propertyName": "mode",
+              "mapping": {
+                "builtin": "#/components/schemas/BuiltinModelConfig",
+                "custom": "#/components/schemas/CustomModelConfig"
+              }
+            }
           },
           "approvalMode": {
             "oneOf": [
@@ -3241,15 +3587,6 @@
           }
         ]
       },
-      "Recordstringstring": {
-        "type": "object",
-        "properties": {},
-        "required": [],
-        "description": "Construct a type with a set of properties K of type T",
-        "additionalProperties": {
-          "type": "string"
-        }
-      },
       "UpdateSettingsBody": {
         "type": "object",
         "properties": {
@@ -3412,6 +3749,11 @@
             "oneOf": [
               {
                 "enum": [
+                  "review"
+                ]
+              },
+              {
+                "enum": [
                   "backlog"
                 ]
               },
@@ -3428,11 +3770,6 @@
               {
                 "enum": [
                   "running"
-                ]
-              },
-              {
-                "enum": [
-                  "review"
                 ]
               },
               {
@@ -3552,6 +3889,11 @@
             "oneOf": [
               {
                 "enum": [
+                  "review"
+                ]
+              },
+              {
+                "enum": [
                   "backlog"
                 ]
               },
@@ -3568,11 +3910,6 @@
               {
                 "enum": [
                   "running"
-                ]
-              },
-              {
-                "enum": [
-                  "review"
                 ]
               },
               {
@@ -4506,17 +4843,17 @@
         "oneOf": [
           {
             "enum": [
-              "system"
-            ]
-          },
-          {
-            "enum": [
               "stdout"
             ]
           },
           {
             "enum": [
               "stderr"
+            ]
+          },
+          {
+            "enum": [
+              "system"
             ]
           }
         ]
@@ -4525,17 +4862,12 @@
         "oneOf": [
           {
             "enum": [
-              "agent"
+              "plan"
             ]
           },
           {
             "enum": [
               "system"
-            ]
-          },
-          {
-            "enum": [
-              "status"
             ]
           },
           {
@@ -4545,12 +4877,12 @@
           },
           {
             "enum": [
-              "plan"
+              "user"
             ]
           },
           {
             "enum": [
-              "user"
+              "agent"
             ]
           },
           {
@@ -4561,6 +4893,11 @@
           {
             "enum": [
               "tool_output"
+            ]
+          },
+          {
+            "enum": [
+              "status"
             ]
           }
         ]
@@ -5019,17 +5356,17 @@
         "oneOf": [
           {
             "enum": [
+              "system"
+            ]
+          },
+          {
+            "enum": [
               "agent"
             ]
           },
           {
             "enum": [
               "human"
-            ]
-          },
-          {
-            "enum": [
-              "system"
             ]
           }
         ]
@@ -5909,6 +6246,242 @@
         "required": [
           "item"
         ]
+      },
+      "WorkspaceListProposalsParams": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId"
+        ]
+      },
+      "WorkspaceGetProposalParams": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          },
+          "proposalId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId",
+          "proposalId"
+        ]
+      },
+      "WorkspaceApproveProposalParams": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          },
+          "proposalId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId",
+          "proposalId"
+        ]
+      },
+      "WorkspaceRejectProposalParams": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          },
+          "proposalId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId",
+          "proposalId"
+        ]
+      },
+      "WorkspaceCancelSubtaskParams": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          },
+          "taskId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId",
+          "taskId"
+        ]
+      },
+      "ListProposalsResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/ListProposalsData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "ListProposalsData": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CoordinatorProposal"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "CoordinatorProposal": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "teamId": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "Legacy: team-scoped proposals. Null for workspace-scoped proposals."
+          },
+          "workspaceId": {
+            "type": "string",
+            "description": "Set for workspace-scoped proposals (new model)."
+          },
+          "parentTaskId": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CoordinatorProposalStatus"
+          },
+          "drafts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CoordinatorProposalDraft"
+            }
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "decidedAt": {
+            "type": "string",
+            "description": "ISO timestamp of when the proposal was approved or rejected."
+          }
+        },
+        "required": [
+          "id",
+          "teamId",
+          "parentTaskId",
+          "status",
+          "drafts",
+          "createdAt"
+        ],
+        "description": "A coordinator proposal holds the parsed subtask plan from a coordinator\nrun and waits for human approval before subtasks are actually created."
+      },
+      "CoordinatorProposalStatus": {
+        "oneOf": [
+          {
+            "enum": [
+              "pending"
+            ]
+          },
+          {
+            "enum": [
+              "approved"
+            ]
+          },
+          {
+            "enum": [
+              "rejected"
+            ]
+          }
+        ]
+      },
+      "CoordinatorProposalDraft": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "assignedAgent": {
+            "type": "string"
+          },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "title",
+          "description",
+          "assignedAgent",
+          "dependencies"
+        ],
+        "description": "A single subtask draft produced by the coordinator LLM output."
+      },
+      "ProposalResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/ProposalData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "ProposalData": {
+        "type": "object",
+        "properties": {
+          "proposal": {
+            "$ref": "#/components/schemas/CoordinatorProposal"
+          }
+        },
+        "required": [
+          "proposal"
+        ]
+      },
+      "ListProposalsQuery": {
+        "type": "object",
+        "properties": {
+          "parentTaskId": {
+            "type": "string"
+          }
+        },
+        "required": []
       }
     }
   }

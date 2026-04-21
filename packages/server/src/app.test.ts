@@ -2784,3 +2784,61 @@ describe("scheduler API", () => {
     expect(data.data.blocked).toEqual([]);
   });
 });
+
+describe("agent API", () => {
+  it("creates agents with structured model config", async () => {
+    const { app } = await createRuntime();
+
+    const res = await app.request("/api/agents", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        name: "Planner",
+        description: "Break work down and drive it forward.",
+        runnerConfig: {
+          type: "codex",
+          prompt: "",
+          approvalMode: "default",
+          model: {
+            mode: "builtin",
+            id: "gpt-5.4",
+            reasoningEffort: "xhigh"
+          }
+        }
+      })
+    });
+
+    expect(res.status).toBe(201);
+    const data = (await res.json()) as {
+      ok: boolean;
+      data: {
+        agent: {
+          name: string;
+          runnerConfig: {
+            type: "codex";
+            approvalMode?: "default" | "auto";
+            model?: {
+              mode: "builtin" | "custom";
+              id: string;
+              reasoningEffort?: "low" | "medium" | "high" | "xhigh";
+            };
+          };
+        };
+      };
+    };
+
+    expect(data.ok).toBe(true);
+    expect(data.data.agent.name).toBe("Planner");
+    expect(data.data.agent.runnerConfig).toMatchObject({
+      type: "codex",
+      approvalMode: "default",
+      model: {
+        mode: "builtin",
+        id: "gpt-5.4",
+        reasoningEffort: "xhigh"
+      }
+    });
+  });
+});

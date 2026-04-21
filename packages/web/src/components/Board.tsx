@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Draggable, Droppable } from "@hello-pangea/dnd";
-import type { AgentTeam, Workspace } from "@workhorse/contracts";
+import type { AccountAgent, Workspace, WorkspaceAgent } from "@workhorse/contracts";
 
 import { formatRelativeTime, titleCase } from "@/lib/format";
+import { getTaskCoordinationScope, resolveCoordinationAgentName } from "@/lib/coordination";
 import { BOARD_COLUMNS, type DisplayTask, type DisplayTaskColumn } from "@/lib/task-view";
 import { cn } from "@/lib/utils";
 import { CompactPullRequestStatus } from "./CompactPullRequestStatus";
@@ -22,7 +23,8 @@ interface ReviewCountdown {
 interface Props {
   tasks: DisplayTask[];
   allTasks: DisplayTask[];
-  teams: AgentTeam[];
+  accountAgents: AccountAgent[];
+  workspaceAgentsByWorkspaceId: Map<string, WorkspaceAgent[]>;
   workspaces: Workspace[];
   reviewMonitor: ReviewMonitor;
   selectedTaskId: string | null;
@@ -33,10 +35,10 @@ interface Props {
   onMoveToTodo(taskId: string): void;
   onMarkDone(taskId: string): void;
   onArchive(taskId: string): void;
-  onApproveSubtask(taskId: string, teamId: string, parentTaskId: string): void;
-  onRejectSubtask(taskId: string, teamId: string, parentTaskId: string, reason?: string): void;
-  onRetrySubtask(taskId: string, teamId: string, parentTaskId: string): void;
-  onCancelSubtask(taskId: string, teamId: string, parentTaskId: string): void;
+  onApproveSubtask(task: DisplayTask): void;
+  onRejectSubtask(task: DisplayTask, reason?: string): void;
+  onRetrySubtask(task: DisplayTask): void;
+  onCancelSubtask(task: DisplayTask): void;
   reviewActionBusy?: boolean;
 }
 
@@ -225,17 +227,11 @@ function shouldShowBlockedBy(column: DisplayTaskColumn) {
   return column === "blocked";
 }
 
-function resolveTeamAgentName(team: AgentTeam | null, teamAgentId?: string) {
-  if (!team || !teamAgentId) {
-    return null;
-  }
-  return team.agents.find((agent) => agent.id === teamAgentId)?.agentName ?? null;
-}
-
 export function Board({
   tasks,
   allTasks,
-  teams,
+  accountAgents,
+  workspaceAgentsByWorkspaceId,
   workspaces,
   reviewMonitor,
   selectedTaskId,
@@ -259,10 +255,6 @@ export function Board({
     return acc;
   }, groupTasks());
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const teamMap = useMemo(
-    () => new Map<string, AgentTeam>(teams.map((team) => [team.id, team])),
-    [teams]
-  );
   const childTaskMap = useMemo(() => {
     const map = new Map<string, DisplayTask[]>();
     for (const task of allTasks) {
@@ -329,10 +321,16 @@ export function Board({
                   const isActive = task.id === selectedTaskId;
                   const workspace = workspaces.find((entry) => entry.id === task.workspaceId);
                   const workspaceName = workspace?.name ?? "Unknown";
-                  const team = task.teamId ? teamMap.get(task.teamId) ?? null : null;
-                  const teamAgentName = resolveTeamAgentName(team, task.teamAgentId);
+                  const workspaceAgents =
+                    workspaceAgentsByWorkspaceId.get(task.workspaceId) ?? [];
+                  const coordinationScope = getTaskCoordinationScope(task, workspaceAgents);
+                  const assignedAgentName = resolveCoordinationAgentName({
+                    task,
+                    accountAgents,
+                    workspaceAgents
+                  });
                   const childTasks =
-                    task.teamId && !task.parentTaskId
+                    coordinationScope.kind !== "none" && !task.parentTaskId
                       ? childTaskMap.get(task.id) ?? []
                       : [];
                   const reviewCountdown =
@@ -382,14 +380,18 @@ export function Board({
                             </p>
                           ) : null}
 
-                          {team ? (
+                          {coordinationScope.kind !== "none" ? (
                             <div className="mt-3 flex flex-wrap items-center gap-2">
                               <span className="inline-flex min-h-7 items-center rounded-full border border-[rgba(255,79,0,0.24)] bg-[rgba(255,79,0,0.08)] px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] text-[var(--accent-strong)]">
-                                Team · {team.agents.length} agents
+                                {coordinationScope.kind === "legacy_team"
+                                  ? "Legacy team"
+                                  : `Agents · ${workspaceAgents.length} mounted`}
                               </span>
                               {task.parentTaskId ? (
                                 <span className="inline-flex min-h-7 items-center rounded-full border border-[rgba(79,92,98,0.22)] bg-[rgba(79,92,98,0.06)] px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] text-[var(--info)]">
-                                  Subtask{teamAgentName ? ` · ${teamAgentName}` : ""}
+                                  {coordinationScope.kind === "legacy_team"
+                                    ? "Legacy subtask"
+                                    : `Subtask${assignedAgentName ? ` · ${assignedAgentName}` : ""}`}
                                 </span>
                               ) : null}
                             </div>
@@ -399,17 +401,23 @@ export function Board({
                             <div className="mt-4 grid gap-3 border-t border-border pt-4">
                               <div className="flex items-center justify-between gap-2">
                                 <span className="section-kicker">
-                                  Team subtasks
+                                  Coordination subtasks
                                 </span>
                                 <span className="text-[0.74rem] text-[var(--muted)]">
                                   {childTasks.length} total
                                 </span>
                               </div>
                               {(isActive ? childTasks : childTasks.slice(0, 3)).map((childTask) => {
-                                const childAgentName = resolveTeamAgentName(team, childTask.teamAgentId);
+                                const childWorkspaceAgents =
+                                  workspaceAgentsByWorkspaceId.get(childTask.workspaceId) ?? [];
+                                const childAgentName = resolveCoordinationAgentName({
+                                  task: childTask,
+                                  accountAgents,
+                                  workspaceAgents: childWorkspaceAgents
+                                });
                                 const isReviewSubtask = childTask.column === "review";
                                 const isCancelableSubtask =
-                                  Boolean(childTask.teamId && childTask.parentTaskId) &&
+                                  Boolean(childTask.parentTaskId) &&
                                   !childTask.cancelledAt &&
                                   childTask.column !== "done" &&
                                   childTask.column !== "archived";
@@ -444,8 +452,7 @@ export function Board({
                                         {childAgentName ?? "Unassigned agent"}
                                       </span>
                                     </button>
-                                    {childTask.teamId &&
-                                    childTask.parentTaskId &&
+                                    {childTask.parentTaskId &&
                                     (isReviewSubtask || isCancelableSubtask) ? (
                                       <SubtaskReviewActions
                                         compact
@@ -455,13 +462,7 @@ export function Board({
                                         showReject={isReviewSubtask}
                                         showRetry={isReviewSubtask}
                                         showCancel={isCancelableSubtask}
-                                        onApprove={() =>
-                                          onApproveSubtask(
-                                            childTask.id,
-                                            childTask.teamId!,
-                                            childTask.parentTaskId!
-                                          )
-                                        }
+                                        onApprove={() => onApproveSubtask(childTask)}
                                         onReject={() =>
                                           (() => {
                                             const reason = window.prompt(
@@ -471,21 +472,10 @@ export function Board({
                                             if (reason === null) {
                                               return;
                                             }
-                                            onRejectSubtask(
-                                              childTask.id,
-                                              childTask.teamId!,
-                                              childTask.parentTaskId!,
-                                              reason || undefined
-                                            );
+                                            onRejectSubtask(childTask, reason || undefined);
                                           })()
                                         }
-                                        onRetry={() =>
-                                          onRetrySubtask(
-                                            childTask.id,
-                                            childTask.teamId!,
-                                            childTask.parentTaskId!
-                                          )
-                                        }
+                                        onRetry={() => onRetrySubtask(childTask)}
                                         onCancel={() => {
                                           if (
                                             !window.confirm(
@@ -494,11 +484,7 @@ export function Board({
                                           ) {
                                             return;
                                           }
-                                          onCancelSubtask(
-                                            childTask.id,
-                                            childTask.teamId!,
-                                            childTask.parentTaskId!
-                                          );
+                                          onCancelSubtask(childTask);
                                         }}
                                       />
                                     ) : null}
