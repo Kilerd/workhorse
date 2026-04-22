@@ -18,6 +18,7 @@ import type {
 } from "@workhorse/contracts";
 
 import { api } from "@/lib/api";
+import { readErrorMessage } from "@/lib/error-message";
 import {
   resolveActiveRunId,
   resolveRunSelectionAfterStart,
@@ -25,6 +26,7 @@ import {
 } from "@/lib/run-selection";
 import { applyOptimisticStartTask } from "@/lib/start-task";
 import { type DisplayTask, type TaskFormValues } from "@/lib/task-view";
+import { toast } from "@/hooks/use-toast";
 
 import { coordinationQueryKeys } from "./useCoordination";
 import { useLiveLog } from "./useLiveLog";
@@ -41,6 +43,16 @@ export function useBoardData() {
   const modals = useModalState();
   const liveLog = useLiveLog();
   const selection = useSelectionState();
+  const notifyMutationError = useCallback(
+    (title: string, error: unknown, fallback: string) => {
+      toast({
+        variant: "destructive",
+        title,
+        description: readErrorMessage(error, fallback)
+      });
+    },
+    []
+  );
 
   const workspacesQuery = useQuery({
     queryKey: queryKey("workspaces"),
@@ -130,6 +142,13 @@ export function useBoardData() {
       await queryClient.invalidateQueries({
         queryKey: queryKey("workspaceGitStatus")
       });
+    },
+    onError: (error) => {
+      notifyMutationError(
+        "Couldn't pull latest changes",
+        error,
+        "Unable to pull the selected workspace."
+      );
     }
   });
 
@@ -189,8 +208,19 @@ export function useBoardData() {
       const response = await api.createWorkspace(input);
       return response.workspace;
     },
-    onSuccess: async () => {
+    onSuccess: async (workspace) => {
       await queryClient.invalidateQueries({ queryKey: queryKey("workspaces") });
+      toast({
+        title: "Workspace added",
+        description: `${workspace.name} is ready in Workhorse.`
+      });
+    },
+    onError: (error) => {
+      notifyMutationError(
+        "Couldn't create workspace",
+        error,
+        "Unable to create workspace."
+      );
     }
   });
 
@@ -203,6 +233,9 @@ export function useBoardData() {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
       selection.setTaskSelection(task.id);
       modals.setTaskModalOpen(false);
+    },
+    onError: (error) => {
+      notifyMutationError("Couldn't create task", error, "Unable to create task.");
     }
   });
 
@@ -217,8 +250,19 @@ export function useBoardData() {
       const response = await api.updateWorkspace(workspaceId, body);
       return response.workspace;
     },
-    onSuccess: async () => {
+    onSuccess: async (workspace) => {
       await queryClient.invalidateQueries({ queryKey: queryKey("workspaces") });
+      toast({
+        title: "Workspace settings saved",
+        description: `${workspace.name} was updated successfully.`
+      });
+    },
+    onError: (error) => {
+      notifyMutationError(
+        "Couldn't save workspace settings",
+        error,
+        "Unable to update workspace settings."
+      );
     }
   });
 
@@ -229,6 +273,17 @@ export function useBoardData() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKey("settings") });
+      toast({
+        title: "Global settings saved",
+        description: "Workhorse will use the updated global defaults."
+      });
+    },
+    onError: (error) => {
+      notifyMutationError(
+        "Couldn't save global settings",
+        error,
+        "Unable to update global settings."
+      );
     }
   });
 
@@ -254,13 +309,14 @@ export function useBoardData() {
       }
       return { previousTasks };
     },
-    onError: async (_error, _variables, context) => {
+    onError: async (error, _variables, context) => {
       if (context?.previousTasks) {
         queryClient.setQueryData(queryKey("tasks"), context.previousTasks);
       }
 
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
       await queryClient.invalidateQueries({ queryKey: queryKey("runs") });
+      notifyMutationError("Couldn't start task", error, "Unable to start task.");
     },
     onSuccess: async (result, { taskId }) => {
       if (taskId === selection.selectedTaskId) {
@@ -286,6 +342,9 @@ export function useBoardData() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
       await queryClient.invalidateQueries({ queryKey: queryKey("runs") });
+    },
+    onError: (error) => {
+      notifyMutationError("Couldn't stop task", error, "Unable to stop task.");
     }
   });
 
@@ -307,6 +366,9 @@ export function useBoardData() {
 
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
       await queryClient.invalidateQueries({ queryKey: queryKey("runs") });
+    },
+    onError: (error) => {
+      notifyMutationError("Couldn't send input", error, "Unable to send input.");
     }
   });
 
@@ -332,10 +394,11 @@ export function useBoardData() {
       }
       return { previous };
     },
-    onError: (_error, _variables, context) => {
+    onError: (error, _variables, context) => {
       if (context?.previous) {
         queryClient.setQueryData(queryKey("tasks"), context.previous);
       }
+      notifyMutationError("Couldn't update task", error, "Unable to update task.");
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
@@ -354,6 +417,13 @@ export function useBoardData() {
 
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
       await queryClient.invalidateQueries({ queryKey: queryKey("runs") });
+    },
+    onError: (error) => {
+      notifyMutationError(
+        "Couldn't start planning",
+        error,
+        "Unable to start the planning run."
+      );
     }
   });
 
@@ -375,6 +445,13 @@ export function useBoardData() {
 
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
       await queryClient.invalidateQueries({ queryKey: queryKey("runs") });
+    },
+    onError: (error) => {
+      notifyMutationError(
+        "Couldn't send plan feedback",
+        error,
+        "Unable to send plan feedback."
+      );
     }
   });
 
@@ -390,6 +467,13 @@ export function useBoardData() {
 
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
       await queryClient.invalidateQueries({ queryKey: queryKey("runs") });
+    },
+    onError: (error) => {
+      notifyMutationError(
+        "Couldn't request review",
+        error,
+        "Unable to move the task into review."
+      );
     }
   });
 
@@ -408,6 +492,13 @@ export function useBoardData() {
     onSuccess: async (_task, variables) => {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
       await invalidateCoordinationThread(variables);
+    },
+    onError: (error) => {
+      notifyMutationError(
+        "Couldn't approve task",
+        error,
+        "Unable to approve the selected task."
+      );
     }
   });
 
@@ -428,6 +519,13 @@ export function useBoardData() {
     onSuccess: async (_task, variables) => {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
       await invalidateCoordinationThread(variables);
+    },
+    onError: (error) => {
+      notifyMutationError(
+        "Couldn't reject task",
+        error,
+        "Unable to reject the selected task."
+      );
     }
   });
 
@@ -447,6 +545,13 @@ export function useBoardData() {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
       await queryClient.invalidateQueries({ queryKey: queryKey("runs") });
       await invalidateCoordinationThread(variables);
+    },
+    onError: (error) => {
+      notifyMutationError(
+        "Couldn't retry task",
+        error,
+        "Unable to retry the selected task."
+      );
     }
   });
 
@@ -473,6 +578,13 @@ export function useBoardData() {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
       await queryClient.invalidateQueries({ queryKey: queryKey("runs") });
       await invalidateCoordinationThread(variables);
+    },
+    onError: (error) => {
+      notifyMutationError(
+        "Couldn't cancel subtask",
+        error,
+        "Unable to cancel the selected subtask."
+      );
     }
   });
 
@@ -483,6 +595,13 @@ export function useBoardData() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
+    },
+    onError: (error) => {
+      notifyMutationError(
+        "Couldn't clean up worktree",
+        error,
+        "Unable to clean up the task worktree."
+      );
     }
   });
 
@@ -493,6 +612,13 @@ export function useBoardData() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
+    },
+    onError: (error) => {
+      notifyMutationError(
+        "Couldn't move task",
+        error,
+        "Unable to update the task column."
+      );
     }
   });
 
@@ -505,6 +631,13 @@ export function useBoardData() {
       await queryClient.invalidateQueries({ queryKey: queryKey("workspaces") });
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
       selection.setWorkspaceSelection("all");
+    },
+    onError: (error) => {
+      notifyMutationError(
+        "Couldn't delete workspace",
+        error,
+        "Unable to delete the selected workspace."
+      );
     }
   });
 
@@ -516,6 +649,9 @@ export function useBoardData() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
       selection.setTaskSelection(null);
+    },
+    onError: (error) => {
+      notifyMutationError("Couldn't delete task", error, "Unable to delete the selected task.");
     }
   });
 
@@ -541,11 +677,16 @@ export function useBoardData() {
       }
       return { previous };
     },
-    onError: async (_error, _variables, context) => {
+    onError: async (error, _variables, context) => {
       if (context?.previous) {
         queryClient.setQueryData(queryKey("tasks"), context.previous);
       }
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
+      notifyMutationError(
+        "Couldn't save dependencies",
+        error,
+        "Unable to update task dependencies."
+      );
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });

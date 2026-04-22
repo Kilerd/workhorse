@@ -31,12 +31,14 @@ import {
   serializeWorkspacePromptTemplates
 } from "@/lib/workspace-prompt-templates";
 import { countWorkspaceWorkers, getCoordinatorWorkspaceAgent } from "@/lib/coordination";
+import { readErrorMessage } from "@/lib/error-message";
 import { formatCount, titleCase } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
+import { toast } from "@/hooks/use-toast";
 import { useAgents, useWorkspaceAgentMutations, useWorkspaceAgents } from "@/hooks/useAgents";
 
 // ---------------------------------------------------------------------------
@@ -253,13 +255,20 @@ function PageHeader({
 }
 
 function CopyToken({ token }: { token: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleClick = useCallback(() => {
-    navigator.clipboard.writeText(token).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1200);
-    });
+  const handleClick = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(token);
+      toast({
+        title: "Token copied",
+        description: "Workspace prompt token copied to clipboard."
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Copy failed",
+        description: readErrorMessage(error, "Unable to copy token to clipboard.")
+      });
+    }
   }, [token]);
 
   return (
@@ -269,7 +278,7 @@ function CopyToken({ token }: { token: string }) {
       className="shrink-0 cursor-pointer rounded bg-transparent font-mono text-[0.68rem] text-[var(--accent-strong)] transition-colors hover:text-foreground"
       title="Click to copy"
     >
-      {copied ? "Copied!" : token}
+      {token}
     </button>
   );
 }
@@ -443,21 +452,6 @@ function PromptTab({
   );
 }
 
-function readMutationError(error: unknown, fallback: string): string {
-  if (typeof error === "object" && error !== null && "data" in error) {
-    const data = (error as { data?: { error?: { message?: string } } }).data;
-    if (data?.error?.message) {
-      return data.error.message;
-    }
-  }
-
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
-  return fallback;
-}
-
 function describeModelConfig(model: ModelConfig | undefined): string | null {
   if (!model?.id.trim()) {
     return null;
@@ -595,11 +589,6 @@ function AgentsTab({
   const mutations = useWorkspaceAgentMutations(workspace.id);
   const [selectedAgentId, setSelectedAgentId] = useState("");
   const [selectedRole, setSelectedRole] = useState<"coordinator" | "worker">("worker");
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setError(null);
-  }, [workspace.id]);
 
   const agents = agentsQuery.data ?? [];
   const mountedAgents = workspaceAgentsQuery.data ?? [];
@@ -610,10 +599,10 @@ function AgentsTab({
   const selectedAgent =
     availableAgents.find((agent) => agent.id === selectedAgentId) ?? availableAgents[0] ?? null;
   const agentsLoadError = agentsQuery.error
-    ? readMutationError(agentsQuery.error, "Failed to load account agents.")
+    ? readErrorMessage(agentsQuery.error, "Failed to load account agents.")
     : null;
   const mountedAgentsLoadError = workspaceAgentsQuery.error
-    ? readMutationError(workspaceAgentsQuery.error, "Failed to load mounted workspace agents.")
+    ? readErrorMessage(workspaceAgentsQuery.error, "Failed to load mounted workspace agents.")
     : null;
 
   useEffect(() => {
@@ -701,11 +690,6 @@ function AgentsTab({
           />
         </div>
 
-        {error ? (
-          <div className="mt-4 rounded-[var(--radius)] border border-[rgba(181,74,74,0.28)] bg-[rgba(181,74,74,0.08)] px-4 py-3 text-[0.8rem] text-[var(--danger)]">
-            {error}
-          </div>
-        ) : null}
       </section>
 
       <section className="surface-card px-4 py-3.5">
@@ -811,15 +795,25 @@ function AgentsTab({
                           disabled={mutations.isPending}
                           value={agent.role}
                           onChange={(event) => {
-                            setError(null);
                             const role = event.target.value as "coordinator" | "worker";
                             void mutations
                               .updateRole({ agentId: agent.id, role })
-                              .catch((nextError) =>
-                                setError(
-                                  readMutationError(nextError, "Failed to update workspace role.")
-                                )
-                              );
+                              .then(() => {
+                                toast({
+                                  title: "Role updated",
+                                  description: `${agent.name} is now assigned as ${role}.`
+                                });
+                              })
+                              .catch((nextError) => {
+                                toast({
+                                  variant: "destructive",
+                                  title: "Couldn't update role",
+                                  description: readErrorMessage(
+                                    nextError,
+                                    "Failed to update workspace role."
+                                  )
+                                });
+                              });
                           }}
                         >
                           <option value="worker">worker</option>
@@ -837,10 +831,23 @@ function AgentsTab({
                         size="sm"
                         disabled={mutations.isPending}
                         onClick={() => {
-                          setError(null);
-                          void mutations.unmount(agent.id).catch((nextError) =>
-                            setError(readMutationError(nextError, "Failed to remove mounted agent."))
-                          );
+                          void mutations.unmount(agent.id)
+                            .then(() => {
+                              toast({
+                                title: "Agent removed",
+                                description: `${agent.name} is no longer mounted in ${workspace.name}.`
+                              });
+                            })
+                            .catch((nextError) => {
+                              toast({
+                                variant: "destructive",
+                                title: "Couldn't remove agent",
+                                description: readErrorMessage(
+                                  nextError,
+                                  "Failed to remove mounted agent."
+                                )
+                              });
+                            });
                         }}
                       >
                         Remove
@@ -991,12 +998,24 @@ function AgentsTab({
                     return;
                   }
 
-                  setError(null);
                   void mutations
                     .mount({ agentId: selectedAgentId, role: selectedRole })
-                    .catch((nextError) =>
-                      setError(readMutationError(nextError, "Failed to mount workspace agent."))
-                    );
+                    .then(() => {
+                      toast({
+                        title: "Agent mounted",
+                        description: `${selectedAgent?.name ?? "Selected agent"} is now available in ${workspace.name}.`
+                      });
+                    })
+                    .catch((nextError) => {
+                      toast({
+                        variant: "destructive",
+                        title: "Couldn't mount agent",
+                        description: readErrorMessage(
+                          nextError,
+                          "Failed to mount workspace agent."
+                        )
+                      });
+                    });
                 }}
               >
                 Mount selected agent
@@ -1090,14 +1109,24 @@ function AgentsTab({
             type="button"
             disabled={mutations.isPending}
             onClick={() => {
-              setError(null);
               void mutations
                 .updateConfig({ prStrategy, autoApproveSubtasks })
-                .catch((nextError) =>
-                  setError(
-                    readMutationError(nextError, "Failed to update workspace coordination settings.")
-                  )
-                );
+                .then(() => {
+                  toast({
+                    title: "Coordination settings saved",
+                    description: `${workspace.name} will use the latest delegation settings.`
+                  });
+                })
+                .catch((nextError) => {
+                  toast({
+                    variant: "destructive",
+                    title: "Couldn't save coordination settings",
+                    description: readErrorMessage(
+                      nextError,
+                      "Failed to update workspace coordination settings."
+                    )
+                  });
+                });
             }}
           >
             Save coordination settings

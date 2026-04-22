@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd";
 import {
@@ -13,6 +13,7 @@ import {
 import type {
   RunLogEntry,
   ServerEvent,
+  Task,
   Workspace,
   WorkspaceAgent,
   WorkspaceChannel
@@ -40,6 +41,7 @@ import {
   resolveViewedRunId
 } from "@/lib/run-selection";
 import { isBoardVisibleColumn, type DisplayTaskColumn } from "@/lib/task-view";
+import { readStoredValue, writeStoredValue } from "@/lib/persist";
 import { queryClient } from "@/lib/query";
 import { applyTheme, getPreferredTheme, type ThemeMode } from "@/lib/theme";
 import { Button } from "@/components/ui/button";
@@ -62,6 +64,8 @@ export default function App() {
   return <ReactAppShell />;
 }
 
+const CHANNEL_UNREAD_COUNTS_STORAGE_KEY = "workhorse.channelUnreadCounts";
+
 function workspaceBoardPath(workspaceId: string | "all"): string {
   return workspaceId === "all" ? "/" : `/workspaces/${workspaceId}/board`;
 }
@@ -80,8 +84,12 @@ function ReactAppShell() {
   >();
   const [searchQuery, setSearchQuery] = useState("");
   const [theme, setTheme] = useState<ThemeMode>(() => getPreferredTheme());
+  const [channelUnreadCounts, setChannelUnreadCounts] = useState<Record<string, number>>(() =>
+    readStoredValue<Record<string, number>>(CHANNEL_UNREAD_COUNTS_STORAGE_KEY, {})
+  );
   const { displayedTasks, workspacesQuery } = board;
   const agentsQuery = useAgents();
+  const activeChannelIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     applyTheme(theme);
@@ -227,6 +235,15 @@ function ReactAppShell() {
             })
           });
           queryClient.invalidateQueries({ queryKey: ["tasks"] });
+          if (
+            event.message.senderType !== "human" &&
+            event.channelId !== activeChannelIdRef.current
+          ) {
+            setChannelUnreadCounts((current) => ({
+              ...current,
+              [event.channelId]: (current[event.channelId] ?? 0) + 1
+            }));
+          }
           break;
         case "channel.proposal.created":
         case "channel.proposal.updated":
@@ -281,6 +298,15 @@ function ReactAppShell() {
     }
     return map;
   }, [workspaceChannelQueries, workspaces]);
+  const availableChannelIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const channels of workspaceChannelsByWorkspaceId.values()) {
+      for (const channel of channels) {
+        ids.add(channel.id);
+      }
+    }
+    return ids;
+  }, [workspaceChannelsByWorkspaceId]);
   const taskChannelByTaskId = useMemo(() => {
     const map = new Map<string, WorkspaceChannel>();
     for (const channels of workspaceChannelsByWorkspaceId.values()) {
@@ -314,6 +340,43 @@ function ReactAppShell() {
   const activeChannelId =
     routedChannel?.id ??
     (location.pathname === "/" || routeBoardMatch ? null : board.selectedChannelId);
+
+  useEffect(() => {
+    activeChannelIdRef.current = activeChannelId;
+  }, [activeChannelId]);
+
+  useEffect(() => {
+    writeStoredValue(CHANNEL_UNREAD_COUNTS_STORAGE_KEY, channelUnreadCounts);
+  }, [channelUnreadCounts]);
+
+  useEffect(() => {
+    setChannelUnreadCounts((current) => {
+      const nextEntries = Object.entries(current).filter(
+        ([channelId, count]) => availableChannelIds.has(channelId) && count > 0
+      );
+      if (nextEntries.length === Object.keys(current).length) {
+        return current;
+      }
+      return Object.fromEntries(nextEntries);
+    });
+  }, [availableChannelIds]);
+
+  useEffect(() => {
+    if (!activeChannelId) {
+      return;
+    }
+
+    setChannelUnreadCounts((current) => {
+      if (!current[activeChannelId]) {
+        return current;
+      }
+
+      const next = { ...current };
+      delete next[activeChannelId];
+      return next;
+    });
+  }, [activeChannelId]);
+
   const tasks =
     activeWorkspaceId === "all"
       ? displayedTasks
@@ -553,12 +616,13 @@ function ReactAppShell() {
 
   return (
     <div
-      className={`min-h-screen bg-background text-foreground lg:grid lg:h-screen lg:overflow-hidden ${board.sidebarCollapsed ? "lg:grid-cols-[78px_minmax(0,1fr)]" : "lg:grid-cols-[312px_minmax(0,1fr)]"}`}
+      className={`min-h-screen bg-background text-foreground lg:grid lg:h-screen lg:overflow-hidden ${board.sidebarCollapsed ? "lg:grid-cols-[72px_minmax(0,1fr)]" : "lg:grid-cols-[288px_minmax(0,1fr)]"}`}
     >
       <Sidebar
         workspaces={workspaces}
         allTasks={allTasks}
         workspaceChannelsByWorkspaceId={workspaceChannelsByWorkspaceId}
+        channelUnreadCounts={channelUnreadCounts}
         agentCount={accountAgents.length}
         selectedWorkspaceId={activeWorkspaceId}
         selectedChannelId={activeChannelId}
@@ -985,9 +1049,21 @@ function WorkspaceChannelRoute({
     enabled: Boolean(resolvedWorkspaceId && resolvedChannelSlug && !listedChannel)
   });
   const channel = listedChannel ?? channelQuery.data ?? null;
-  const task = channel?.taskId
+  const listedTask = channel?.taskId
     ? allTasks.find((entry) => entry.id === channel.taskId) ?? null
     : null;
+  const hiddenTaskQuery = useQuery({
+    queryKey: ["task-hidden", channel?.taskId ?? ""],
+    queryFn: async (): Promise<Task | null> => {
+      if (!channel?.taskId) {
+        return null;
+      }
+
+      return (await api.getTask(channel.taskId)).task;
+    },
+    enabled: Boolean(channel?.taskId && !listedTask)
+  });
+  const task = listedTask ?? hiddenTaskQuery.data ?? null;
   const workspaceAgents = workspaceAgentsByWorkspaceId.get(resolvedWorkspaceId) ?? [];
   const scope =
     channel !== null && resolvedWorkspaceId
@@ -1043,7 +1119,7 @@ function WorkspaceChannelRoute({
           eyebrow="Workspace channel"
           title={channelQuery.isLoading ? "Loading channel" : "Channel not found"}
           description={
-            channelQuery.isLoading
+            channelQuery.isLoading || hiddenTaskQuery.isLoading
               ? "We are loading the latest channel state for this workspace."
               : "This channel may have been archived, or the workspace channel list has not loaded yet."
           }

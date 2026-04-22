@@ -693,7 +693,7 @@ export function createApp(
       validateUpdateAgentBody,
       "Invalid update agent body"
     );
-    const agent = service.updateAgent(params.agentId, body);
+    const agent = await service.updateAgent(params.agentId, body);
     return c.json(ok({ agent }));
   });
 

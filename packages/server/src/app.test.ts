@@ -11,6 +11,7 @@ import { createApp } from "./app.js";
 import { createRunLogEntry } from "./lib/run-log.js";
 import { StateStore } from "./persistence/state-store.js";
 import type { CodexAppServer } from "./runners/codex-app-server-manager.js";
+import { ClaudeCliRunner } from "./runners/claude-cli-runner.js";
 import { CodexAcpRunner } from "./runners/codex-acp-runner.js";
 import type { RunnerAdapter, RunnerControl, RunnerLifecycleHooks, RunnerStartContext } from "./runners/types.js";
 import { ShellRunner } from "./runners/shell-runner.js";
@@ -196,6 +197,38 @@ class StreamingCoordinatorTextRunner implements RunnerAdapter {
     return {
       command: "claude (streaming coordinator mock)",
       async stop() {}
+    };
+  }
+}
+
+class ConfigAwareHoldingClaudeRunner implements RunnerAdapter {
+  public readonly type = "claude" as const;
+  private readonly cli = new ClaudeCliRunner();
+
+  public async start(
+    context: RunnerStartContext,
+    hooks: RunnerLifecycleHooks
+  ): Promise<RunnerControl> {
+    if (context.task.runnerConfig.type !== "claude") {
+      throw new Error("Expected claude runner config");
+    }
+
+    const args = this.cli.buildCommandArgs(context.task.runnerConfig);
+    let stopped = false;
+
+    return {
+      command: ["claude", ...args].join(" "),
+      async stop() {
+        if (stopped) {
+          return;
+        }
+
+        stopped = true;
+        await hooks.onExit({
+          status: "canceled",
+          exitCode: 0
+        });
+      }
     };
   }
 }
@@ -3290,6 +3323,114 @@ describe("workspace channel API", () => {
       "第一条消息我收到了。",
       "第二条消息我也看到了。"
     ]);
+  });
+
+  it("refreshes #all coordinator runs after agent settings remove a claude agent profile", async () => {
+    const codexServer = createCodexAppServerStub();
+    const { app, service, workspaceDir } = await createRuntime({
+      codexAppServer: codexServer,
+      runners: {
+        claude: new ConfigAwareHoldingClaudeRunner(),
+        shell: new ShellRunner(),
+        codex: new CodexAcpRunner(codexServer)
+      }
+    });
+    const workspace = await createWorkspace(service, workspaceDir);
+    const coordinator = service.createAgent({
+      name: "Workspace coordinator",
+      runnerConfig: {
+        type: "claude",
+        prompt: "Coordinate work",
+        agent: "architecture",
+        model: {
+          mode: "custom",
+          id: "@preset/39-ai-claude-opus-46"
+        },
+        permissionMode: "default"
+      }
+    });
+    service.mountAgent(workspace.id, {
+      agentId: coordinator.id,
+      role: "coordinator"
+    });
+
+    const allChannel = service
+      .listWorkspaceChannelsByWorkspace(workspace.id)
+      .find((item) => item.kind === "all");
+    expect(allChannel).toBeDefined();
+
+    const firstRes = await app.request(
+      `/api/workspaces/${workspace.id}/channels/${allChannel!.id}/messages`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          content: "第一轮，先告诉我你是谁。"
+        })
+      }
+    );
+    expect(firstRes.status).toBe(201);
+
+    const refreshedAllChannel = service
+      .listWorkspaceChannelsByWorkspace(workspace.id)
+      .find((item) => item.id === allChannel!.id);
+    const backingTaskId = refreshedAllChannel?.taskId;
+    expect(backingTaskId).toBeTruthy();
+
+    const initialBackingTask = service.getTask(backingTaskId!);
+    expect(initialBackingTask.runnerType).toBe("claude");
+    expect(initialBackingTask.runnerConfig).toMatchObject({
+      type: "claude",
+      agent: "architecture"
+    });
+
+    const initialRun = service.listRuns(backingTaskId!)[0];
+    expect(initialRun?.command).toContain("--agent architecture");
+
+    await service.updateAgent(coordinator.id, {
+      runnerConfig: {
+        type: "claude",
+        prompt: "Coordinate work",
+        model: {
+          mode: "custom",
+          id: "@preset/39-ai-claude-opus-46"
+        },
+        permissionMode: "default"
+      }
+    });
+
+    const stoppedRun = await waitForRunToFinish(service, backingTaskId!, 1_000);
+    expect(stoppedRun.status).toBe("canceled");
+
+    const syncedBackingTask = service.getTask(backingTaskId!);
+    expect(syncedBackingTask.runnerType).toBe("claude");
+    expect(syncedBackingTask.runnerConfig).toMatchObject({
+      type: "claude"
+    });
+    expect(syncedBackingTask.runnerConfig).not.toHaveProperty("agent");
+
+    const secondRes = await app.request(
+      `/api/workspaces/${workspace.id}/channels/${allChannel!.id}/messages`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          content: "第二轮，重新开始，你是谁。"
+        })
+      }
+    );
+    expect(secondRes.status).toBe(201);
+
+    const restartedRun = service.listRuns(backingTaskId!)[0];
+    expect(restartedRun?.status).toBe("running");
+    expect(restartedRun?.command).not.toContain("--agent");
+
+    await service.stopTask(backingTaskId!);
+    await waitForRunToFinish(service, backingTaskId!, 1_000);
   });
 
   it("creates top-level tasks from #all proposals through channel approval", async () => {

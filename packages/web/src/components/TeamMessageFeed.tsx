@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 
+import { toast } from "@/hooks/use-toast";
+import { readErrorMessage } from "@/lib/error-message";
 import { formatRelativeTime, titleCase } from "@/lib/format";
 import type { CoordinationMessage } from "@/lib/coordination";
 import { cn } from "@/lib/utils";
@@ -87,8 +89,7 @@ export function TeamMessageFeed({
   fullHeight = false
 }: Props) {
   const [draft, setDraft] = useState("");
-  const [submitState, setSubmitState] = useState<"idle" | "sending" | "failed">("idle");
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitState, setSubmitState] = useState<"idle" | "sending">("idle");
   const orderedMessages = useMemo(
     () =>
       [...messages].sort(
@@ -104,17 +105,21 @@ export function TeamMessageFeed({
     }
 
     setSubmitState("sending");
-    setSubmitError(null);
 
     try {
       await onSendMessage(content);
       setDraft("");
       setSubmitState("idle");
     } catch (nextError) {
-      setSubmitState("failed");
-      setSubmitError(
-        nextError instanceof Error ? nextError.message : "Unable to send coordination message."
-      );
+      setSubmitState("idle");
+      toast({
+        variant: "destructive",
+        title: "Couldn't send message",
+        description: readErrorMessage(
+          nextError,
+          "Unable to send coordination message."
+        )
+      });
     }
   }
 
@@ -147,7 +152,7 @@ export function TeamMessageFeed({
       ) : (
         <div
           className={cn(
-            "grid gap-2 overflow-y-auto pr-1",
+            "grid auto-rows-max content-start items-start gap-2 overflow-y-auto pr-1",
             fullHeight ? "min-h-0" : "max-h-[22rem]"
           )}
         >
@@ -162,7 +167,7 @@ export function TeamMessageFeed({
               <article
                 key={message.id}
                 className={cn(
-                  "grid gap-3 rounded-[var(--radius)] border p-4",
+                  "grid self-start gap-3 rounded-[var(--radius)] border p-4",
                   messageTone(message),
                   message.senderType === "human" &&
                     "ml-auto w-full max-w-[min(34rem,92%)] justify-self-end"
@@ -276,13 +281,7 @@ export function TeamMessageFeed({
             rows={3}
             value={draft}
             maxLength={MAX_HUMAN_TEAM_MESSAGE_LENGTH}
-            onChange={(event) => {
-              setDraft(event.target.value);
-              if (submitState === "failed") {
-                setSubmitState("idle");
-                setSubmitError(null);
-              }
-            }}
+            onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
               if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
                 event.preventDefault();
@@ -308,9 +307,6 @@ export function TeamMessageFeed({
               {submitState === "sending" ? "Sending..." : "Send"}
             </Button>
           </div>
-          {submitError ? (
-            <div className="text-[0.72rem] text-[var(--danger)]">{submitError}</div>
-          ) : null}
         </form>
       </div>
     </section>

@@ -1,6 +1,7 @@
 import { access, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import type {
   AccountAgent,
@@ -594,7 +595,86 @@ export class BoardService {
     return saved;
   }
 
-  private async ensureWorkspaceAllChannelBackingTask(workspaceId: string): Promise<{
+  private runnerConfigMatches(left: RunnerConfig, right: RunnerConfig): boolean {
+    return left.type === right.type && JSON.stringify(left) === JSON.stringify(right);
+  }
+
+  private async waitForTaskToStop(taskId: string, timeoutMs = 3_000): Promise<void> {
+    const startedAt = Date.now();
+    while (this.runLifecycle.isActive(taskId) && Date.now() - startedAt < timeoutMs) {
+      await sleep(50);
+    }
+  }
+
+  private async syncWorkspaceAllChannelBackingTask(
+    task: Task,
+    coordinator: WorkspaceAgent
+  ): Promise<{ task: Task; changed: boolean }> {
+    if (
+      task.runnerType === coordinator.runnerConfig.type &&
+      this.runnerConfigMatches(task.runnerConfig, coordinator.runnerConfig)
+    ) {
+      return { task, changed: false };
+    }
+
+    const updated = await this.store.updateTask(task.id, (current) => ({
+      ...current,
+      runnerType: coordinator.runnerConfig.type,
+      runnerConfig: structuredClone(coordinator.runnerConfig),
+      updatedAt: new Date().toISOString()
+    }));
+    this.events.publish({
+      type: "task.updated",
+      action: "updated",
+      taskId: updated.id,
+      task: updated
+    });
+    return { task: updated, changed: true };
+  }
+
+  private async refreshMountedCoordinatorBackings(agentId: string): Promise<void> {
+    const workspaces = this.store.listWorkspaces();
+
+    for (const workspace of workspaces) {
+      const coordinator = this.store
+        .listWorkspaceAgents(workspace.id)
+        .find((agent) => agent.id === agentId && agent.role === "coordinator");
+      if (!coordinator) {
+        continue;
+      }
+
+      const allChannel = this.store.getWorkspaceAllChannel(workspace.id);
+      const taskId = allChannel?.taskId;
+      if (!taskId) {
+        continue;
+      }
+
+      const existingTask = this.store.listTasks().find((task) => task.id === taskId);
+      if (!existingTask) {
+        continue;
+      }
+
+      const { changed } = await this.syncWorkspaceAllChannelBackingTask(existingTask, coordinator);
+
+      if (!changed || !this.runLifecycle.isActive(taskId)) {
+        continue;
+      }
+
+      try {
+        await this.runLifecycle.stopRun(taskId);
+        await this.waitForTaskToStop(taskId);
+      } catch (error) {
+        if (!(error instanceof AppError && error.code === "TASK_NOT_RUNNING")) {
+          throw error;
+        }
+      }
+    }
+  }
+
+  private async ensureWorkspaceAllChannelBackingTask(
+    workspaceId: string,
+    coordinator: WorkspaceAgent
+  ): Promise<{
     channel: WorkspaceChannel;
     task: Task;
   }> {
@@ -602,7 +682,8 @@ export class BoardService {
     const existingTask =
       channel.taskId ? this.store.listTasks().find((task) => task.id === channel.taskId) : null;
     if (existingTask) {
-      return { channel, task: existingTask };
+      const { task } = await this.syncWorkspaceAllChannelBackingTask(existingTask, coordinator);
+      return { channel, task };
     }
 
     const workspace = this.requireWorkspace(workspaceId);
@@ -616,8 +697,8 @@ export class BoardService {
       workspaceId,
       column: "review",
       order: -1,
-      runnerType: "codex",
-      runnerConfig: { type: "codex", prompt: "Workspace coordinator backing task." },
+      runnerType: coordinator.runnerConfig.type,
+      runnerConfig: structuredClone(coordinator.runnerConfig),
       dependencies: [],
       worktree: createTaskWorktree(taskId, title, {
         workspace,
@@ -3685,7 +3766,7 @@ export class BoardService {
     return agent;
   }
 
-  public updateAgent(agentId: string, body: UpdateAgentBody): AccountAgent {
+  public async updateAgent(agentId: string, body: UpdateAgentBody): Promise<AccountAgent> {
     const existing = this.store.getAgent(agentId);
     if (!existing) {
       throw new AppError(404, "AGENT_NOT_FOUND", `Agent not found: ${agentId}`);
@@ -3710,6 +3791,7 @@ export class BoardService {
       agentId: updated.id,
       agent: updated
     });
+    await this.refreshMountedCoordinatorBackings(updated.id);
     return updated;
   }
 
@@ -3904,9 +3986,9 @@ export class BoardService {
 
     if (channel.kind === "all") {
       const agents = this.store.listWorkspaceAgents(workspaceId);
-      this.resolveCoordinator(agents);
+      const coordinator = this.resolveCoordinator(agents);
       const { channel: ensuredChannel, task } =
-        await this.ensureWorkspaceAllChannelBackingTask(workspaceId);
+        await this.ensureWorkspaceAllChannelBackingTask(workspaceId, coordinator);
       if (this.runLifecycle.isActive(task.id)) {
         try {
           await this.sendTaskInput(task.id, { text: content });

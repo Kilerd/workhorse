@@ -15,7 +15,9 @@ import {
 } from "./live-log-entries";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { toast } from "@/hooks/use-toast";
 import { formatTimestamp, formatTimestampRange } from "@/lib/format";
+import { readErrorMessage } from "@/lib/error-message";
 import { renderMarkdownBlock } from "@/lib/markdown";
 import { getToolActivityLabel, getCommandGroupLabel } from "@/lib/command-intent";
 import { cn } from "@/lib/utils";
@@ -459,10 +461,8 @@ export function LiveLog({
   }, [streamItems]);
   const streamRef = useRef<HTMLDivElement>(null);
   const [isPinnedToBottom, setIsPinnedToBottom] = useState(true);
-  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const [draft, setDraft] = useState("");
-  const [submitState, setSubmitState] = useState<"idle" | "sending" | "failed">("idle");
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitState, setSubmitState] = useState<"idle" | "sending">("idle");
   const streamTailKey = useMemo(() => {
     const lastEntry = streamEntries.at(-1);
     if (!lastEntry) {
@@ -479,7 +479,6 @@ export function LiveLog({
   useEffect(() => {
     setDraft("");
     setSubmitState("idle");
-    setSubmitError(null);
   }, [inputMode, viewedRun?.id]);
 
   useEffect(() => {
@@ -490,18 +489,6 @@ export function LiveLog({
 
     node.scrollTop = node.scrollHeight;
   }, [isPinnedToBottom, streamTailKey]);
-
-  useEffect(() => {
-    if (copyState === "idle") {
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setCopyState("idle");
-    }, 1600);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [copyState]);
 
   function handleStreamScroll() {
     const node = streamRef.current;
@@ -520,9 +507,16 @@ export function LiveLog({
 
     try {
       await navigator.clipboard.writeText(buildCopyPayload(streamEntries));
-      setCopyState("copied");
-    } catch {
-      setCopyState("failed");
+      toast({
+        title: "Log copied",
+        description: "The visible run log was copied to your clipboard."
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Copy failed",
+        description: readErrorMessage(error, "Unable to copy the run log.")
+      });
     }
   }
 
@@ -533,15 +527,13 @@ export function LiveLog({
     }
 
     setSubmitState("sending");
-    setSubmitError(null);
 
     try {
       await onSendInput(text);
       setDraft("");
       setSubmitState("idle");
-    } catch (error) {
-      setSubmitState("failed");
-      setSubmitError(error instanceof Error ? error.message : "Unable to send input.");
+    } catch {
+      setSubmitState("idle");
     }
   }
 
@@ -640,13 +632,7 @@ export function LiveLog({
                 }}
               >
                 <CopyIcon />
-                <span>
-                  {copyState === "copied"
-                    ? "Copied"
-                    : copyState === "failed"
-                      ? "Retry copy"
-                      : "Copy"}
-                </span>
+                <span>Copy</span>
               </button>
             ) : null}
           </div>
@@ -730,13 +716,7 @@ export function LiveLog({
               <span className="sr-only">Send input to Codex</span>
               <Textarea
                 value={draft}
-                onChange={(event) => {
-                  setDraft(event.target.value);
-                  if (submitState === "failed") {
-                    setSubmitState("idle");
-                    setSubmitError(null);
-                  }
-                }}
+                onChange={(event) => setDraft(event.target.value)}
                 onKeyDown={(event) => {
                   if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
                     event.preventDefault();
@@ -757,7 +737,6 @@ export function LiveLog({
             </label>
             <div className="flex flex-wrap items-center justify-between gap-2.5 text-[0.64rem] leading-[1.4] text-[var(--muted)]">
               <span>Press Ctrl/Cmd+Enter to send.</span>
-              {submitError ? <span className="text-[var(--danger)]">{submitError}</span> : null}
             </div>
           </form>
         ) : null}

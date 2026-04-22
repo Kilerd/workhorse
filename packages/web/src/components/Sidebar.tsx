@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Workspace, WorkspaceChannel } from "@workhorse/contracts";
 
 import type { DisplayTask } from "@/lib/task-view";
@@ -8,6 +8,7 @@ interface Props {
   workspaces: Workspace[];
   allTasks: DisplayTask[];
   workspaceChannelsByWorkspaceId: Map<string, WorkspaceChannel[]>;
+  channelUnreadCounts: Record<string, number>;
   agentCount: number;
   selectedWorkspaceId: string | "all";
   selectedChannelId: string | null;
@@ -26,6 +27,16 @@ interface WorkspaceBadge {
   review: number;
 }
 
+interface WorkspaceTreeItem {
+  id: string;
+  label: string;
+  meta?: string;
+  active: boolean;
+  trailing?: string;
+  tone?: "accent" | "success" | "danger" | "muted";
+  onClick(): void;
+}
+
 const ACTIVE_TASK_COLUMNS = new Set<DisplayTask["column"]>([
   "backlog",
   "todo",
@@ -33,6 +44,16 @@ const ACTIVE_TASK_COLUMNS = new Set<DisplayTask["column"]>([
   "running",
   "review"
 ]);
+
+const TASK_COLUMN_PRIORITY: Record<DisplayTask["column"], number> = {
+  running: 0,
+  review: 1,
+  todo: 2,
+  backlog: 3,
+  blocked: 4,
+  done: 5,
+  archived: 6
+};
 
 function computeBadges(
   tasks: DisplayTask[],
@@ -48,147 +69,220 @@ function computeBadges(
   };
 }
 
-function shortenPath(rootPath: string): string {
-  const parts = rootPath.replace(/\/$/, "").split("/");
-  if (parts.length <= 2) {
-    return rootPath;
-  }
-
-  return `~/${parts.slice(-1)[0]}`;
+function workspaceInitials(name: string): string {
+  const segments = name
+    .split(/[\s-]+/u)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const initials = segments.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "");
+  return initials.join("") || name.slice(0, 2).toUpperCase();
 }
 
-function ActionRow({
+function statusLabel(column: DisplayTask["column"]): string {
+  switch (column) {
+    case "running":
+      return "Running";
+    case "review":
+      return "Review";
+    case "blocked":
+      return "Blocked";
+    case "todo":
+      return "Todo";
+    case "backlog":
+      return "Backlog";
+    case "done":
+      return "Done";
+    case "archived":
+      return "Archived";
+  }
+}
+
+function formatUnreadCount(count: number): string {
+  return count > 99 ? "99+" : String(count);
+}
+
+function actionChevron() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4">
+      <path d="M6 3.5 10.5 8 6 12.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function UtilityAction({
   label,
-  onClick,
-  trailing
+  trailing,
+  onClick
 }: {
   label: string;
-  onClick(): void;
   trailing?: string;
+  onClick(): void;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex min-h-9 items-center justify-between rounded-[9px] border border-transparent px-3 text-left text-[0.78rem] font-[510] text-[var(--muted)] transition-[border-color,background-color,color] hover:border-border hover:bg-[var(--surface-hover)] hover:text-foreground"
+      className="flex min-h-8 items-center justify-between rounded-[8px] px-2.5 text-left text-[0.75rem] font-[510] text-[var(--muted)] transition-[background-color,color] hover:bg-[var(--surface-hover)] hover:text-foreground"
     >
       <span>{label}</span>
       <span className="flex items-center gap-2">
         {trailing ? (
-          <span className="font-mono text-[0.68rem] uppercase tracking-[0.08em] text-[var(--muted)]">
+          <span className="font-mono text-[0.63rem] uppercase tracking-[0.08em] text-[var(--muted)]">
             {trailing}
           </span>
         ) : null}
-        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4">
-          <path d="M6 3.5 10.5 8 6 12.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+        {actionChevron()}
       </span>
     </button>
   );
 }
 
-function BadgeGroup({ badge, active }: { badge: WorkspaceBadge; active: boolean }) {
+function WorkspaceSignals({ badge }: { badge: WorkspaceBadge }) {
   if (badge.inProgress === 0 && badge.review === 0) {
     return null;
   }
 
   return (
-    <span className="flex shrink-0 items-center gap-1">
+    <span className="flex items-center gap-1">
       {badge.inProgress > 0 ? (
-        <span
-          className={cn(
-            "inline-flex items-center rounded-full border px-2 py-0.5 text-[0.66rem] font-semibold",
-            active ? "tone-accent" : "tone-muted"
-          )}
-        >
-          Run {badge.inProgress}
-        </span>
+        <span className="inline-flex size-1.5 rounded-full bg-[var(--accent-strong)]" />
       ) : null}
       {badge.review > 0 ? (
-        <span
-          className={cn(
-            "inline-flex items-center rounded-full border px-2 py-0.5 text-[0.66rem] font-semibold",
-            active ? "tone-success" : "tone-muted"
-          )}
-        >
-          Review {badge.review}
-        </span>
+        <span className="inline-flex size-1.5 rounded-full bg-[var(--success)]" />
       ) : null}
     </span>
   );
 }
 
-function WorkspaceRow({
-  title,
-  subtitle,
+function WorkspaceHeaderRow({
+  workspace,
+  itemCount,
   badge,
   active,
+  expanded,
+  onToggle,
   onClick
 }: {
-  title: string;
-  subtitle: string;
-  badge?: WorkspaceBadge;
+  workspace: Workspace;
+  itemCount: number;
+  badge: WorkspaceBadge;
   active: boolean;
+  expanded: boolean;
+  onToggle(): void;
   onClick(): void;
 }) {
   return (
+    <div className="grid w-full min-w-0 grid-cols-[24px_minmax(0,1fr)] items-center gap-2">
+      <button
+        type="button"
+        onClick={onToggle}
+        className={cn(
+          "grid size-6 shrink-0 place-items-center rounded-[7px] border font-mono text-[0.54rem] uppercase tracking-[0.08em] transition-[border-color,background-color,color]",
+          expanded || active
+            ? "border-[rgba(113,112,255,0.32)] bg-[rgba(113,112,255,0.14)] text-[var(--accent-strong)]"
+            : "border-border bg-[var(--surface-soft)] text-[var(--muted)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] hover:text-foreground"
+        )}
+        title={expanded ? "Collapse workspace" : "Expand workspace"}
+      >
+        {workspaceInitials(workspace.name)}
+      </button>
+
+      <button
+        type="button"
+        onClick={onClick}
+        title={workspace.rootPath}
+        className={cn(
+          "flex min-h-9 w-full min-w-0 items-center justify-between gap-3 rounded-[9px] px-2.5 py-1.5 text-left transition-[background-color,color]",
+          active
+            ? "bg-[var(--surface-soft)] text-foreground"
+            : "text-[var(--muted)] hover:bg-[var(--surface-hover)] hover:text-foreground"
+        )}
+      >
+        <div className="min-w-0 flex-1">
+          <span className="truncate text-[0.77rem] font-[520] text-inherit">
+            {workspace.name}
+          </span>
+        </div>
+
+        <div className="ml-auto flex shrink-0 items-center justify-end gap-2">
+          <WorkspaceSignals badge={badge} />
+          <span className="font-mono text-[0.62rem] uppercase tracking-[0.08em] text-[var(--muted)]">
+            {itemCount}
+          </span>
+        </div>
+      </button>
+    </div>
+  );
+}
+
+function WorkspaceTreeRow({
+  item
+}: {
+  item: WorkspaceTreeItem;
+}) {
+  const toneClass =
+    item.tone === "accent"
+      ? "tone-accent"
+      : item.tone === "success"
+        ? "tone-success"
+        : item.tone === "danger"
+          ? "tone-danger"
+          : "tone-muted";
+
+  return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={item.onClick}
       className={cn(
-        "grid w-full gap-1.5 rounded-[10px] border px-3 py-3 text-left transition-[border-color,background-color,transform] hover:-translate-y-px",
-        active
-          ? "border-[rgba(113,112,255,0.34)] bg-[rgba(113,112,255,0.12)]"
-          : "border-transparent bg-transparent hover:border-border hover:bg-[var(--surface-hover)]"
+        "grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-x-3 rounded-[8px] px-2.5 py-2 text-left transition-[background-color,color]",
+        item.meta ? "gap-y-0.5" : "items-center gap-y-0",
+        item.active
+          ? "bg-[var(--surface-soft)] text-foreground"
+          : "text-[var(--muted)] hover:bg-[var(--surface-hover)] hover:text-foreground"
       )}
     >
-      <div className="flex items-start justify-between gap-3">
-        <span className="min-w-0 text-[0.84rem] font-semibold leading-[1.3] text-foreground">
-          {title}
+      <span className="min-w-0 truncate text-[0.74rem] font-[510] text-inherit">
+        {item.label}
+      </span>
+      {item.trailing ? (
+        <span
+          className={cn(
+            item.meta
+              ? "col-start-2 row-span-2 self-start"
+              : "col-start-2 row-start-1 self-center",
+            "inline-flex min-h-5 shrink-0 items-center rounded-full border px-1.5 font-mono text-[0.56rem] uppercase tracking-[0.08em]",
+            toneClass
+          )}
+        >
+          {item.trailing}
         </span>
-        {badge ? <BadgeGroup badge={badge} active={active} /> : null}
-      </div>
-      <span className="truncate text-[0.7rem] text-[var(--muted)]">{subtitle}</span>
+      ) : null}
+      {item.meta ? (
+        <span className="min-w-0 truncate text-[0.64rem] text-[var(--muted)]">{item.meta}</span>
+      ) : null}
     </button>
   );
 }
 
-function ChannelRow({
-  label,
-  active,
-  trailing,
-  onClick
-}: {
-  label: string;
-  active: boolean;
-  trailing?: string;
-  onClick(): void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "flex min-h-8 w-full items-center justify-between rounded-[9px] border px-2.5 py-1.5 text-left text-[0.74rem] transition-[border-color,background-color,color]",
-        active
-          ? "border-[var(--border-strong)] bg-[var(--surface-soft)] text-foreground"
-          : "border-transparent bg-transparent text-[var(--muted)] hover:border-border hover:bg-[var(--surface-hover)] hover:text-foreground"
-      )}
-    >
-      <span className="truncate font-medium">{label}</span>
-      {trailing ? (
-        <span className="ml-3 shrink-0 font-mono text-[0.64rem] uppercase tracking-[0.08em] text-[var(--muted)]">
-          {trailing}
-        </span>
-      ) : null}
-    </button>
-  );
+function setsEqual(left: Set<string>, right: Set<string>): boolean {
+  if (left.size !== right.size) {
+    return false;
+  }
+
+  for (const value of left) {
+    if (!right.has(value)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 export function Sidebar({
   workspaces,
   allTasks,
   workspaceChannelsByWorkspaceId,
+  channelUnreadCounts,
   agentCount,
   selectedWorkspaceId,
   selectedChannelId,
@@ -201,6 +295,23 @@ export function Sidebar({
   onOpenWorkspaceSettings,
   onOpenGlobalSettings
 }: Props) {
+  const [expandedWorkspaceIds, setExpandedWorkspaceIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setExpandedWorkspaceIds((current) => {
+      const workspaceIds = new Set(workspaces.map((workspace) => workspace.id));
+      const next = new Set([...current].filter((workspaceId) => workspaceIds.has(workspaceId)));
+
+      if (selectedWorkspaceId !== "all" && workspaceIds.has(selectedWorkspaceId)) {
+        next.add(selectedWorkspaceId);
+      } else if (next.size === 0 && workspaces[0]) {
+        next.add(workspaces[0].id);
+      }
+
+      return setsEqual(current, next) ? current : next;
+    });
+  }, [selectedWorkspaceId, workspaces]);
+
   const badgesByWorkspace = useMemo(() => {
     const map = new Map<string, WorkspaceBadge>();
     for (const workspace of workspaces) {
@@ -215,21 +326,38 @@ export function Sidebar({
 
   const allBadge = useMemo(() => computeBadges(allTasks, null), [allTasks]);
 
+  function toggleWorkspace(workspaceId: string) {
+    setExpandedWorkspaceIds((current) => {
+      const next = new Set(current);
+      if (next.has(workspaceId)) {
+        next.delete(workspaceId);
+      } else {
+        next.add(workspaceId);
+      }
+      return next;
+    });
+  }
+
   if (collapsed) {
     return (
-      <aside className="border-b border-border bg-background backdrop-blur-xl lg:h-screen lg:border-b-0 lg:border-r">
-        <div className="flex items-center justify-between px-3.5 py-3.5 lg:h-full lg:flex-col lg:justify-start lg:px-3 lg:py-4">
-          <div className="grid size-10 place-items-center rounded-[12px] border border-border bg-[var(--surface-soft)] font-display text-[0.76rem] font-[590] tracking-[0.14em] text-[var(--muted-strong)]">
+      <aside className="border-b border-border bg-background lg:h-screen lg:border-b-0 lg:border-r">
+        <div className="flex items-center justify-between px-3 py-3 lg:h-full lg:flex-col lg:justify-start lg:gap-3 lg:px-2.5 lg:py-3.5">
+          <button
+            type="button"
+            onClick={() => onSelectWorkspace(selectedWorkspaceId === "all" ? "all" : selectedWorkspaceId)}
+            className="grid size-9 place-items-center rounded-[10px] border border-border bg-[var(--surface-soft)] font-mono text-[0.66rem] font-[590] uppercase tracking-[0.08em] text-[var(--muted-strong)] transition-[border-color,background-color,color] hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] hover:text-foreground"
+            title="Open workspace navigation"
+          >
             WH
-          </div>
+          </button>
           <button
             type="button"
             onClick={onToggleCollapse}
-            className="grid size-9 place-items-center rounded-[10px] border border-border bg-[var(--surface-soft)] text-[var(--muted)] transition-colors hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] hover:text-foreground"
+            className="grid size-9 place-items-center rounded-[10px] border border-border bg-[var(--surface-soft)] text-[var(--muted)] transition-[border-color,background-color,color] hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] hover:text-foreground"
             title="Expand sidebar"
           >
             <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d="M6 3l5 5-5 5" />
+              <path d="M6 3l5 5-5 5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
         </div>
@@ -238,128 +366,140 @@ export function Sidebar({
   }
 
   return (
-    <aside className="border-b border-border bg-background backdrop-blur-xl lg:h-screen lg:border-b-0 lg:border-r">
-      <div className="grid h-full grid-rows-[auto_minmax(0,1fr)_auto] gap-4 px-3.5 py-4">
-        <div className="relative grid gap-3">
-          <div className="grid gap-1">
-            <span className="section-kicker">Ops cockpit</span>
-            <div className="flex items-center gap-2.5">
-              <div className="grid size-10 place-items-center rounded-[12px] border border-border bg-[var(--surface-soft)] font-display text-[0.76rem] font-[590] tracking-[0.14em] text-[var(--muted-strong)]">
-                WH
-              </div>
-              <div className="grid gap-0.5">
-                <span className="text-[0.94rem] font-[590] tracking-[-0.03em] text-foreground">
-                  Workhorse
-                </span>
-                <p className="m-0 max-w-[11rem] text-[0.7rem] leading-[1.45] text-[var(--muted)]">
-                  Review queues, agent rooms, and workspace orchestration.
-                </p>
-              </div>
+    <aside className="border-b border-border bg-background lg:h-screen lg:border-b-0 lg:border-r">
+      <div className="grid h-full grid-rows-[auto_minmax(0,1fr)_auto] gap-3 px-2.5 py-3">
+        <div className="flex items-center justify-between gap-3 px-1">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div className="grid size-8 shrink-0 place-items-center rounded-[10px] border border-border bg-[var(--surface-soft)] font-mono text-[0.63rem] font-[590] uppercase tracking-[0.08em] text-[var(--muted-strong)]">
+              WH
+            </div>
+            <div className="grid gap-0.5">
+              <span className="section-kicker">Workhorse</span>
+              <span className="text-[0.8rem] font-[520] text-foreground">Workspace</span>
             </div>
           </div>
+
           <button
             type="button"
             onClick={onToggleCollapse}
-            className="absolute right-0 top-0 grid size-8 place-items-center rounded-[10px] border border-border bg-[var(--surface-soft)] text-[var(--muted)] transition-colors hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] hover:text-foreground"
+            className="grid size-8 place-items-center rounded-[10px] border border-border bg-[var(--surface-soft)] text-[var(--muted)] transition-[border-color,background-color,color] hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] hover:text-foreground"
             title="Collapse sidebar"
           >
             <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d="M10 3 5 8l5 5" />
+              <path d="M10 3 5 8l5 5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
         </div>
 
-        <section className="surface-card grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden">
-          <div className="border-b border-border px-3.5 py-3">
-            <p className="section-kicker m-0">Workspace channels</p>
-            <p className="mt-1.5 mb-0 text-[0.74rem] leading-[1.45] text-[var(--muted)]">
-              Jump between coordinator rooms and active task threads.
-            </p>
-          </div>
-          <nav className="min-h-0 overflow-y-auto p-2.5">
-            <div className="mb-3">
-              <WorkspaceRow
-                title="All workspaces"
-                subtitle={`${workspaces.length} repositories connected`}
-                badge={allBadge}
-                active={selectedWorkspaceId === "all"}
-                onClick={() => onSelectWorkspace("all")}
-              />
-            </div>
+        <nav className="min-h-0 overflow-y-auto px-1">
+          <div className="grid gap-1">
+            <button
+              type="button"
+              onClick={() => onSelectWorkspace("all")}
+              className={cn(
+                "flex min-h-8 items-center justify-between rounded-[8px] px-2.5 text-left transition-[background-color,color]",
+                selectedWorkspaceId === "all"
+                  ? "bg-[var(--surface-soft)] text-foreground"
+                  : "text-[var(--muted)] hover:bg-[var(--surface-hover)] hover:text-foreground"
+              )}
+            >
+              <span className="text-[0.75rem] font-[510] text-inherit">All workspaces</span>
+              <WorkspaceSignals badge={allBadge} />
+            </button>
 
-            <div className="grid gap-3">
-              {workspaces.map((workspace) => {
-                const channels = workspaceChannelsByWorkspaceId.get(workspace.id) ?? [];
-                const allChannel = channels.find(
-                  (channel) => channel.kind === "all" || channel.slug === "all"
-                );
-                const allChannelId = allChannel?.id ?? "all";
-                const taskChannels = channels
-                  .filter((channel) => channel.kind === "task" && !channel.archivedAt)
-                  .map((channel) => ({
-                    channel,
-                    task: channel.taskId ? tasksById.get(channel.taskId) ?? null : null
-                  }))
-                  .filter(
-                    (entry): entry is { channel: WorkspaceChannel; task: DisplayTask } =>
-                      entry.task !== null && ACTIVE_TASK_COLUMNS.has(entry.task.column)
-                  )
-                  .sort(
-                    (left, right) =>
-                      Date.parse(right.task.updatedAt) - Date.parse(left.task.updatedAt)
-                  );
+            <div className="my-1 h-px bg-[var(--border)]" />
 
-                return (
-                  <div key={workspace.id} className="grid gap-1.5">
-                    <WorkspaceRow
-                      title={workspace.name}
-                      subtitle={shortenPath(workspace.rootPath)}
-                      badge={badgesByWorkspace.get(workspace.id)}
-                      active={selectedWorkspaceId === workspace.id && selectedChannelId === null}
-                      onClick={() => onSelectWorkspace(workspace.id)}
-                    />
+            {workspaces.map((workspace) => {
+              const channels = workspaceChannelsByWorkspaceId.get(workspace.id) ?? [];
+              const allChannel = channels.find(
+                (channel) => channel.kind === "all" || channel.slug === "all"
+              );
+              const allChannelId = allChannel?.id ?? "all";
+              const taskItems = channels
+                .filter((channel) => channel.kind === "task" && !channel.archivedAt)
+                .map((channel) => ({
+                  channel,
+                  task: channel.taskId ? tasksById.get(channel.taskId) ?? null : null
+                }))
+                .filter(
+                  (entry): entry is { channel: WorkspaceChannel; task: DisplayTask } =>
+                    entry.task !== null && ACTIVE_TASK_COLUMNS.has(entry.task.column)
+                )
+                .sort((left, right) => {
+                  const priorityDelta =
+                    TASK_COLUMN_PRIORITY[left.task.column] - TASK_COLUMN_PRIORITY[right.task.column];
+                  if (priorityDelta !== 0) {
+                    return priorityDelta;
+                  }
+                  return Date.parse(right.task.updatedAt) - Date.parse(left.task.updatedAt);
+                });
 
-                    <div className="ml-3 grid gap-1 border-l border-border pl-2.5">
-                      <ChannelRow
-                        label="#all"
-                        trailing="chat"
-                        active={
-                          selectedChannelId === allChannel?.id ||
-                          selectedChannelId === "all"
-                        }
-                        onClick={() => onSelectChannel(workspace.id, allChannelId)}
-                      />
+              const expanded = expandedWorkspaceIds.has(workspace.id);
+              const allChannelUnreadCount = allChannel?.id
+                ? channelUnreadCounts[allChannel.id] ?? 0
+                : 0;
+              const workspaceItems: WorkspaceTreeItem[] = [
+                {
+                  id: `${workspace.id}-all`,
+                  label: "#all",
+                  active:
+                    selectedWorkspaceId === workspace.id &&
+                    (selectedChannelId === allChannel?.id || selectedChannelId === "all"),
+                  trailing:
+                    allChannelUnreadCount > 0 ? formatUnreadCount(allChannelUnreadCount) : undefined,
+                  tone: "accent",
+                  onClick: () => onSelectChannel(workspace.id, allChannelId)
+                },
+                ...taskItems.map(({ channel, task }): WorkspaceTreeItem => {
+                  const unreadCount = channelUnreadCounts[channel.id] ?? 0;
+                  return {
+                    id: channel.id,
+                    label: task.title,
+                    meta: `#${channel.slug} · ${statusLabel(task.column)}`,
+                    active: selectedChannelId === channel.id,
+                    trailing: unreadCount > 0 ? formatUnreadCount(unreadCount) : undefined,
+                    tone: unreadCount > 0 ? "accent" : undefined,
+                    onClick: () => onSelectChannel(workspace.id, channel.id)
+                  };
+                })
+              ];
 
-                      {taskChannels.map(({ channel, task }) => (
-                        <ChannelRow
-                          key={channel.id}
-                          label={`#${channel.slug}`}
-                          trailing={task.column}
-                          active={selectedChannelId === channel.id}
-                          onClick={() => onSelectChannel(workspace.id, channel.id)}
-                        />
+              return (
+                <section key={workspace.id} className="grid w-full min-w-0 gap-1">
+                  <WorkspaceHeaderRow
+                    workspace={workspace}
+                    itemCount={workspaceItems.length}
+                    badge={badgesByWorkspace.get(workspace.id) ?? { inProgress: 0, review: 0 }}
+                    active={selectedWorkspaceId === workspace.id}
+                    expanded={expanded}
+                    onToggle={() => toggleWorkspace(workspace.id)}
+                    onClick={() => onSelectWorkspace(workspace.id)}
+                  />
+
+                  {expanded ? (
+                    <div className="grid w-full min-w-0 gap-0.5">
+                      {workspaceItems.map((item) => (
+                        <WorkspaceTreeRow key={item.id} item={item} />
                       ))}
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          </nav>
-        </section>
-
-        <section className="surface-card-faint px-2 py-2">
-          <div className="grid gap-1">
-            <ActionRow label="Add workspace" onClick={onAddWorkspace} />
-            <ActionRow
-              label="Agents"
-              trailing={agentCount > 0 ? String(agentCount) : undefined}
-              onClick={onOpenAgents}
-            />
-            {selectedWorkspaceId !== "all" ? (
-              <ActionRow label="Workspace settings" onClick={onOpenWorkspaceSettings} />
-            ) : null}
-            <ActionRow label="Global settings" onClick={onOpenGlobalSettings} />
+                  ) : null}
+                </section>
+              );
+            })}
           </div>
+        </nav>
+
+        <section className="grid gap-1 border-t border-border px-1 pt-2">
+          <UtilityAction label="Add workspace" onClick={onAddWorkspace} />
+          <UtilityAction
+            label="Agents"
+            trailing={agentCount > 0 ? String(agentCount) : undefined}
+            onClick={onOpenAgents}
+          />
+          {selectedWorkspaceId !== "all" ? (
+            <UtilityAction label="Workspace settings" onClick={onOpenWorkspaceSettings} />
+          ) : null}
+          <UtilityAction label="Global settings" onClick={onOpenGlobalSettings} />
         </section>
       </div>
     </aside>

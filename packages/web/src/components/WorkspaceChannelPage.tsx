@@ -80,6 +80,27 @@ function formatRunLabel(run: Run) {
   return `${titleCase(run.status)} · ${formatRelativeTime(run.startedAt)}`;
 }
 
+function readRunDebugRows(run: Run): Array<{ label: string; value: string }> {
+  return [
+    run.command ? { label: "Command", value: run.command } : null,
+    run.metadata?.claudeRequestedModel
+      ? { label: "Requested model", value: run.metadata.claudeRequestedModel }
+      : null,
+    run.metadata?.claudeModel
+      ? { label: "Resolved model", value: run.metadata.claudeModel }
+      : null,
+    run.metadata?.claudeSessionId
+      ? { label: "Session", value: run.metadata.claudeSessionId }
+      : null,
+    run.metadata?.claudePermissionMode
+      ? { label: "Permission", value: run.metadata.claudePermissionMode }
+      : null,
+    run.metadata?.claudeTotalCostUsd
+      ? { label: "Cost", value: `$${run.metadata.claudeTotalCostUsd}` }
+      : null
+  ].filter((row): row is { label: string; value: string } => row !== null);
+}
+
 function ChannelHeader({
   workspace,
   channel,
@@ -388,6 +409,123 @@ function TaskInspector({
   );
 }
 
+function CoordinatorRuntimeDebug({
+  task,
+  runs,
+  selectedRunId,
+  onSelectRun,
+  liveLog,
+  runLog,
+  runLogLoading = false
+}: {
+  task: DisplayTask | null;
+  runs: Run[];
+  selectedRunId: string | null;
+  onSelectRun(runId: string): void;
+  liveLog: RunLogEntry[];
+  runLog: RunLogEntry[];
+  runLogLoading?: boolean;
+}) {
+  const activeRun = useMemo(
+    () => runs.find((run) => run.status === "running") ?? null,
+    [runs]
+  );
+  const viewedRun = useMemo(
+    () => runs.find((run) => run.id === selectedRunId) ?? activeRun ?? runs[0] ?? null,
+    [activeRun, runs, selectedRunId]
+  );
+  const debugRows = viewedRun ? readRunDebugRows(viewedRun) : [];
+
+  return (
+    <section className="surface-card grid gap-3 px-4 py-4">
+      <div className="grid gap-1">
+        <p className="section-kicker m-0">Coordinator runtime</p>
+        <p className="m-0 text-[0.8rem] text-[var(--muted)]">
+          Real-time Claude/OpenRouter output from the hidden coordinator run for debugging.
+        </p>
+      </div>
+
+      {!task ? (
+        <div className="rounded-[var(--radius)] border border-dashed border-border px-4 py-4 text-[0.8rem] text-[var(--muted)]">
+          The coordinator backing task has not initialized yet. Send a message in `#all` to start the run and stream logs here.
+        </div>
+      ) : (
+        <>
+          <div className="grid gap-2 text-[0.78rem] text-[var(--muted)]">
+            <div className="flex items-center justify-between gap-2">
+              <span>Runner</span>
+              <span className="text-right text-foreground">{titleCase(task.runnerType)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span>Status</span>
+              <span className="text-right text-foreground">{titleCase(task.column)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span>Last update</span>
+              <span className="text-right text-foreground">{formatRelativeTime(task.updatedAt)}</span>
+            </div>
+          </div>
+
+          {runs.length === 0 ? (
+            <div className="rounded-[var(--radius)] border border-dashed border-border px-4 py-4 text-[0.8rem] text-[var(--muted)]">
+              No coordinator runs yet.
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-2">
+                {runs.map((run) => (
+                  <button
+                    key={run.id}
+                    type="button"
+                    onClick={() => onSelectRun(run.id)}
+                    className={cn(
+                      "rounded-full border px-3 py-1.5 text-left text-[0.72rem] transition-[border-color,background-color]",
+                      viewedRun?.id === run.id
+                        ? "border-[var(--border-strong)] bg-[var(--surface-soft)] text-foreground"
+                        : "border-border bg-[var(--surface-faint)] text-[var(--muted)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)]"
+                    )}
+                  >
+                    {formatRunLabel(run)}
+                  </button>
+                ))}
+              </div>
+
+              {debugRows.length > 0 ? (
+                <div className="grid gap-2 rounded-[var(--radius)] border border-border bg-[var(--surface-faint)] px-3 py-3 text-[0.74rem]">
+                  {debugRows.map((row) => (
+                    <div key={row.label} className="grid gap-1">
+                      <span className="font-mono text-[0.58rem] uppercase tracking-[0.08em] text-[var(--muted)]">
+                        {row.label}
+                      </span>
+                      <code className="break-all whitespace-pre-wrap font-mono text-[0.7rem] text-foreground">
+                        {row.value}
+                      </code>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {viewedRun ? (
+                <div className="overflow-hidden rounded-[var(--radius)] border border-border bg-[var(--bg)]">
+                  <LiveLog
+                    task={task}
+                    activeRun={activeRun}
+                    viewedRun={viewedRun}
+                    liveLog={liveLog}
+                    runLog={runLog}
+                    isLoading={runLogLoading}
+                    showStatus={false}
+                  />
+                </div>
+              ) : null}
+            </>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
 export function WorkspaceChannelPage({
   workspace,
   channel,
@@ -498,19 +636,31 @@ export function WorkspaceChannelPage({
         </section>
 
         {channel.kind === "all" ? (
-          <section className="surface-card grid gap-3 px-4 py-4">
-            <div className="grid gap-1">
-              <p className="section-kicker m-0">Pending proposals</p>
-              <p className="m-0 text-[0.8rem] text-[var(--muted)]">
-                Approving a proposal creates new top-level tasks and their task channels.
-              </p>
-            </div>
-            <CoordinatorProposalPanel
-              scope={scope}
-              proposals={proposals}
-              loading={proposalsLoading}
+          <>
+            <section className="surface-card grid gap-3 px-4 py-4">
+              <div className="grid gap-1">
+                <p className="section-kicker m-0">Pending proposals</p>
+                <p className="m-0 text-[0.8rem] text-[var(--muted)]">
+                  Approving a proposal creates new top-level tasks and their task channels.
+                </p>
+              </div>
+              <CoordinatorProposalPanel
+                scope={scope}
+                proposals={proposals}
+                loading={proposalsLoading}
+              />
+            </section>
+
+            <CoordinatorRuntimeDebug
+              task={task}
+              runs={runs}
+              selectedRunId={selectedRunId}
+              onSelectRun={onSelectRun}
+              liveLog={liveLog}
+              runLog={runLog}
+              runLogLoading={runLogLoading}
             />
-          </section>
+          </>
         ) : task ? (
           <TaskInspector
             task={task}
