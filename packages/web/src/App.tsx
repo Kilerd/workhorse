@@ -1096,6 +1096,7 @@ function WorkspaceChannelRoute({
   );
   const liveLog =
     activeRunId && viewedRunId === activeRunId ? board.liveLogByRunId[activeRunId] ?? [] : [];
+  const activeRunLiveLog = activeRunId ? board.liveLogByRunId[activeRunId] ?? [] : [];
   const runLogQuery = useQuery({
     queryKey: ["run-log", viewedRunId ?? ""],
     queryFn: async (): Promise<RunLogEntry[]> => {
@@ -1161,6 +1162,7 @@ function WorkspaceChannelRoute({
       runLogLoading={runLogQuery.isLoading}
       onSelectRun={board.setSelectedRunId}
       liveLog={liveLog}
+      activeRunLiveLog={activeRunLiveLog}
       runLog={runLogQuery.data ?? []}
       onBackToBoard={() => navigate(workspaceBoardPath(resolvedWorkspaceId))}
       onPlan={task ? () => void board.planTask(task.id) : undefined}

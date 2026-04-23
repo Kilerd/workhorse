@@ -199,4 +199,21 @@ describe("AiReviewService", () => {
       })
     );
   });
+
+  it("does not auto-trigger review for channel backing tasks", () => {
+    const task = {
+      ...createTask(),
+      taskKind: "channel_backing"
+    } satisfies Task;
+    const run = {
+      ...createReviewRun(),
+      runnerType: "codex",
+      metadata: {
+        trigger: "workspace_channel_chat"
+      }
+    } satisfies Run;
+    const { service } = createService();
+
+    expect(service.shouldAutoTriggerAiReview(task, run, "succeeded")).toBe(false);
+  });
 });

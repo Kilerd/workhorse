@@ -178,6 +178,28 @@ describe("CodexAcpRunner prompt", () => {
     expect(prompt.match(/Implementation plan:/g)).toHaveLength(1);
   });
 
+  it("uses the raw workspace channel prompt for channel backing tasks", () => {
+    const runner = new CodexAcpRunner() as any;
+    const prompt = runner.buildPrompt(
+      createCodexContext({
+        task: {
+          ...createCodexContext().task,
+          taskKind: "channel_backing",
+          title: "Workspace Coordinator",
+          description: "Should not leak into the final prompt."
+        }
+      }),
+      {
+        prompt: "RAW #all PROMPT"
+      }
+    );
+
+    expect(prompt).toBe("RAW #all PROMPT");
+    expect(prompt).not.toContain("Task:");
+    expect(prompt).not.toContain("Working directory:");
+    expect(prompt).not.toContain("Git requirements:");
+  });
+
   it("starts persistent threads so they can be resumed later", () => {
     const runner = new CodexAcpRunner() as any;
 

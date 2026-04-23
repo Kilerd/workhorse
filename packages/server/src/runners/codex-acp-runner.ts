@@ -769,6 +769,10 @@ export class CodexAcpRunner implements RunnerAdapter {
   }
 
   private buildPrompt(context: RunnerStartContext, config: CodexRunnerConfig): string {
+    if (context.task.taskKind === "channel_backing") {
+      return config.prompt.trim();
+    }
+
     const description = context.task.description.trim();
     const plan = context.task.plan?.trim();
     return resolveTemplate(

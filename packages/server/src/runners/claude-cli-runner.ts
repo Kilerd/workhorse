@@ -123,6 +123,10 @@ export class ClaudeCliRunner implements RunnerAdapter {
   }
 
   public buildPrompt(context: RunnerStartContext, config: ClaudeRunnerConfig): string {
+    if (context.task.taskKind === "channel_backing") {
+      return config.prompt.trim();
+    }
+
     const description = context.task.description.trim();
     const inputText = context.inputText?.trim();
     const plan = context.task.plan?.trim();

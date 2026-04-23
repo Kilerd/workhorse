@@ -3,13 +3,18 @@ import { useMemo, useState } from "react";
 import { toast } from "@/hooks/use-toast";
 import { readErrorMessage } from "@/lib/error-message";
 import { formatRelativeTime, titleCase } from "@/lib/format";
+import { renderMarkdownBlock } from "@/lib/markdown";
 import type { CoordinationMessage } from "@/lib/coordination";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
+export type TeamFeedMessage = CoordinationMessage & {
+  pending?: boolean;
+};
+
 interface Props {
-  messages: CoordinationMessage[];
+  messages: TeamFeedMessage[];
   loading?: boolean;
   error?: string | null;
   onSendMessage?(content: string): Promise<unknown>;
@@ -72,6 +77,51 @@ function senderTone(senderType: CoordinationMessage["senderType"]) {
     default:
       return "tone-warning";
   }
+}
+
+function isAgentContextMessage(message: TeamFeedMessage) {
+  return message.senderType === "agent" && message.messageType === "context";
+}
+
+function isHumanContextMessage(message: TeamFeedMessage) {
+  return message.senderType === "human" && message.messageType === "context";
+}
+
+function MessageMeta({
+  message,
+  align = "start"
+}: {
+  message: TeamFeedMessage;
+  align?: "start" | "end";
+}) {
+  return (
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-1.5",
+        align === "end" && "justify-end"
+      )}
+    >
+      <span
+        className={cn(
+          "inline-flex min-h-7 items-center rounded-full border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em]",
+          senderTone(message.senderType)
+        )}
+      >
+        {message.senderType} · {message.agentName}
+      </span>
+      <span className="inline-flex min-h-7 items-center rounded-full border border-border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] text-[var(--muted)]">
+        {message.messageType}
+      </span>
+      {message.pending ? (
+        <span className="inline-flex min-h-7 items-center rounded-full border border-[rgba(113,112,255,0.22)] bg-[rgba(113,112,255,0.08)] px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] text-[var(--accent-strong)]">
+          live
+        </span>
+      ) : null}
+      <span className="text-[0.74rem] text-[var(--muted)]">
+        {formatRelativeTime(message.createdAt)}
+      </span>
+    </div>
+  );
 }
 
 export function TeamMessageFeed({
@@ -163,32 +213,47 @@ export function TeamMessageFeed({
             const safeArtifactUrl =
               artifact?.pr_url && isSafeUrl(artifact.pr_url) ? artifact.pr_url : null;
 
+            if (isAgentContextMessage(message)) {
+              return (
+                <article
+                  key={message.id}
+                  className="grid max-w-[min(48rem,94%)] gap-2 self-start"
+                >
+                  <MessageMeta message={message} />
+                  <div className="px-1">
+                    {renderMarkdownBlock(message.content, {
+                      className: "text-[0.88rem] leading-[1.7] text-foreground"
+                    })}
+                  </div>
+                </article>
+              );
+            }
+
+            if (isHumanContextMessage(message)) {
+              return (
+                <article
+                  key={message.id}
+                  className="ml-auto grid w-full max-w-[min(34rem,92%)] gap-2 justify-items-end self-start"
+                >
+                  <MessageMeta message={message} align="end" />
+                  <div className="rounded-[var(--radius)] border border-border bg-[var(--panel)] px-4 py-3">
+                    <p className="m-0 whitespace-pre-wrap break-words text-[0.88rem] leading-[1.65] text-foreground">
+                      {message.content}
+                    </p>
+                  </div>
+                </article>
+              );
+            }
+
             return (
               <article
                 key={message.id}
                 className={cn(
                   "grid self-start gap-3 rounded-[var(--radius)] border p-4",
-                  messageTone(message),
-                  message.senderType === "human" &&
-                    "ml-auto w-full max-w-[min(34rem,92%)] justify-self-end"
+                  messageTone(message)
                 )}
               >
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span
-                    className={cn(
-                      "inline-flex min-h-7 items-center rounded-full border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em]",
-                      senderTone(message.senderType)
-                    )}
-                  >
-                    {message.senderType} · {message.agentName}
-                  </span>
-                  <span className="inline-flex min-h-7 items-center rounded-full border border-border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] text-[var(--muted)]">
-                    {message.messageType}
-                  </span>
-                  <span className="text-[0.74rem] text-[var(--muted)]">
-                    {formatRelativeTime(message.createdAt)}
-                  </span>
-                </div>
+                <MessageMeta message={message} />
 
                 {artifact ? (
                   <details className="rounded-[var(--radius)] border border-border bg-[var(--bg)]">

@@ -14,13 +14,14 @@ import type { CoordinationMessage, CoordinationScope } from "@/lib/coordination"
 import type { DisplayTask } from "@/lib/task-view";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { prepareLiveLogEntries } from "./live-log-entries";
 
 import { CoordinatorProposalPanel } from "./CoordinatorProposalPanel";
 import { DiffViewer } from "./DiffViewer";
 import { LiveLog } from "./LiveLog";
 import { SubtaskReviewActions } from "./SubtaskReviewActions";
 import { TaskActionBar } from "./TaskActionBar";
-import { TeamMessageFeed } from "./TeamMessageFeed";
+import { type TeamFeedMessage, TeamMessageFeed } from "./TeamMessageFeed";
 
 interface Props {
   workspace: Workspace | null;
@@ -39,6 +40,7 @@ interface Props {
   runLogLoading?: boolean;
   onSelectRun(runId: string): void;
   liveLog?: RunLogEntry[];
+  activeRunLiveLog?: RunLogEntry[];
   runLog?: RunLogEntry[];
   onBackToBoard(): void;
   onPlan?(): void;
@@ -80,6 +82,18 @@ function formatRunLabel(run: Run) {
   return `${titleCase(run.status)} · ${formatRelativeTime(run.startedAt)}`;
 }
 
+function isAiReviewRun(run: Run) {
+  return (
+    run.metadata?.trigger === "auto_ai_review" ||
+    run.metadata?.trigger === "manual_claude_review"
+  );
+}
+
+function selectCoordinatorRuns(runs: Run[]) {
+  const coordinatorRuns = runs.filter((run) => !isAiReviewRun(run));
+  return coordinatorRuns.length > 0 ? coordinatorRuns : runs;
+}
+
 function readRunDebugRows(run: Run): Array<{ label: string; value: string }> {
   return [
     run.command ? { label: "Command", value: run.command } : null,
@@ -99,6 +113,47 @@ function readRunDebugRows(run: Run): Array<{ label: string; value: string }> {
       ? { label: "Cost", value: `$${run.metadata.claudeTotalCostUsd}` }
       : null
   ].filter((row): row is { label: string; value: string } => row !== null);
+}
+
+function buildStreamingCoordinatorMessages(input: {
+  channel: WorkspaceChannel;
+  coordinatorName: string | null;
+  runs: Run[];
+  selectedRunId: string | null;
+  activeRunLiveLog: RunLogEntry[];
+  runLog: RunLogEntry[];
+}): TeamFeedMessage[] {
+  if (input.channel.kind !== "all") {
+    return [];
+  }
+
+  const activeRun = selectCoordinatorRuns(input.runs).find((run) => run.status === "running");
+  if (!activeRun || activeRun.metadata?.trigger !== "workspace_channel_chat") {
+    return [];
+  }
+
+  const persistedEntries = input.selectedRunId === activeRun.id ? input.runLog : [];
+  const entries = prepareLiveLogEntries([...persistedEntries, ...input.activeRunLiveLog]);
+  const agentEntries = entries.filter((entry) => entry.kind === "agent");
+  if (agentEntries.length === 0) {
+    return [];
+  }
+
+  const agentName =
+    input.coordinatorName ?? (activeRun.runnerType === "claude" ? "Claude" : "Codex");
+
+  return agentEntries
+    .filter((entry) => entry.text.trim().length > 0)
+    .map((entry) => ({
+      id: `streaming:${activeRun.id}:${entry.id}`,
+      taskId: activeRun.taskId,
+      agentName,
+      senderType: "agent" as const,
+      messageType: "context" as const,
+      content: entry.text,
+      createdAt: entry.timestamp,
+      pending: true
+    }));
 }
 
 function ChannelHeader({
@@ -426,13 +481,15 @@ function CoordinatorRuntimeDebug({
   runLog: RunLogEntry[];
   runLogLoading?: boolean;
 }) {
+  const visibleRuns = useMemo(() => selectCoordinatorRuns(runs), [runs]);
   const activeRun = useMemo(
-    () => runs.find((run) => run.status === "running") ?? null,
-    [runs]
+    () => visibleRuns.find((run) => run.status === "running") ?? null,
+    [visibleRuns]
   );
   const viewedRun = useMemo(
-    () => runs.find((run) => run.id === selectedRunId) ?? activeRun ?? runs[0] ?? null,
-    [activeRun, runs, selectedRunId]
+    () =>
+      visibleRuns.find((run) => run.id === selectedRunId) ?? activeRun ?? visibleRuns[0] ?? null,
+    [activeRun, selectedRunId, visibleRuns]
   );
   const debugRows = viewedRun ? readRunDebugRows(viewedRun) : [];
 
@@ -466,14 +523,14 @@ function CoordinatorRuntimeDebug({
             </div>
           </div>
 
-          {runs.length === 0 ? (
+          {visibleRuns.length === 0 ? (
             <div className="rounded-[var(--radius)] border border-dashed border-border px-4 py-4 text-[0.8rem] text-[var(--muted)]">
               No coordinator runs yet.
             </div>
           ) : (
             <>
               <div className="flex flex-wrap gap-2">
-                {runs.map((run) => (
+                {visibleRuns.map((run) => (
                   <button
                     key={run.id}
                     type="button"
@@ -543,6 +600,7 @@ export function WorkspaceChannelPage({
   runLogLoading = false,
   onSelectRun,
   liveLog = [],
+  activeRunLiveLog = [],
   runLog = [],
   onBackToBoard,
   onPlan,
@@ -562,6 +620,23 @@ export function WorkspaceChannelPage({
 }: Props) {
   const workerCount = workspaceAgents.filter((agent) => agent.role === "worker").length;
   const coordinator = workspaceAgents.find((agent) => agent.role === "coordinator") ?? null;
+  const feedMessages = useMemo(() => {
+    const streamingMessages = buildStreamingCoordinatorMessages({
+      channel,
+      coordinatorName: coordinator?.name ?? null,
+      runs,
+      selectedRunId,
+      activeRunLiveLog,
+      runLog
+    });
+
+    if (streamingMessages.length === 0) {
+      return messages;
+    }
+
+    const withoutOlderStream = messages.filter((message) => !message.id.startsWith("streaming:"));
+    return [...withoutOlderStream, ...streamingMessages];
+  }, [activeRunLiveLog, channel, coordinator?.name, messages, runLog, runs, selectedRunId]);
 
   return (
     <section className="grid h-full min-h-0 gap-4 px-3 pb-3 pt-2.5 sm:px-4 sm:pb-4 lg:grid-cols-[minmax(0,1fr)_380px] lg:px-5 lg:pb-5 lg:pt-3.5">
@@ -575,7 +650,7 @@ export function WorkspaceChannelPage({
 
         <div className="min-h-0 overflow-hidden p-4 lg:p-4.5">
           <TeamMessageFeed
-            messages={messages}
+            messages={feedMessages}
             loading={messagesLoading}
             error={messagesError}
             onSendMessage={onSendMessage}
