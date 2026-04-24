@@ -230,23 +230,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/teams/{teamId}/tasks/{taskId}/cancel": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Cancel a team subtask */
-        post: operations["cancelSubtask"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/tasks/{taskId}/worktree/cleanup": {
         parameters: {
             query?: never;
@@ -469,61 +452,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/teams": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List agent teams */
-        get: operations["listTeams"];
-        put?: never;
-        /** Create an agent team */
-        post: operations["createTeam"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/teams/{teamId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get an agent team */
-        get: operations["getTeam"];
-        put?: never;
-        post?: never;
-        /** Delete an agent team */
-        delete: operations["deleteTeam"];
-        options?: never;
-        head?: never;
-        /** Update an agent team */
-        patch: operations["updateTeam"];
-        trace?: never;
-    };
-    "/api/teams/{teamId}/messages": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List messages for a team */
-        get: operations["listTeamMessages"];
-        put?: never;
-        /** Post a human message into a team task thread */
-        post: operations["postTeamMessage"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/agents": {
         parameters: {
             query?: never;
@@ -614,76 +542,43 @@ export interface paths {
         patch: operations["updateWorkspaceConfig"];
         trace?: never;
     };
-    "/api/workspaces/{workspaceId}/channels": {
+    "/api/workspaces/{workspaceId}/threads": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** List visible channels for a workspace */
-        get: operations["listWorkspaceChannels"];
+        /** List threads for a workspace */
+        get: operations["listWorkspaceThreads"];
         put?: never;
-        post?: never;
+        /** Create a thread in a workspace */
+        post: operations["createWorkspaceThread"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/workspaces/{workspaceId}/channels/{channelId}": {
+    "/api/threads/{threadId}/messages": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get a workspace channel */
-        get: operations["getWorkspaceChannel"];
+        /** List messages in a thread */
+        get: operations["listThreadMessages"];
         put?: never;
-        post?: never;
+        /** Append a chat message to a thread */
+        post: operations["postThreadMessage"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/workspaces/{workspaceId}/channels/{channelId}/messages": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List chat messages for a workspace channel */
-        get: operations["listChannelMessages"];
-        put?: never;
-        /** Post a message into a workspace channel */
-        post: operations["postChannelMessage"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/workspaces/{workspaceId}/channels/{channelId}/proposals": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List coordinator proposals for a workspace channel */
-        get: operations["listChannelProposals"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/workspaces/{workspaceId}/channels/{channelId}/proposals/{proposalId}/approve": {
+    "/api/plans/{planId}/approve": {
         parameters: {
             query?: never;
             header?: never;
@@ -692,15 +587,15 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Approve a workspace channel proposal */
-        post: operations["approveChannelProposal"];
+        /** Approve a plan and materialize its subtasks */
+        post: operations["approvePlan"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/workspaces/{workspaceId}/channels/{channelId}/proposals/{proposalId}/reject": {
+    "/api/plans/{planId}/reject": {
         parameters: {
             query?: never;
             header?: never;
@@ -709,111 +604,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Reject a workspace channel proposal */
-        post: operations["rejectChannelProposal"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/workspaces/{workspaceId}/task-messages": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List task coordination messages for a workspace */
-        get: operations["listTaskMessages"];
-        put?: never;
-        /** Post a coordination message into a task thread */
-        post: operations["postTaskMessage"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/workspaces/{workspaceId}/proposals": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List coordinator proposals for a workspace */
-        get: operations["listWorkspaceProposals"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/workspaces/{workspaceId}/proposals/{proposalId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get a coordinator proposal by workspace */
-        get: operations["getWorkspaceProposal"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/workspaces/{workspaceId}/proposals/{proposalId}/approve": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Approve a workspace coordinator proposal */
-        post: operations["approveWorkspaceProposal"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/workspaces/{workspaceId}/proposals/{proposalId}/reject": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Reject a workspace coordinator proposal */
-        post: operations["rejectWorkspaceProposal"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/workspaces/{workspaceId}/tasks/{taskId}/cancel": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Cancel a workspace subtask */
-        post: operations["cancelSubtaskByWorkspace"];
+        /** Reject a plan */
+        post: operations["rejectPlan"];
         delete?: never;
         options?: never;
         head?: never;
@@ -921,14 +713,25 @@ export interface components {
             rejected?: boolean;
             /** @description Present when a team subtask was explicitly cancelled by a user. */
             cancelledAt?: string;
-            /** @description Internal visibility bucket for UI-facing vs. system backing tasks. Defaults to `user`. */
-            taskKind?: "user" | "channel_backing";
-            /** @description When set, this task belongs to an agent team. */
-            teamId?: string;
-            /** @description When set, this task is a subtask created by a team coordinator. */
+            /**
+             * @description Internal visibility bucket for UI-facing tasks. Defaults to `user`.
+             * @enum {unknown}
+             */
+            taskKind?: "user";
+            /** @description When set, this task is a subtask created via an approved Plan. */
             parentTaskId?: string;
-            /** @description The TeamAgent.id responsible for this subtask. */
-            teamAgentId?: string;
+            /**
+             * @description Agent-driven board: provenance of this task.
+             *     `user`        — hand-created from the kanban UI (default when missing).
+             *     `agent_plan`  — materialized by approving a Plan.
+             *     Optional on the TS side so legacy call sites that construct Task literals
+             *     keep compiling; the DB layer always populates it (default 'user').
+             */
+            source?: "user" | "agent_plan";
+            /** @description Present when `source === "agent_plan"`; points at the originating Plan. */
+            planId?: string;
+            /** @description The WorkspaceAgent that should pick up this task (may be decided later). */
+            assigneeAgentId?: string;
             createdAt: string;
             updatedAt: string;
         };
@@ -1076,7 +879,6 @@ export interface components {
             title: string;
             description?: string;
             workspaceId: string;
-            teamId?: string;
             worktreeBaseRef?: string;
             column?: "review" | "backlog" | "todo" | "blocked" | "running" | "done" | "archived";
             order?: number;
@@ -1093,10 +895,6 @@ export interface components {
             reason?: string;
         };
         RetryTaskParams: {
-            taskId: string;
-        };
-        CancelSubtaskParams: {
-            teamId: string;
             taskId: string;
         };
         UpdateTaskParams: {
@@ -1419,133 +1217,6 @@ export interface components {
             started: string[];
             blocked: string[];
         };
-        AgentTeam: {
-            id: string;
-            name: string;
-            description: string;
-            workspaceId: string;
-            agents: components["schemas"]["TeamAgent"][];
-            /** @description Strategy for creating pull requests from subtask branches. */
-            prStrategy: components["schemas"]["TeamPrStrategy"];
-            /** @description When true, succeeded subtasks skip manual human approval. */
-            autoApproveSubtasks: boolean;
-            createdAt: string;
-            updatedAt: string;
-        };
-        TeamAgent: {
-            /** @description Unique agent identifier within the team (nanoid). */
-            id: string;
-            agentName: string;
-            role: components["schemas"]["AgentRole"];
-            runnerConfig: components["schemas"]["RunnerConfig"];
-        };
-        AgentRole: "coordinator" | "worker";
-        TeamPrStrategy: "independent" | "stacked" | "single";
-        TeamMessage: {
-            id: string;
-            teamId: string;
-            /** @description Parent team task that owns this execution thread. */
-            parentTaskId: string;
-            /** @description The task this message is associated with (subtask or parent task). */
-            taskId?: string;
-            /** @description Name of the agent or user that sent the message. */
-            agentName: string;
-            /** @description Whether the message was sent by an agent, human, or the system. */
-            senderType: components["schemas"]["TeamMessageSenderType"];
-            /** @description Semantic message category for prompt injection and UI rendering. */
-            messageType: components["schemas"]["TeamMessageType"];
-            content: string;
-            createdAt: string;
-        };
-        TeamMessageSenderType: "system" | "agent" | "human";
-        TeamMessageType: "status" | "artifact" | "context" | "feedback";
-        CreateTeamBody: {
-            name: string;
-            description?: string;
-            workspaceId: string;
-            prStrategy?: "independent" | "stacked" | "single";
-            autoApproveSubtasks?: boolean;
-            agents: {
-                id: string;
-                agentName: string;
-                role: components["schemas"]["AgentRole"];
-                runnerConfig: components["schemas"]["RunnerConfig"];
-            }[];
-        };
-        UpdateTeamParams: {
-            teamId: string;
-        };
-        UpdateTeamBody: {
-            name?: string;
-            description?: string;
-            prStrategy?: "independent" | "stacked" | "single";
-            autoApproveSubtasks?: boolean;
-            agents?: {
-                id: string;
-                agentName: string;
-                role: components["schemas"]["AgentRole"];
-                runnerConfig: components["schemas"]["RunnerConfig"];
-            }[];
-        };
-        GetTeamParams: {
-            teamId: string;
-        };
-        DeleteTeamParams: {
-            teamId: string;
-        };
-        ListTeamMessagesParams: {
-            teamId: string;
-        };
-        ListTeamMessagesQuery: {
-            parentTaskId?: string;
-        };
-        PostTeamMessageParams: {
-            teamId: string;
-        };
-        PostTeamMessageBody: {
-            parentTaskId: string;
-            content: string;
-        };
-        ListTeamsQuery: {
-            workspaceId?: string;
-        };
-        TeamsResponse: {
-            /** @enum {unknown} */
-            ok: true;
-            data: components["schemas"]["ListTeamsData"];
-        };
-        ListTeamsData: {
-            items: components["schemas"]["AgentTeam"][];
-        };
-        AgentTeamResponse: {
-            /** @enum {unknown} */
-            ok: true;
-            data: components["schemas"]["AgentTeamData"];
-        };
-        AgentTeamData: {
-            team: components["schemas"]["AgentTeam"];
-        };
-        DeleteTeamResponse: {
-            /** @enum {unknown} */
-            ok: true;
-            data: components["schemas"]["DeleteResult"];
-        };
-        TeamMessagesResponse: {
-            /** @enum {unknown} */
-            ok: true;
-            data: components["schemas"]["TeamMessagesData"];
-        };
-        TeamMessagesData: {
-            items: components["schemas"]["TeamMessage"][];
-        };
-        TeamMessageResponse: {
-            /** @enum {unknown} */
-            ok: true;
-            data: components["schemas"]["TeamMessageData"];
-        };
-        TeamMessageData: {
-            item: components["schemas"]["TeamMessage"];
-        };
         /**
          * @description An account-level agent definition. Agents are created once and can be
          *     mounted to multiple workspaces with different roles.
@@ -1557,30 +1228,6 @@ export interface components {
             runnerConfig: components["schemas"]["RunnerConfig"];
             createdAt: string;
             updatedAt: string;
-        };
-        WorkspaceChannel: {
-            id: string;
-            workspaceId: string;
-            kind: components["schemas"]["WorkspaceChannelKind"];
-            name: string;
-            slug: string;
-            /** @description `#all` uses this to point at its hidden backing coordinator task. */
-            taskId?: string;
-            createdAt: string;
-            archivedAt?: string;
-        };
-        WorkspaceChannelKind: "all" | "task";
-        ChannelMessage: {
-            id: string;
-            channelId: string;
-            workspaceId: string;
-            taskId?: string;
-            agentName: string;
-            senderType: components["schemas"]["TeamMessageSenderType"];
-            messageType: components["schemas"]["TeamMessageType"];
-            content: string;
-            metadata?: components["schemas"]["Recordstringstring"];
-            createdAt: string;
         };
         /**
          * @description An AccountAgent with the role it was assigned when mounted to a workspace.
@@ -1595,19 +1242,7 @@ export interface components {
             createdAt: string;
             updatedAt: string;
         };
-        /** @description A message in a task's coordination thread, not tied to any team entity. */
-        TaskMessage: {
-            id: string;
-            /** @description The parent coordinator task that owns this execution thread. */
-            parentTaskId: string;
-            /** @description The specific subtask this message is associated with (if any). */
-            taskId?: string;
-            agentName: string;
-            senderType: components["schemas"]["TeamMessageSenderType"];
-            messageType: components["schemas"]["TeamMessageType"];
-            content: string;
-            createdAt: string;
-        };
+        AgentRole: "coordinator" | "worker";
         CreateAgentBody: {
             name: string;
             description?: string;
@@ -1620,21 +1255,6 @@ export interface components {
         };
         AgentParams: {
             agentId: string;
-        };
-        ListWorkspaceChannelsParams: {
-            workspaceId: string;
-        };
-        WorkspaceChannelParams: {
-            workspaceId: string;
-            channelId: string;
-        };
-        WorkspaceChannelProposalParams: {
-            workspaceId: string;
-            channelId: string;
-            proposalId: string;
-        };
-        PostChannelMessageBody: {
-            content: string;
         };
         ListWorkspaceAgentsParams: {
             workspaceId: string;
@@ -1655,19 +1275,6 @@ export interface components {
             autoApproveSubtasks?: boolean;
         };
         UpdateWorkspaceConfigParams: {
-            workspaceId: string;
-        };
-        ListTaskMessagesParams: {
-            workspaceId: string;
-        };
-        ListTaskMessagesQuery: {
-            parentTaskId?: string;
-        };
-        PostTaskMessageBody: {
-            parentTaskId: string;
-            content: string;
-        };
-        PostTaskMessageParams: {
             workspaceId: string;
         };
         AgentResponse: {
@@ -1691,38 +1298,6 @@ export interface components {
             ok: true;
             data: components["schemas"]["DeleteResult"];
         };
-        WorkspaceChannelsResponse: {
-            /** @enum {unknown} */
-            ok: true;
-            data: components["schemas"]["ListWorkspaceChannelsData"];
-        };
-        ListWorkspaceChannelsData: {
-            items: components["schemas"]["WorkspaceChannel"][];
-        };
-        WorkspaceChannelResponse: {
-            /** @enum {unknown} */
-            ok: true;
-            data: components["schemas"]["WorkspaceChannelData"];
-        };
-        WorkspaceChannelData: {
-            channel: components["schemas"]["WorkspaceChannel"];
-        };
-        ChannelMessagesResponse: {
-            /** @enum {unknown} */
-            ok: true;
-            data: components["schemas"]["ChannelMessagesData"];
-        };
-        ChannelMessagesData: {
-            items: components["schemas"]["ChannelMessage"][];
-        };
-        ChannelMessageResponse: {
-            /** @enum {unknown} */
-            ok: true;
-            data: components["schemas"]["ChannelMessageData"];
-        };
-        ChannelMessageData: {
-            item: components["schemas"]["ChannelMessage"];
-        };
         WorkspaceAgentResponse: {
             /** @enum {unknown} */
             ok: true;
@@ -1739,87 +1314,126 @@ export interface components {
         ListWorkspaceAgentsData: {
             items: components["schemas"]["WorkspaceAgent"][];
         };
-        TaskMessagesResponse: {
-            /** @enum {unknown} */
-            ok: true;
-            data: components["schemas"]["TaskMessagesData"];
-        };
-        TaskMessagesData: {
-            items: components["schemas"]["TaskMessage"][];
-        };
-        TaskMessageResponse: {
-            /** @enum {unknown} */
-            ok: true;
-            data: components["schemas"]["TaskMessageData"];
-        };
-        TaskMessageData: {
-            item: components["schemas"]["TaskMessage"];
-        };
-        WorkspaceListProposalsParams: {
-            workspaceId: string;
-        };
-        WorkspaceGetProposalParams: {
-            workspaceId: string;
-            proposalId: string;
-        };
-        WorkspaceApproveProposalParams: {
-            workspaceId: string;
-            proposalId: string;
-        };
-        WorkspaceRejectProposalParams: {
-            workspaceId: string;
-            proposalId: string;
-        };
-        WorkspaceCancelSubtaskParams: {
-            workspaceId: string;
-            taskId: string;
-        };
-        ListProposalsResponse: {
-            /** @enum {unknown} */
-            ok: true;
-            data: components["schemas"]["ListProposalsData"];
-        };
-        ListProposalsData: {
-            items: components["schemas"]["CoordinatorProposal"][];
-        };
-        /**
-         * @description A coordinator proposal holds the parsed subtask plan from a coordinator
-         *     run and waits for human approval before subtasks are actually created.
-         */
-        CoordinatorProposal: {
+        Thread: {
             id: string;
-            /** @description Legacy: team-scoped proposals. Null for workspace-scoped proposals. */
-            teamId: null | string;
-            /** @description Set for workspace-scoped proposals (new model). */
-            workspaceId?: string;
-            channelId?: string;
-            parentTaskId: string;
-            proposalMode: components["schemas"]["CoordinatorProposalMode"];
-            status: components["schemas"]["CoordinatorProposalStatus"];
-            drafts: components["schemas"]["CoordinatorProposalDraft"][];
+            workspaceId: string;
+            kind: components["schemas"]["ThreadKind"];
+            /** @description Set when `kind === "task"` — the task this thread belongs to. */
+            taskId?: string;
+            /** @description The WorkspaceAgent that drives this thread (if any). */
+            coordinatorAgentId?: string;
+            coordinatorState: components["schemas"]["CoordinatorState"];
             createdAt: string;
-            /** @description ISO timestamp of when the proposal was approved or rejected. */
-            decidedAt?: string;
+            archivedAt?: string;
         };
-        CoordinatorProposalMode: "top_level_tasks" | "subtasks";
-        CoordinatorProposalStatus: "pending" | "approved" | "rejected";
-        /** @description A single subtask draft produced by the coordinator LLM output. */
-        CoordinatorProposalDraft: {
+        ThreadKind: "coordinator" | "task" | "direct";
+        CoordinatorState: "running" | "queued" | "idle";
+        Message: {
+            id: string;
+            threadId: string;
+            sender: components["schemas"]["MessageSender"];
+            kind: components["schemas"]["MessageKind"];
+            /** @description Payload shape is narrowed per `kind` by typia validators. */
+            payload: unknown;
+            /** @description When set, this message was consumed by the given coordinator run turn. */
+            consumedByRunId?: string;
+            createdAt: string;
+        };
+        MessageSender: {
+            /** @enum {unknown} */
+            type: "user";
+        } | {
+            /** @enum {unknown} */
+            type: "agent";
+            agentId: string;
+        } | {
+            /** @enum {unknown} */
+            type: "system";
+        };
+        MessageKind: "status" | "chat" | "artifact" | "plan_draft" | "plan_decision" | "system_event";
+        Plan: {
+            id: string;
+            threadId: string;
+            proposerAgentId: string;
+            status: components["schemas"]["PlanStatus"];
+            drafts: components["schemas"]["PlanDraft"][];
+            approvedAt?: string;
+            createdAt: string;
+        };
+        PlanStatus: "pending" | "approved" | "rejected" | "superseded";
+        PlanDraft: {
             title: string;
             description: string;
-            assignedAgent: string;
-            dependencies: string[];
+            assigneeAgentId?: string;
+            /** @description References to other drafts' titles within the same plan. */
+            dependsOn?: string[];
         };
-        ProposalResponse: {
+        ListThreadsParams: {
+            workspaceId: string;
+        };
+        CreateThreadBody: {
+            kind: components["schemas"]["ThreadKind"];
+            taskId?: string;
+            coordinatorAgentId?: string;
+        };
+        PostThreadMessageParams: {
+            threadId: string;
+        };
+        PostThreadMessageBody: {
+            content: string;
+            /** @description Defaults to "chat" when omitted. Server may reject other kinds for human senders. */
+            kind?: "status" | "chat" | "artifact" | "plan_draft" | "plan_decision" | "system_event";
+        };
+        ListThreadMessagesParams: {
+            threadId: string;
+        };
+        ListThreadMessagesQuery: {
+            /** @description Message id cursor — return messages created strictly after this one. */
+            after?: string;
+            limit?: number;
+        };
+        PlanParams: {
+            planId: string;
+        };
+        ListThreadsResponse: {
             /** @enum {unknown} */
             ok: true;
-            data: components["schemas"]["ProposalData"];
+            data: components["schemas"]["ListThreadsData"];
         };
-        ProposalData: {
-            proposal: components["schemas"]["CoordinatorProposal"];
+        ListThreadsData: {
+            items: components["schemas"]["Thread"][];
         };
-        ListProposalsQuery: {
-            parentTaskId?: string;
+        ThreadResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["ThreadData"];
+        };
+        ThreadData: {
+            thread: components["schemas"]["Thread"];
+        };
+        ListThreadMessagesResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["ListThreadMessagesData"];
+        };
+        ListThreadMessagesData: {
+            items: components["schemas"]["Message"][];
+        };
+        MessageResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["MessageData"];
+        };
+        MessageData: {
+            message: components["schemas"]["Message"];
+        };
+        PlanResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["PlanData"];
+        };
+        PlanData: {
+            plan: components["schemas"]["Plan"];
         };
     };
     responses: never;
@@ -2425,47 +2039,6 @@ export interface operations {
             };
         };
     };
-    cancelSubtask: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                teamId: string;
-                taskId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Cancelled task */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TaskResponse"];
-                };
-            };
-            /** @description Task or team not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Task cannot be cancelled */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
     cleanupTaskWorktree: {
         parameters: {
             query?: never;
@@ -2975,244 +2548,6 @@ export interface operations {
             };
         };
     };
-    listTeams: {
-        parameters: {
-            query?: {
-                workspaceId?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Team collection */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TeamsResponse"];
-                };
-            };
-        };
-    };
-    createTeam: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateTeamBody"];
-            };
-        };
-        responses: {
-            /** @description Created team */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentTeamResponse"];
-                };
-            };
-            /** @description Validation error */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
-    getTeam: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                teamId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Team details */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentTeamResponse"];
-                };
-            };
-            /** @description Team not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
-    deleteTeam: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                teamId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Deleted team id */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DeleteTeamResponse"];
-                };
-            };
-            /** @description Team not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
-    updateTeam: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                teamId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateTeamBody"];
-            };
-        };
-        responses: {
-            /** @description Updated team */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentTeamResponse"];
-                };
-            };
-            /** @description Validation error */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Team not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
-    listTeamMessages: {
-        parameters: {
-            query?: {
-                parentTaskId?: string;
-            };
-            header?: never;
-            path: {
-                teamId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Team message collection */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TeamMessagesResponse"];
-                };
-            };
-            /** @description Team not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
-    postTeamMessage: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                teamId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PostTeamMessageBody"];
-            };
-        };
-        responses: {
-            /** @description Created team message */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TeamMessageResponse"];
-                };
-            };
-            /** @description Validation error */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Team not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
     listAgents: {
         parameters: {
             query?: never;
@@ -3568,7 +2903,7 @@ export interface operations {
             };
         };
     };
-    listWorkspaceChannels: {
+    listWorkspaceThreads: {
         parameters: {
             query?: never;
             header?: never;
@@ -3579,267 +2914,18 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Workspace channel collection */
+            /** @description Workspace threads */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["WorkspaceChannelsResponse"];
-                };
-            };
-            /** @description Workspace not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
+                    "application/json": components["schemas"]["ListThreadsResponse"];
                 };
             };
         };
     };
-    getWorkspaceChannel: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspaceId: string;
-                channelId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Workspace channel */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkspaceChannelResponse"];
-                };
-            };
-            /** @description Channel not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
-    listChannelMessages: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspaceId: string;
-                channelId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Channel message collection */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ChannelMessagesResponse"];
-                };
-            };
-            /** @description Channel not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
-    postChannelMessage: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspaceId: string;
-                channelId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PostChannelMessageBody"];
-            };
-        };
-        responses: {
-            /** @description Created channel message */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ChannelMessageResponse"];
-                };
-            };
-            /** @description Validation error */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Channel not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
-    listChannelProposals: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspaceId: string;
-                channelId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Proposal collection */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ListProposalsResponse"];
-                };
-            };
-            /** @description Channel not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
-    approveChannelProposal: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspaceId: string;
-                channelId: string;
-                proposalId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Approved proposal */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProposalResponse"];
-                };
-            };
-            /** @description Proposal already decided */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
-    rejectChannelProposal: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspaceId: string;
-                channelId: string;
-                proposalId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Rejected proposal */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProposalResponse"];
-                };
-            };
-            /** @description Proposal already decided */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
-    listTaskMessages: {
-        parameters: {
-            query?: {
-                parentTaskId?: string;
-            };
-            header?: never;
-            path: {
-                workspaceId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Task message collection */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TaskMessagesResponse"];
-                };
-            };
-            /** @description Workspace not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
-    postTaskMessage: {
+    createWorkspaceThread: {
         parameters: {
             query?: never;
             header?: never;
@@ -3850,62 +2936,45 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PostTaskMessageBody"];
+                "application/json": components["schemas"]["CreateThreadBody"];
             };
         };
         responses: {
-            /** @description Created task message */
+            /** @description Created thread */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TaskMessageResponse"];
-                };
-            };
-            /** @description Validation error */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Workspace not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
+                    "application/json": components["schemas"]["ThreadResponse"];
                 };
             };
         };
     };
-    listWorkspaceProposals: {
+    listThreadMessages: {
         parameters: {
             query?: {
-                parentTaskId?: string;
+                after?: string;
+                limit?: number;
             };
             header?: never;
             path: {
-                workspaceId: string;
+                threadId: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Proposal collection */
+            /** @description Messages in the thread */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ListProposalsResponse"];
+                    "application/json": components["schemas"]["ListThreadMessagesResponse"];
                 };
             };
-            /** @description Workspace not found */
+            /** @description Thread not found */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -3916,28 +2985,31 @@ export interface operations {
             };
         };
     };
-    getWorkspaceProposal: {
+    postThreadMessage: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                workspaceId: string;
-                proposalId: string;
+                threadId: string;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PostThreadMessageBody"];
+            };
+        };
         responses: {
-            /** @description Coordinator proposal */
+            /** @description Appended message */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProposalResponse"];
+                    "application/json": components["schemas"]["MessageResponse"];
                 };
             };
-            /** @description Proposal not found */
+            /** @description Thread not found */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -3948,28 +3020,27 @@ export interface operations {
             };
         };
     };
-    approveWorkspaceProposal: {
+    approvePlan: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                workspaceId: string;
-                proposalId: string;
+                planId: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Approved proposal */
+            /** @description Approved plan */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProposalResponse"];
+                    "application/json": components["schemas"]["PlanResponse"];
                 };
             };
-            /** @description Proposal already decided */
+            /** @description Plan already decided */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3980,60 +3051,27 @@ export interface operations {
             };
         };
     };
-    rejectWorkspaceProposal: {
+    rejectPlan: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                workspaceId: string;
-                proposalId: string;
+                planId: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Rejected proposal */
+            /** @description Rejected plan */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProposalResponse"];
+                    "application/json": components["schemas"]["PlanResponse"];
                 };
             };
-            /** @description Proposal already decided */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
-    cancelSubtaskByWorkspace: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspaceId: string;
-                taskId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Cancelled subtask */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TaskResponse"];
-                };
-            };
-            /** @description Task cannot be cancelled */
+            /** @description Plan already decided */
             409: {
                 headers: {
                     [name: string]: unknown;

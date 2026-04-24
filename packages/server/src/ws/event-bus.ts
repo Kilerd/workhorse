@@ -3,8 +3,11 @@ import type { Server } from "node:http";
 import type { ServerEvent } from "@workhorse/contracts";
 import { WebSocketServer, type WebSocket } from "ws";
 
+export type ServerEventListener = (event: ServerEvent) => void;
+
 export class EventBus {
   private readonly clients = new Set<WebSocket>();
+  private readonly listeners = new Set<ServerEventListener>();
 
   public attach(server: Server): void {
     const wss = new WebSocketServer({ noServer: true });
@@ -37,5 +40,23 @@ export class EventBus {
         socket.send(payload);
       }
     }
+
+    // In-process listeners run synchronously so the Orchestrator can react
+    // (inject system_event messages) before the caller's await resolves.
+    // Failures are isolated — a throwing listener must not break the fan-out.
+    for (const listener of this.listeners) {
+      try {
+        listener(event);
+      } catch (error) {
+        console.error("[event-bus] listener threw", error);
+      }
+    }
+  }
+
+  public subscribe(listener: ServerEventListener): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
   }
 }

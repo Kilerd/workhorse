@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Workspace, WorkspaceChannel } from "@workhorse/contracts";
+import type { Thread, Workspace } from "@workhorse/contracts";
 
 import type { DisplayTask } from "@/lib/task-view";
 import { cn } from "@/lib/utils";
@@ -7,15 +7,14 @@ import { cn } from "@/lib/utils";
 interface Props {
   workspaces: Workspace[];
   allTasks: DisplayTask[];
-  workspaceChannelsByWorkspaceId: Map<string, WorkspaceChannel[]>;
-  channelUnreadCounts: Record<string, number>;
+  workspaceThreadsByWorkspaceId: Map<string, Thread[]>;
   agentCount: number;
   selectedWorkspaceId: string | "all";
-  selectedChannelId: string | null;
+  selectedThreadId: string | null;
   collapsed: boolean;
   onToggleCollapse(): void;
   onSelectWorkspace(id: string | "all"): void;
-  onSelectChannel(workspaceId: string, channelId: string): void;
+  onSelectThread(workspaceId: string, threadId: string): void;
   onAddWorkspace(): void;
   onOpenAgents(): void;
   onOpenWorkspaceSettings(): void;
@@ -95,10 +94,6 @@ function statusLabel(column: DisplayTask["column"]): string {
     case "archived":
       return "Archived";
   }
-}
-
-function formatUnreadCount(count: number): string {
-  return count > 99 ? "99+" : String(count);
 }
 
 function actionChevron() {
@@ -281,15 +276,14 @@ function setsEqual(left: Set<string>, right: Set<string>): boolean {
 export function Sidebar({
   workspaces,
   allTasks,
-  workspaceChannelsByWorkspaceId,
-  channelUnreadCounts,
+  workspaceThreadsByWorkspaceId,
   agentCount,
   selectedWorkspaceId,
-  selectedChannelId,
+  selectedThreadId,
   collapsed,
   onToggleCollapse,
   onSelectWorkspace,
-  onSelectChannel,
+  onSelectThread,
   onAddWorkspace,
   onOpenAgents,
   onOpenWorkspaceSettings,
@@ -410,19 +404,16 @@ export function Sidebar({
             <div className="my-1 h-px bg-[var(--border)]" />
 
             {workspaces.map((workspace) => {
-              const channels = workspaceChannelsByWorkspaceId.get(workspace.id) ?? [];
-              const allChannel = channels.find(
-                (channel) => channel.kind === "all" || channel.slug === "all"
-              );
-              const allChannelId = allChannel?.id ?? "all";
-              const taskItems = channels
-                .filter((channel) => channel.kind === "task" && !channel.archivedAt)
-                .map((channel) => ({
-                  channel,
-                  task: channel.taskId ? tasksById.get(channel.taskId) ?? null : null
+              const threads = workspaceThreadsByWorkspaceId.get(workspace.id) ?? [];
+              const coordinatorThread = threads.find((thread) => thread.kind === "coordinator");
+              const taskThreadItems = threads
+                .filter((thread) => thread.kind === "task" && !thread.archivedAt && thread.taskId)
+                .map((thread) => ({
+                  thread,
+                  task: thread.taskId ? tasksById.get(thread.taskId) ?? null : null
                 }))
                 .filter(
-                  (entry): entry is { channel: WorkspaceChannel; task: DisplayTask } =>
+                  (entry): entry is { thread: Thread; task: DisplayTask } =>
                     entry.task !== null && ACTIVE_TASK_COLUMNS.has(entry.task.column)
                 )
                 .sort((left, right) => {
@@ -435,33 +426,27 @@ export function Sidebar({
                 });
 
               const expanded = expandedWorkspaceIds.has(workspace.id);
-              const allChannelUnreadCount = allChannel?.id
-                ? channelUnreadCounts[allChannel.id] ?? 0
-                : 0;
               const workspaceItems: WorkspaceTreeItem[] = [
-                {
-                  id: `${workspace.id}-all`,
-                  label: "#all",
-                  active:
-                    selectedWorkspaceId === workspace.id &&
-                    (selectedChannelId === allChannel?.id || selectedChannelId === "all"),
-                  trailing:
-                    allChannelUnreadCount > 0 ? formatUnreadCount(allChannelUnreadCount) : undefined,
-                  tone: "accent",
-                  onClick: () => onSelectChannel(workspace.id, allChannelId)
-                },
-                ...taskItems.map(({ channel, task }): WorkspaceTreeItem => {
-                  const unreadCount = channelUnreadCounts[channel.id] ?? 0;
-                  return {
-                    id: channel.id,
-                    label: task.title,
-                    meta: `#${channel.slug} · ${statusLabel(task.column)}`,
-                    active: selectedChannelId === channel.id,
-                    trailing: unreadCount > 0 ? formatUnreadCount(unreadCount) : undefined,
-                    tone: unreadCount > 0 ? "accent" : undefined,
-                    onClick: () => onSelectChannel(workspace.id, channel.id)
-                  };
-                })
+                ...(coordinatorThread
+                  ? [
+                      {
+                        id: coordinatorThread.id,
+                        label: "#coordinator",
+                        active:
+                          selectedWorkspaceId === workspace.id &&
+                          selectedThreadId === coordinatorThread.id,
+                        tone: "accent" as const,
+                        onClick: () => onSelectThread(workspace.id, coordinatorThread.id)
+                      }
+                    ]
+                  : []),
+                ...taskThreadItems.map(({ thread, task }): WorkspaceTreeItem => ({
+                  id: thread.id,
+                  label: task.title,
+                  meta: statusLabel(task.column),
+                  active: selectedThreadId === thread.id,
+                  onClick: () => onSelectThread(workspace.id, thread.id)
+                }))
               ];
 
               return (

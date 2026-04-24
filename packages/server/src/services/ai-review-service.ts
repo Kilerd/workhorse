@@ -64,10 +64,6 @@ export class AiReviewService {
       return false;
     }
 
-    if (task.taskKind === "channel_backing") {
-      return false;
-    }
-
     if (task.runnerType === "shell") {
       return false;
     }
@@ -87,10 +83,6 @@ export class AiReviewService {
   }
 
   public async triggerAiReview(task: Task): Promise<void> {
-    if (task.taskKind === "channel_backing") {
-      return;
-    }
-
     try {
       const workspace = this.deps.store
         .listWorkspaces()

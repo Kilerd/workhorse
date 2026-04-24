@@ -1,0 +1,477 @@
+import type { Plan, PlanDraft, Task, TaskColumn } from "@workhorse/contracts";
+
+import { AppError } from "../lib/errors.js";
+import { PlanService } from "./plan-service.js";
+import { StateStore } from "../persistence/state-store.js";
+import { TaskService, type TaskActor } from "./task-service.js";
+import { ThreadService } from "./thread-service.js";
+
+/**
+ * Context threaded through every tool invocation. The runtime fills it in
+ * from the run that issued the tool_use chunk; handlers treat it as
+ * authoritative (they never trust values from `input` for identity fields).
+ */
+export interface ToolHandlerCtx {
+  workspaceId: string;
+  threadId: string;
+  /** The agent currently driving the session (usually the coordinator). */
+  agentId: string;
+}
+
+export interface ToolDefinition<I = unknown, O = unknown> {
+  name: string;
+  description: string;
+  /** JSON Schema understood by the underlying runner (Claude tool_use etc.). */
+  inputSchema: Record<string, unknown>;
+  handler: (input: I, ctx: ToolHandlerCtx) => Promise<O>;
+}
+
+export class ToolRegistry {
+  private readonly tools = new Map<string, ToolDefinition>();
+
+  public register<I, O>(def: ToolDefinition<I, O>): void {
+    if (this.tools.has(def.name)) {
+      throw new AppError(
+        500,
+        "TOOL_ALREADY_REGISTERED",
+        `Tool ${def.name} is already registered`
+      );
+    }
+    this.tools.set(def.name, def as ToolDefinition);
+  }
+
+  public has(name: string): boolean {
+    return this.tools.has(name);
+  }
+
+  public list(): ToolDefinition[] {
+    return Array.from(this.tools.values());
+  }
+
+  public async invoke(
+    name: string,
+    input: unknown,
+    ctx: ToolHandlerCtx
+  ): Promise<unknown> {
+    const tool = this.tools.get(name);
+    if (!tool) {
+      throw new AppError(404, "TOOL_NOT_FOUND", `Tool ${name} is not registered`);
+    }
+    return tool.handler(input, ctx);
+  }
+}
+
+// ── Input type guards / coercion ─────────────────────────────────────────────
+//
+// The registry intentionally avoids pulling in a schema validator runtime —
+// handlers are thin and the JSON Schemas shipped to runners describe the
+// contract. Here we only check shape enough to fail fast with a clear code
+// when the runner sends nonsense.
+
+function asRecord(input: unknown, tool: string): Record<string, unknown> {
+  if (input === null || typeof input !== "object" || Array.isArray(input)) {
+    throw new AppError(
+      400,
+      "TOOL_INVALID_INPUT",
+      `Tool ${tool}: input must be an object`
+    );
+  }
+  return input as Record<string, unknown>;
+}
+
+function requireString(
+  obj: Record<string, unknown>,
+  key: string,
+  tool: string
+): string {
+  const value = obj[key];
+  if (typeof value !== "string" || value.length === 0) {
+    throw new AppError(
+      400,
+      "TOOL_INVALID_INPUT",
+      `Tool ${tool}: field "${key}" must be a non-empty string`
+    );
+  }
+  return value;
+}
+
+function optionalString(
+  obj: Record<string, unknown>,
+  key: string
+): string | undefined {
+  const value = obj[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function optionalStringArray(
+  obj: Record<string, unknown>,
+  key: string,
+  tool: string
+): string[] | undefined {
+  const value = obj[key];
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value) || value.some((v) => typeof v !== "string")) {
+    throw new AppError(
+      400,
+      "TOOL_INVALID_INPUT",
+      `Tool ${tool}: field "${key}" must be an array of strings`
+    );
+  }
+  return value as string[];
+}
+
+export interface ToolRegistryDeps {
+  store: StateStore;
+  tasks: TaskService;
+  plans: PlanService;
+  threads: ThreadService;
+}
+
+/**
+ * Builds the registry of tools exposed to coordinator agents. Each handler is
+ * a thin wrapper: parse input → delegate to a service. Business rules live in
+ * the services, never in handlers.
+ */
+export function buildDefaultToolRegistry(
+  deps: ToolRegistryDeps
+): ToolRegistry {
+  const registry = new ToolRegistry();
+  const { store, tasks, plans, threads } = deps;
+
+  registry.register<Record<string, unknown>, { task: Task }>({
+    name: "create_task",
+    description:
+      "Create a new task on the workspace board. Use this when a new work item should be surfaced to the user; for plan-driven batches prefer propose_plan.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        description: { type: "string" },
+        assigneeAgentId: { type: "string" },
+        dependsOn: { type: "array", items: { type: "string" } },
+        column: { type: "string", enum: ["backlog", "todo"] }
+      },
+      required: ["title"]
+    },
+    handler: async (input, ctx) => {
+      const obj = asRecord(input, "create_task");
+      const title = requireString(obj, "title", "create_task");
+      const column = optionalString(obj, "column");
+      const { task } = await tasks.createTask({
+        workspaceId: ctx.workspaceId,
+        title,
+        description: optionalString(obj, "description") ?? "",
+        assigneeAgentId: optionalString(obj, "assigneeAgentId"),
+        dependencies: optionalStringArray(obj, "dependsOn", "create_task"),
+        column:
+          column === "backlog" || column === "todo"
+            ? (column as "backlog" | "todo")
+            : undefined,
+        source: "agent_plan"
+      });
+      return { task };
+    }
+  });
+
+  registry.register<Record<string, unknown>, { task: Task }>({
+    name: "move_task",
+    description:
+      "Move a task between kanban columns. Limited to transitions the system actor is allowed to perform; running/review are side-effects of run lifecycle.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: { type: "string" },
+        column: {
+          type: "string",
+          enum: [
+            "backlog",
+            "todo",
+            "blocked",
+            "running",
+            "review",
+            "done",
+            "archived"
+          ]
+        }
+      },
+      required: ["taskId", "column"]
+    },
+    handler: async (input) => {
+      const obj = asRecord(input, "move_task");
+      const taskId = requireString(obj, "taskId", "move_task");
+      const column = requireString(obj, "column", "move_task") as TaskColumn;
+      const task = await tasks.updateColumn(taskId, column, "system");
+      return { task };
+    }
+  });
+
+  registry.register<Record<string, unknown>, { task: Task }>({
+    name: "annotate_task",
+    description:
+      "Append a chat-style note from the coordinator to the task's thread for downstream agents and the user.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: { type: "string" },
+        text: { type: "string" }
+      },
+      required: ["taskId", "text"]
+    },
+    handler: async (input, ctx) => {
+      const obj = asRecord(input, "annotate_task");
+      const taskId = requireString(obj, "taskId", "annotate_task");
+      const text = requireString(obj, "text", "annotate_task");
+      const task = tasks.requireTask(taskId);
+      const thread = threads
+        .listThreads(task.workspaceId)
+        .find((t) => t.taskId === taskId && t.kind === "task");
+      if (!thread) {
+        throw new AppError(
+          404,
+          "TASK_THREAD_NOT_FOUND",
+          `No task thread exists for task ${taskId}`
+        );
+      }
+      threads.appendMessage({
+        threadId: thread.id,
+        sender: { type: "agent", agentId: ctx.agentId },
+        kind: "chat",
+        payload: { text }
+      });
+      return { task };
+    }
+  });
+
+  registry.register<Record<string, unknown>, { task: Task }>({
+    name: "decide_task",
+    description:
+      "Approve or reject a task currently in the review column. approve transitions to done; reject additionally sets the rejected flag and records a plan_decision message.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: { type: "string" },
+        decision: { type: "string", enum: ["approve", "reject"] },
+        reason: { type: "string" }
+      },
+      required: ["taskId", "decision"]
+    },
+    handler: async (input) => {
+      const obj = asRecord(input, "decide_task");
+      const taskId = requireString(obj, "taskId", "decide_task");
+      const decision = requireString(obj, "decision", "decide_task");
+      if (decision === "approve") {
+        const task = await tasks.approveReview(taskId);
+        return { task };
+      }
+      if (decision === "reject") {
+        const reason = optionalString(obj, "reason") ?? "rejected by coordinator";
+        const task = await tasks.rejectReview(taskId, {}, reason);
+        return { task };
+      }
+      throw new AppError(
+        400,
+        "TOOL_INVALID_INPUT",
+        `Tool decide_task: decision must be "approve" or "reject"`
+      );
+    }
+  });
+
+  registry.register<Record<string, unknown>, { plan: Plan }>({
+    name: "propose_plan",
+    description:
+      "Submit a pending plan with one or more task drafts for user approval. drafts[].dependsOn references other draft titles in the same plan.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        drafts: {
+          type: "array",
+          minItems: 1,
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string" },
+              description: { type: "string" },
+              assigneeAgentId: { type: "string" },
+              dependsOn: { type: "array", items: { type: "string" } }
+            },
+            required: ["title", "description"]
+          }
+        }
+      },
+      required: ["drafts"]
+    },
+    handler: async (input, ctx) => {
+      const obj = asRecord(input, "propose_plan");
+      const draftsRaw = obj.drafts;
+      if (!Array.isArray(draftsRaw) || draftsRaw.length === 0) {
+        throw new AppError(
+          400,
+          "TOOL_INVALID_INPUT",
+          "Tool propose_plan: drafts must be a non-empty array"
+        );
+      }
+      const drafts: PlanDraft[] = draftsRaw.map((raw, idx) => {
+        const d = asRecord(raw, "propose_plan.drafts");
+        const rawDescription = d.description;
+        return {
+          title: requireString(d, "title", `propose_plan.drafts[${idx}]`),
+          description: typeof rawDescription === "string" ? rawDescription : "",
+          assigneeAgentId: optionalString(d, "assigneeAgentId"),
+          dependsOn: optionalStringArray(
+            d,
+            "dependsOn",
+            `propose_plan.drafts[${idx}]`
+          )
+        };
+      });
+      const plan = plans.propose({
+        threadId: ctx.threadId,
+        proposerAgentId: ctx.agentId,
+        drafts
+      });
+      return { plan };
+    }
+  });
+
+  registry.register<Record<string, unknown>, { plan: Plan }>({
+    name: "supersede_plan",
+    description:
+      "Mark a pending plan as superseded (e.g. replaced by a newer proposal). No subtasks are created.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        planId: { type: "string" },
+        reason: { type: "string" }
+      },
+      required: ["planId"]
+    },
+    handler: async (input) => {
+      const obj = asRecord(input, "supersede_plan");
+      const planId = requireString(obj, "planId", "supersede_plan");
+      const reason = optionalString(obj, "reason") ?? "superseded";
+      const plan = plans.supersede(planId, reason);
+      return { plan };
+    }
+  });
+
+  registry.register<Record<string, unknown>, { messageId: string }>({
+    name: "post_message",
+    description:
+      "Post a chat message from the coordinator into a thread. Defaults to the current coordinator thread.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        threadId: { type: "string" },
+        text: { type: "string" }
+      },
+      required: ["text"]
+    },
+    handler: async (input, ctx) => {
+      const obj = asRecord(input, "post_message");
+      const text = requireString(obj, "text", "post_message");
+      const threadId = optionalString(obj, "threadId") ?? ctx.threadId;
+      const message = threads.appendMessage({
+        threadId,
+        sender: { type: "agent", agentId: ctx.agentId },
+        kind: "chat",
+        payload: { text }
+      });
+      return { messageId: message.id };
+    }
+  });
+
+  registry.register<Record<string, unknown>, { messageId: string }>({
+    name: "request_user_input",
+    description:
+      "Pause the coordinator and surface a question/options card to the user. The answer arrives as a new user message.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        question: { type: "string" },
+        options: { type: "array", items: { type: "string" } }
+      },
+      required: ["question"]
+    },
+    handler: async (input, ctx) => {
+      const obj = asRecord(input, "request_user_input");
+      const question = requireString(obj, "question", "request_user_input");
+      const options = optionalStringArray(obj, "options", "request_user_input");
+      const message = threads.appendMessage({
+        threadId: ctx.threadId,
+        sender: { type: "agent", agentId: ctx.agentId },
+        kind: "status",
+        payload: { kind: "request_user_input", question, options: options ?? [] }
+      });
+      return { messageId: message.id };
+    }
+  });
+
+  interface ListAgentsEntry {
+    workspaceAgentId: string;
+    name: string;
+    accountDescription: string;
+    workspaceDescription?: string;
+  }
+
+  registry.register<Record<string, unknown>, { agents: ListAgentsEntry[] }>({
+    name: "list_agents",
+    description:
+      "Return every agent mounted on the workspace with both the account-level capability description and any workspace-level override so the coordinator can pick delegates.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      additionalProperties: false
+    },
+    handler: async (_input, ctx) => {
+      const mounted = store.listWorkspaceAgents(ctx.workspaceId);
+      const agents: ListAgentsEntry[] = mounted.map((agent) => ({
+        workspaceAgentId: agent.id,
+        name: agent.name,
+        accountDescription: agent.description ?? ""
+      }));
+      return { agents };
+    }
+  });
+
+  registry.register<Record<string, unknown>, { task: Task | null }>({
+    name: "get_task",
+    description: "Fetch a single task by id, or null if it does not exist.",
+    inputSchema: {
+      type: "object",
+      properties: { taskId: { type: "string" } },
+      required: ["taskId"]
+    },
+    handler: async (input) => {
+      const obj = asRecord(input, "get_task");
+      const taskId = requireString(obj, "taskId", "get_task");
+      return { task: tasks.getTask(taskId) ?? null };
+    }
+  });
+
+  interface WorkspaceStateSnapshot {
+    tasks: Task[];
+    plans: Plan[];
+  }
+
+  registry.register<Record<string, unknown>, WorkspaceStateSnapshot>({
+    name: "get_workspace_state",
+    description:
+      "Return a snapshot of the current workspace: all tasks plus plans that were proposed in the current coordinator thread.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      additionalProperties: false
+    },
+    handler: async (_input, ctx) => ({
+      tasks: tasks.listTasks(ctx.workspaceId),
+      plans: plans.listPlansByThread(ctx.threadId)
+    })
+  });
+
+  return registry;
+}
+
+// ── TypeScript plumbing so `TaskActor` is not flagged as unused when building
+// on top of this module. The value is not referenced, but downstream callers
+// importing from here may need the type re-export.
+export type { TaskActor };

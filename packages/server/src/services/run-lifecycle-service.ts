@@ -116,7 +116,7 @@ export class RunLifecycleService {
     const workspace = this.deps.requireWorkspace(task.workspaceId);
     let executionWorkspace = workspace;
 
-    if (workspace.isGitRepo && task.taskKind !== "channel_backing") {
+    if (workspace.isGitRepo) {
       task.worktree = await this.deps.gitWorktrees().ensureTaskWorktree(workspace, task);
       executionWorkspace = {
         ...workspace,

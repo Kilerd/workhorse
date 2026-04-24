@@ -39,9 +39,11 @@ export const tasks = sqliteTable("tasks", {
   rejected: integer("rejected", { mode: "boolean" }).notNull().default(false),
   cancelledAt: text("cancelled_at"),
   taskKind: text("task_kind").notNull().default("user"),
-  teamId: text("team_id"),
   parentTaskId: text("parent_task_id"),
-  teamAgentId: text("team_agent_id"),
+  // Agent-driven board (Spec 01): task provenance fields.
+  source: text("source").notNull().default("user"),
+  planId: text("plan_id"),
+  assigneeAgentId: text("assignee_agent_id"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull()
 });
@@ -90,49 +92,6 @@ export const runLogEntries = sqliteTable("run_log_entries", {
   metadata: text("metadata")
 });
 
-export const teams = sqliteTable("teams", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  description: text("description").notNull().default(""),
-  workspaceId: text("workspace_id").notNull(),
-  // agents is stored as a JSON column — always loaded with the team,
-  // so a separate table would add overhead without query benefit.
-  agents: text("agents").notNull(),
-  prStrategy: text("pr_strategy").notNull().default("independent"),
-  autoApproveSubtasks: integer("auto_approve_subtasks", { mode: "boolean" })
-    .notNull()
-    .default(false),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull()
-});
-
-export const coordinatorProposals = sqliteTable("coordinator_proposals", {
-  id: text("id").primaryKey(),
-  teamId: text("team_id"),
-  workspaceId: text("workspace_id").references(() => workspaces.id, { onDelete: "cascade" }),
-  channelId: text("channel_id").references(() => workspaceChannels.id, { onDelete: "cascade" }),
-  parentTaskId: text("parent_task_id").notNull(),
-  proposalMode: text("proposal_mode").notNull().default("subtasks"),
-  status: text("status").notNull().default("pending"),
-  drafts: text("drafts").notNull(),
-  createdAt: text("created_at").notNull(),
-  decidedAt: text("decided_at")
-});
-
-export const teamMessages = sqliteTable("team_messages", {
-  id: text("id").primaryKey(),
-  teamId: text("team_id")
-    .notNull()
-    .references(() => teams.id, { onDelete: "cascade" }),
-  parentTaskId: text("parent_task_id").notNull(),
-  taskId: text("task_id"),
-  agentName: text("agent_name").notNull(),
-  senderType: text("sender_type").notNull(),
-  messageType: text("message_type").notNull(),
-  content: text("content").notNull(),
-  createdAt: text("created_at").notNull()
-});
-
 // === New agent model (Phase 4 refactor) ===
 
 export const agents = sqliteTable("agents", {
@@ -159,43 +118,56 @@ export const workspaceAgents = sqliteTable(
   (table) => [primaryKey({ columns: [table.workspaceId, table.agentId] })]
 );
 
-export const workspaceChannels = sqliteTable("workspace_channels", {
+// === Agent-driven board (Spec 01) ===
+
+export const threads = sqliteTable("threads", {
   id: text("id").primaryKey(),
   workspaceId: text("workspace_id")
     .notNull()
     .references(() => workspaces.id, { onDelete: "cascade" }),
   kind: text("kind").notNull(),
-  name: text("name").notNull(),
-  slug: text("slug").notNull(),
   taskId: text("task_id"),
+  coordinatorAgentId: text("coordinator_agent_id"),
+  coordinatorState: text("coordinator_state").notNull().default("idle"),
   createdAt: text("created_at").notNull(),
   archivedAt: text("archived_at")
 });
 
-export const channelMessages = sqliteTable("channel_messages", {
+export const messages = sqliteTable("messages", {
   id: text("id").primaryKey(),
-  channelId: text("channel_id")
+  threadId: text("thread_id")
     .notNull()
-    .references(() => workspaceChannels.id, { onDelete: "cascade" }),
-  workspaceId: text("workspace_id")
-    .notNull()
-    .references(() => workspaces.id, { onDelete: "cascade" }),
-  taskId: text("task_id"),
-  agentName: text("agent_name").notNull(),
+    .references(() => threads.id, { onDelete: "cascade" }),
   senderType: text("sender_type").notNull(),
-  messageType: text("message_type").notNull(),
-  content: text("content").notNull(),
-  metadata: text("metadata"),
+  senderAgentId: text("sender_agent_id"),
+  kind: text("kind").notNull(),
+  payload: text("payload").notNull(),
+  consumedByRunId: text("consumed_by_run_id"),
   createdAt: text("created_at").notNull()
 });
 
-export const taskMessages = sqliteTable("task_messages", {
+export const plans = sqliteTable("plans", {
   id: text("id").primaryKey(),
-  parentTaskId: text("parent_task_id").notNull(),
-  taskId: text("task_id"),
-  agentName: text("agent_name").notNull(),
-  senderType: text("sender_type").notNull(),
-  messageType: text("message_type").notNull(),
-  content: text("content").notNull(),
+  threadId: text("thread_id")
+    .notNull()
+    .references(() => threads.id, { onDelete: "cascade" }),
+  proposerAgentId: text("proposer_agent_id").notNull(),
+  status: text("status").notNull().default("pending"),
+  drafts: text("drafts").notNull(),
+  approvedAt: text("approved_at"),
+  createdAt: text("created_at").notNull()
+});
+
+export const agentSessions = sqliteTable("agent_sessions", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id")
+    .notNull()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
+  agentId: text("agent_id").notNull(),
+  threadId: text("thread_id")
+    .notNull()
+    .unique()
+    .references(() => threads.id, { onDelete: "cascade" }),
+  runnerSessionKey: text("runner_session_key"),
   createdAt: text("created_at").notNull()
 });

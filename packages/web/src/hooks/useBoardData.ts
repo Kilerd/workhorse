@@ -28,7 +28,6 @@ import { applyOptimisticStartTask } from "@/lib/start-task";
 import { type DisplayTask, type TaskFormValues } from "@/lib/task-view";
 import { toast } from "@/hooks/use-toast";
 
-import { coordinationQueryKeys } from "./useCoordination";
 import { useLiveLog } from "./useLiveLog";
 import { useModalState } from "./useModalState";
 import { useSelectionState } from "./useSelectionState";
@@ -69,44 +68,6 @@ export function useBoardData() {
       return response.items;
     }
   });
-
-  const invalidateCoordinationThread = useCallback(
-    async ({
-      teamId,
-      workspaceId,
-      parentTaskId
-    }: {
-      teamId?: string;
-      workspaceId?: string;
-      parentTaskId?: string;
-    }) => {
-      if (!parentTaskId) {
-        return;
-      }
-
-      if (teamId) {
-        await queryClient.invalidateQueries({
-          queryKey: coordinationQueryKeys.messages({
-            kind: "legacy_team",
-            teamId,
-            parentTaskId
-          })
-        });
-        return;
-      }
-
-      if (workspaceId) {
-        await queryClient.invalidateQueries({
-          queryKey: coordinationQueryKeys.messages({
-            kind: "workspace",
-            workspaceId,
-            parentTaskId
-          })
-        });
-      }
-    },
-    [queryClient]
-  );
 
   const healthQuery = useQuery({
     queryKey: queryKey("health"),
@@ -478,20 +439,12 @@ export function useBoardData() {
   });
 
   const approveTaskMutation = useMutation({
-    mutationFn: async ({
-      taskId
-    }: {
-      taskId: string;
-      teamId?: string;
-      workspaceId?: string;
-      parentTaskId?: string;
-    }) => {
+    mutationFn: async ({ taskId }: { taskId: string }) => {
       const response = await api.approveTask(taskId);
       return response.task;
     },
-    onSuccess: async (_task, variables) => {
+    onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
-      await invalidateCoordinationThread(variables);
     },
     onError: (error) => {
       notifyMutationError(
@@ -509,16 +462,12 @@ export function useBoardData() {
     }: {
       taskId: string;
       reason?: string;
-      teamId?: string;
-      workspaceId?: string;
-      parentTaskId?: string;
     }) => {
       const response = await api.rejectTask(taskId, { reason });
       return response.task;
     },
-    onSuccess: async (_task, variables) => {
+    onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
-      await invalidateCoordinationThread(variables);
     },
     onError: (error) => {
       notifyMutationError(
@@ -530,21 +479,13 @@ export function useBoardData() {
   });
 
   const retryTaskMutation = useMutation({
-    mutationFn: async ({
-      taskId
-    }: {
-      taskId: string;
-      teamId?: string;
-      workspaceId?: string;
-      parentTaskId?: string;
-    }) => {
+    mutationFn: async ({ taskId }: { taskId: string }) => {
       const response = await api.retryTask(taskId);
       return response.task;
     },
-    onSuccess: async (_task, variables) => {
+    onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
       await queryClient.invalidateQueries({ queryKey: queryKey("runs") });
-      await invalidateCoordinationThread(variables);
     },
     onError: (error) => {
       notifyMutationError(
@@ -556,28 +497,13 @@ export function useBoardData() {
   });
 
   const cancelSubtaskMutation = useMutation({
-    mutationFn: async ({
-      taskId,
-      teamId,
-      workspaceId
-    }: {
-      taskId: string;
-      teamId?: string;
-      workspaceId?: string;
-      parentTaskId?: string;
-    }) => {
-      if (!teamId && !workspaceId) {
-        throw new Error("Subtask cancellation context is unavailable.");
-      }
-      const response = teamId
-        ? await api.cancelSubtask(teamId, taskId)
-        : await api.cancelWorkspaceSubtask(workspaceId!, taskId);
+    mutationFn: async ({ taskId }: { taskId: string; workspaceId: string }) => {
+      const response = await api.stopTask(taskId);
       return response.task;
     },
-    onSuccess: async (_task, variables) => {
+    onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKey("tasks") });
       await queryClient.invalidateQueries({ queryKey: queryKey("runs") });
-      await invalidateCoordinationThread(variables);
     },
     onError: (error) => {
       notifyMutationError(
@@ -710,7 +636,6 @@ export function useBoardData() {
     isPulling: pullWorkspaceMutation.isPending,
     displayedTasks,
     selectedWorkspaceId: selection.selectedWorkspaceId,
-    selectedChannelId: selection.selectedChannelId,
     selectedWorkspaceTasks,
     selectedTask,
     selectedTaskRunsQuery,
@@ -729,7 +654,6 @@ export function useBoardData() {
     setSidebarCollapsed: selection.setSidebarCollapsed,
     setWorkspaceSelection: selection.setWorkspaceSelection,
     setTaskSelection: selection.setTaskSelection,
-    setChannelSelection: selection.setChannelSelection,
     setSelectedRunId: selection.setSelectedRunId,
     recordLiveOutput: liveLog.recordLiveOutput,
     clearLiveOutput: liveLog.clearLiveOutput,

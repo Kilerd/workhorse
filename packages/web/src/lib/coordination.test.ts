@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { AgentTeam, WorkspaceAgent } from "@workhorse/contracts";
+import type { WorkspaceAgent } from "@workhorse/contracts";
 
 import {
+  countWorkspaceWorkers,
   getCoordinationBadgeLabel,
-  getTaskCoordinationScope,
-  resolveCoordinationAgentName
+  getCoordinatorWorkspaceAgent,
+  hasWorkspaceCoordinator,
+  resolveWorkspaceAgentName
 } from "./coordination";
 import type { DisplayTask } from "./task-view";
 
@@ -32,94 +34,57 @@ function makeTask(overrides: Partial<DisplayTask>): DisplayTask {
   } as DisplayTask;
 }
 
+const workspaceAgents: WorkspaceAgent[] = [
+  {
+    id: "agent-coordinator",
+    role: "coordinator",
+    name: "Coordinator",
+    description: "Owns delegation",
+    runnerConfig: { type: "codex", prompt: "Coordinate." },
+    createdAt: "2026-04-15T00:00:00.000Z",
+    updatedAt: "2026-04-15T00:00:00.000Z"
+  },
+  {
+    id: "agent-worker",
+    role: "worker",
+    name: "Worker",
+    description: "Builds things",
+    runnerConfig: { type: "codex", prompt: "Build." },
+    createdAt: "2026-04-15T00:00:00.000Z",
+    updatedAt: "2026-04-15T00:00:00.000Z"
+  }
+];
+
 describe("coordination helpers", () => {
-  const workspaceAgents: WorkspaceAgent[] = [
-    {
-      id: "agent-coordinator",
-      role: "coordinator",
-      name: "Coordinator",
-      description: "Owns delegation",
-      runnerConfig: { type: "codex", prompt: "Coordinate." },
-      createdAt: "2026-04-15T00:00:00.000Z",
-      updatedAt: "2026-04-15T00:00:00.000Z"
-    },
-    {
-      id: "agent-worker",
-      role: "worker",
-      name: "Worker",
-      description: "Builds things",
-      runnerConfig: { type: "codex", prompt: "Build." },
-      createdAt: "2026-04-15T00:00:00.000Z",
-      updatedAt: "2026-04-15T00:00:00.000Z"
-    }
-  ];
-
-  it("prefers the legacy team scope when a task still has teamId", () => {
-    const scope = getTaskCoordinationScope(
-      makeTask({ teamId: "team-1", parentTaskId: "parent-1" }),
-      workspaceAgents
-    );
-
-    expect(scope).toEqual({
-      kind: "legacy_team",
-      teamId: "team-1",
-      parentTaskId: "parent-1"
-    });
+  it("finds the mounted coordinator agent", () => {
+    expect(getCoordinatorWorkspaceAgent(workspaceAgents)?.id).toBe("agent-coordinator");
+    expect(getCoordinatorWorkspaceAgent([])).toBeNull();
   });
 
-  it("uses the workspace scope for coordinator-backed parent tasks", () => {
-    const scope = getTaskCoordinationScope(makeTask({}), workspaceAgents);
-
-    expect(scope).toEqual({
-      kind: "workspace",
-      workspaceId: "ws-1",
-      parentTaskId: "task-1"
-    });
+  it("reports whether a workspace has a coordinator", () => {
+    expect(hasWorkspaceCoordinator(workspaceAgents)).toBe(true);
+    expect(hasWorkspaceCoordinator([])).toBe(false);
   });
 
-  it("uses the workspace scope for workspace subtasks even without a teamId", () => {
-    const scope = getTaskCoordinationScope(
-      makeTask({ parentTaskId: "parent-1", teamAgentId: "agent-worker" }),
-      []
-    );
-
-    expect(scope).toEqual({
-      kind: "workspace",
-      workspaceId: "ws-1",
-      parentTaskId: "parent-1"
-    });
+  it("counts worker agents", () => {
+    expect(countWorkspaceWorkers(workspaceAgents)).toBe(1);
+    expect(countWorkspaceWorkers([])).toBe(0);
   });
 
-  it("returns none when a standalone task has no mounted coordinator", () => {
-    expect(getTaskCoordinationScope(makeTask({}), [])).toEqual({ kind: "none" });
-  });
-
-  it("resolves assigned agent names from legacy teams and workspace agents", () => {
-    const legacyTeam = {
-      id: "team-1",
-      agents: [
-        {
-          id: "legacy-worker",
-          agentName: "Legacy Worker",
-          role: "worker",
-          runnerConfig: { type: "codex", prompt: "Build." }
-        }
-      ]
-    } as AgentTeam;
-
+  it("resolves the assigned agent name from workspace agents", () => {
     expect(
-      resolveCoordinationAgentName({
-        task: makeTask({ teamAgentId: "legacy-worker" }),
-        legacyTeam
-      })
-    ).toBe("Legacy Worker");
-
-    expect(
-      resolveCoordinationAgentName({
-        task: makeTask({ teamAgentId: "agent-worker" }),
+      resolveWorkspaceAgentName(
+        makeTask({ assigneeAgentId: "agent-worker" }),
         workspaceAgents
-      })
+      )
     ).toBe("Worker");
+    expect(
+      resolveWorkspaceAgentName(
+        makeTask({ assigneeAgentId: "agent-coordinator" }),
+        workspaceAgents
+      )
+    ).toBe("Coordinator");
+    expect(resolveWorkspaceAgentName(makeTask({}), workspaceAgents)).toBeNull();
   });
 
   it("labels workspace-backed parent tasks with an agents badge", () => {
@@ -141,5 +106,25 @@ describe("coordination helpers", () => {
     });
 
     expect(label).toBe("Agents · Acme");
+  });
+
+  it("omits the badge when the task is a subtask", () => {
+    const label = getCoordinationBadgeLabel({
+      task: makeTask({ parentTaskId: "parent-1" }),
+      workspace: null,
+      workspaceAgents
+    });
+
+    expect(label).toBeNull();
+  });
+
+  it("omits the badge when the workspace has no coordinator", () => {
+    const label = getCoordinationBadgeLabel({
+      task: makeTask({}),
+      workspace: null,
+      workspaceAgents: []
+    });
+
+    expect(label).toBeNull();
   });
 });

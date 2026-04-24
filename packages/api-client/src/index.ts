@@ -2,26 +2,20 @@ import { Fetcher, type Middleware } from "openapi-typescript-fetch";
 
 import type {
   AccountAgent,
-  AgentTeamData,
-  ChannelMessage,
-  ChannelMessagesData,
   CleanupTaskWorktreeData,
-  CoordinatorProposal,
+  ListThreadsData,
+  ListThreadMessagesData,
+  ListThreadMessagesQuery,
+  Message,
+  PlanData,
+  PostThreadMessageBody,
   CreateAgentBody,
-  CreateTeamBody,
   CreateTaskBody,
   CreateWorkspaceBody,
   DeleteResult,
-  GetTeamParams,
   HealthData,
   ListAgentsData,
-  ListProposalsQuery,
-  ListWorkspaceChannelsData,
-  ListTaskMessagesQuery,
   ListWorkspaceAgentsData,
-  TeamMessagesData,
-  ListTeamMessagesQuery,
-  ListTeamsData,
   ListRunsData,
   ListTasksData,
   ListWorkspacesData,
@@ -30,9 +24,6 @@ import type {
   PlanFeedbackBody,
   PlanFeedbackData,
   PlanTaskData,
-  PostChannelMessageBody,
-  PostTaskMessageBody,
-  PostTeamMessageBody,
   RejectTaskBody,
   RequestTaskReviewData,
   RunLogData,
@@ -44,23 +35,17 @@ import type {
   TaskDiffData,
   TaskInputBody,
   TaskInputData,
-  TaskMessage,
-  TaskMessagesData,
-  TeamMessageData,
   UpdateAgentBody,
   UpdateAgentRoleBody,
-  UpdateTeamBody,
   UpdateSettingsBody,
   UpdateTaskBody,
   UpdateWorkspaceBody,
   UpdateWorkspaceConfigBody,
   WorkspaceAgentData,
-  WorkspaceChannelData,
   WorkspaceData,
   WorkspaceGitRefsData,
   WorkspaceGitStatusData,
-  WorkspaceGitPullData,
-  ListProposalsData
+  WorkspaceGitPullData
 } from "@workhorse/contracts";
 import type { paths } from "./generated/openapi";
 
@@ -109,30 +94,6 @@ export function createApiClient(baseUrl: string) {
     .path("/api/workspaces/{workspaceId}")
     .method("delete")
     .create();
-  const listTeams = fetcher.path("/api/teams").method("get").create();
-  const createTeam = fetcher.path("/api/teams").method("post").create();
-  const getTeam = fetcher.path("/api/teams/{teamId}").method("get").create();
-  const updateTeam = fetcher
-    .path("/api/teams/{teamId}")
-    .method("patch")
-    .create();
-  const deleteTeam = fetcher
-    .path("/api/teams/{teamId}")
-    .method("delete")
-    .create();
-  const listTeamMessages = fetcher
-    .path("/api/teams/{teamId}/messages")
-    .method("get")
-    .create();
-  const postTeamMessage = fetcher
-    .path("/api/teams/{teamId}/messages")
-    .method("post")
-    .create();
-  const cancelSubtask = fetcher
-    .path("/api/teams/{teamId}/tasks/{taskId}/cancel")
-    .method("post")
-    .create();
-
   const listTasks = fetcher.path("/api/tasks").method("get").create();
   const createTask = fetcher.path("/api/tasks").method("post").create();
   const updateTask = fetcher.path("/api/tasks/{taskId}").method("patch").create();
@@ -258,34 +219,6 @@ export function createApiClient(baseUrl: string) {
       ),
     deleteWorkspace: async (workspaceId: string): Promise<DeleteResult> =>
       unwrap((await deleteWorkspace({ workspaceId })).data),
-    listTeams: async (workspaceId?: string): Promise<ListTeamsData> =>
-      unwrap((await listTeams(workspaceId ? { workspaceId } : {})).data),
-    createTeam: async (body: CreateTeamBody): Promise<AgentTeamData> =>
-      unwrap((await createTeam(body)).data),
-    getTeam: async (teamId: GetTeamParams["teamId"]): Promise<AgentTeamData> =>
-      unwrap((await getTeam({ teamId })).data),
-    updateTeam: async (
-      teamId: GetTeamParams["teamId"],
-      body: UpdateTeamBody
-    ): Promise<AgentTeamData> =>
-      unwrap((await updateTeam({ teamId, ...body })).data),
-    deleteTeam: async (teamId: GetTeamParams["teamId"]): Promise<DeleteResult> =>
-      unwrap((await deleteTeam({ teamId })).data),
-    listTeamMessages: async (
-      teamId: GetTeamParams["teamId"],
-      query: ListTeamMessagesQuery = {}
-    ): Promise<TeamMessagesData> =>
-      unwrap((await listTeamMessages({ teamId, ...query })).data),
-    postTeamMessage: async (
-      teamId: GetTeamParams["teamId"],
-      body: PostTeamMessageBody
-    ): Promise<TeamMessageData> =>
-      unwrap((await postTeamMessage({ teamId, ...body })).data),
-    cancelSubtask: async (
-      teamId: GetTeamParams["teamId"],
-      taskId: string
-    ): Promise<TaskData> =>
-      unwrap((await cancelSubtask({ teamId, taskId })).data),
     listTasks: async (workspaceId?: string): Promise<ListTasksData> =>
       unwrap((await listTasks(workspaceId ? { workspaceId } : {})).data),
     createTask: async (body: CreateTaskBody): Promise<TaskData> =>
@@ -355,46 +288,6 @@ export function createApiClient(baseUrl: string) {
       blocked: number;
     }> =>
       unwrap(await requestJson("/api/scheduler/status")),
-    listProposals: async (
-      teamId: string,
-      query: ListProposalsQuery = {}
-    ): Promise<{ items: CoordinatorProposal[] }> => {
-      const qs = query.parentTaskId
-        ? `?parentTaskId=${encodeURIComponent(query.parentTaskId)}`
-        : "";
-      return unwrap(
-        await requestJson(`/api/teams/${encodeURIComponent(teamId)}/proposals${qs}`)
-      );
-    },
-    getProposal: async (
-      teamId: string,
-      proposalId: string
-    ): Promise<{ proposal: CoordinatorProposal }> =>
-      unwrap(
-        await requestJson(
-          `/api/teams/${encodeURIComponent(teamId)}/proposals/${encodeURIComponent(proposalId)}`
-        )
-      ),
-    approveProposal: async (
-      teamId: string,
-      proposalId: string
-    ): Promise<{ proposal: CoordinatorProposal }> =>
-      unwrap(
-        await requestJson(
-          `/api/teams/${encodeURIComponent(teamId)}/proposals/${encodeURIComponent(proposalId)}/approve`,
-          { method: "POST" }
-        )
-      ),
-    rejectProposal: async (
-      teamId: string,
-      proposalId: string
-    ): Promise<{ proposal: CoordinatorProposal }> =>
-      unwrap(
-        await requestJson(
-          `/api/teams/${encodeURIComponent(teamId)}/proposals/${encodeURIComponent(proposalId)}/reject`,
-          { method: "POST" }
-        )
-      ),
     listAgents: async (): Promise<ListAgentsData> =>
       unwrap(await requestJson("/api/agents")),
     createAgent: async (body: CreateAgentBody): Promise<{ agent: AccountAgent }> =>
@@ -469,156 +362,62 @@ export function createApiClient(baseUrl: string) {
           { method: "PATCH", body: JSON.stringify(body) }
         )
       ),
-    listWorkspaceChannels: async (
+    // ── Agent-driven board: Threads / Messages (Spec 04 + Spec 08) ───────────
+    listWorkspaceThreads: async (
       workspaceId: string
-    ): Promise<ListWorkspaceChannelsData> =>
+    ): Promise<ListThreadsData> =>
       unwrap(
         await requestJson(
-          `/api/workspaces/${encodeURIComponent(workspaceId)}/channels`
+          `/api/workspaces/${encodeURIComponent(workspaceId)}/threads`
         )
       ),
-    getWorkspaceChannel: async (
-      workspaceId: string,
-      channelId: string
-    ): Promise<WorkspaceChannelData> =>
-      unwrap(
-        await requestJson(
-          `/api/workspaces/${encodeURIComponent(workspaceId)}/channels/${encodeURIComponent(channelId)}`
-        )
-      ),
-    getWorkspaceChannelBySlug: async (
-      workspaceId: string,
-      channelSlug: string
-    ): Promise<WorkspaceChannelData> =>
-      unwrap(
-        await requestJson(
-          `/api/workspaces/${encodeURIComponent(workspaceId)}/channels/by-slug/${encodeURIComponent(channelSlug)}`
-        )
-      ),
-    listChannelMessages: async (
-      workspaceId: string,
-      channelId: string
-    ): Promise<ChannelMessagesData> =>
-      unwrap(
-        await requestJson(
-          `/api/workspaces/${encodeURIComponent(workspaceId)}/channels/${encodeURIComponent(channelId)}/messages`
-        )
-      ),
-    postChannelMessage: async (
-      workspaceId: string,
-      channelId: string,
-      body: PostChannelMessageBody
-    ): Promise<{ item: ChannelMessage }> =>
-      unwrap(
-        await requestJson(
-          `/api/workspaces/${encodeURIComponent(workspaceId)}/channels/${encodeURIComponent(channelId)}/messages`,
-          { method: "POST", body: JSON.stringify(body) }
-        )
-      ),
-    listChannelProposals: async (
-      workspaceId: string,
-      channelId: string
-    ): Promise<ListProposalsData> =>
-      unwrap(
-        await requestJson(
-          `/api/workspaces/${encodeURIComponent(workspaceId)}/channels/${encodeURIComponent(channelId)}/proposals`
-        )
-      ),
-    approveChannelProposal: async (
-      workspaceId: string,
-      channelId: string,
-      proposalId: string
-    ): Promise<{ proposal: CoordinatorProposal }> =>
-      unwrap(
-        await requestJson(
-          `/api/workspaces/${encodeURIComponent(workspaceId)}/channels/${encodeURIComponent(channelId)}/proposals/${encodeURIComponent(proposalId)}/approve`,
-          { method: "POST" }
-        )
-      ),
-    rejectChannelProposal: async (
-      workspaceId: string,
-      channelId: string,
-      proposalId: string
-    ): Promise<{ proposal: CoordinatorProposal }> =>
-      unwrap(
-        await requestJson(
-          `/api/workspaces/${encodeURIComponent(workspaceId)}/channels/${encodeURIComponent(channelId)}/proposals/${encodeURIComponent(proposalId)}/reject`,
-          { method: "POST" }
-        )
-      ),
-    listTaskMessages: async (
-      workspaceId: string,
-      query: ListTaskMessagesQuery = {}
-    ): Promise<TaskMessagesData> => {
-      const qs = query.parentTaskId
-        ? `?parentTaskId=${encodeURIComponent(query.parentTaskId)}`
-        : "";
+    listThreadMessages: async (
+      threadId: string,
+      query: ListThreadMessagesQuery = {}
+    ): Promise<ListThreadMessagesData> => {
+      const params = new URLSearchParams();
+      if (query.after) params.set("after", query.after);
+      if (query.limit !== undefined) params.set("limit", String(query.limit));
+      const qs = params.toString();
       return unwrap(
         await requestJson(
-          `/api/workspaces/${encodeURIComponent(workspaceId)}/task-messages${qs}`
+          `/api/threads/${encodeURIComponent(threadId)}/messages${qs ? `?${qs}` : ""}`
         )
       );
     },
-    postTaskMessage: async (
-      workspaceId: string,
-      body: PostTaskMessageBody
-    ): Promise<{ item: TaskMessage }> =>
+    postThreadMessage: async (
+      threadId: string,
+      body: PostThreadMessageBody
+    ): Promise<{ message: Message }> =>
       unwrap(
         await requestJson(
-          `/api/workspaces/${encodeURIComponent(workspaceId)}/task-messages`,
+          `/api/threads/${encodeURIComponent(threadId)}/messages`,
           { method: "POST", body: JSON.stringify(body) }
         )
       ),
-    listWorkspaceProposals: async (
-      workspaceId: string,
-      query: ListProposalsQuery = {}
-    ): Promise<ListProposalsData> => {
-      const qs = query.parentTaskId
-        ? `?parentTaskId=${encodeURIComponent(query.parentTaskId)}`
-        : "";
-      return unwrap(
-        await requestJson(
-          `/api/workspaces/${encodeURIComponent(workspaceId)}/proposals${qs}`
-        )
-      );
-    },
-    getWorkspaceProposal: async (
-      workspaceId: string,
-      proposalId: string
-    ): Promise<{ proposal: CoordinatorProposal }> =>
+    // ── Agent-driven board: Plans (Spec 05 + Spec 08) ────────────────────────
+    getPlan: async (planId: string): Promise<PlanData> =>
+      unwrap(
+        await requestJson(`/api/plans/${encodeURIComponent(planId)}`)
+      ),
+    approvePlan: async (planId: string): Promise<PlanData> =>
       unwrap(
         await requestJson(
-          `/api/workspaces/${encodeURIComponent(workspaceId)}/proposals/${encodeURIComponent(proposalId)}`
+          `/api/plans/${encodeURIComponent(planId)}/approve`,
+          { method: "POST", body: "{}" }
         )
       ),
-    approveWorkspaceProposal: async (
-      workspaceId: string,
-      proposalId: string
-    ): Promise<{ proposal: CoordinatorProposal }> =>
+    rejectPlan: async (
+      planId: string,
+      reason?: string
+    ): Promise<PlanData> =>
       unwrap(
         await requestJson(
-          `/api/workspaces/${encodeURIComponent(workspaceId)}/proposals/${encodeURIComponent(proposalId)}/approve`,
-          { method: "POST" }
-        )
-      ),
-    rejectWorkspaceProposal: async (
-      workspaceId: string,
-      proposalId: string
-    ): Promise<{ proposal: CoordinatorProposal }> =>
-      unwrap(
-        await requestJson(
-          `/api/workspaces/${encodeURIComponent(workspaceId)}/proposals/${encodeURIComponent(proposalId)}/reject`,
-          { method: "POST" }
-        )
-      ),
-    cancelWorkspaceSubtask: async (
-      workspaceId: string,
-      taskId: string
-    ): Promise<TaskData> =>
-      unwrap(
-        await requestJson(
-          `/api/workspaces/${encodeURIComponent(workspaceId)}/tasks/${encodeURIComponent(taskId)}/cancel`,
-          { method: "POST" }
+          `/api/plans/${encodeURIComponent(planId)}/reject`,
+          {
+            method: "POST",
+            body: JSON.stringify(reason ? { reason } : {})
+          }
         )
       )
   };

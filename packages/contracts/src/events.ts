@@ -1,14 +1,12 @@
 import type {
   AccountAgent,
-  AgentTeam,
-  ChannelMessage,
-  CoordinatorProposal,
+  Message,
+  Plan,
   Run,
   RunLogEntry,
   Task,
-  TaskMessage,
+  Thread,
   Workspace,
-  WorkspaceChannel,
   WorkspaceAgent
 } from "./domain.js";
 
@@ -68,48 +66,6 @@ export interface SchedulerEvaluatedEvent {
   blocked: string[];
 }
 
-export interface TeamUpdatedEvent {
-  type: "team.updated";
-  action: "created" | "updated" | "deleted";
-  teamId: string;
-  team?: AgentTeam;
-}
-
-export interface TeamAgentMessageEvent {
-  type: "team.agent.message";
-  teamId: string;
-  parentTaskId: string;
-  fromAgentId: string;
-  toAgentId?: string;
-  messageType: "status" | "artifact" | "context" | "feedback";
-  payload: string;
-}
-
-export interface TeamTaskCreatedEvent {
-  type: "team.task.created";
-  teamId: string;
-  parentTaskId: string;
-  subtasks: Array<{
-    taskId: string;
-    title: string;
-    agentName: string;
-  }>;
-}
-
-export interface TeamProposalCreatedEvent {
-  type: "team.proposal.created";
-  teamId: string;
-  parentTaskId: string;
-  proposal: CoordinatorProposal;
-}
-
-export interface TeamProposalUpdatedEvent {
-  type: "team.proposal.updated";
-  teamId: string;
-  parentTaskId: string;
-  proposal: CoordinatorProposal;
-}
-
 export interface AgentUpdatedEvent {
   type: "agent.updated";
   action: "created" | "updated" | "deleted";
@@ -125,54 +81,31 @@ export interface WorkspaceAgentUpdatedEvent {
   agent?: WorkspaceAgent;
 }
 
-export interface WorkspaceChannelUpdatedEvent {
-  type: "workspace.channel.updated";
+// === Agent-driven board (Spec 02) ===
+
+export interface ThreadMessageEvent {
+  type: "thread.message";
+  threadId: string;
+  message: Message;
+}
+
+export interface ThreadUpdatedEvent {
+  type: "thread.updated";
   action: "created" | "updated" | "archived";
-  workspaceId: string;
-  channelId: string;
-  channel?: WorkspaceChannel;
+  threadId: string;
+  thread?: Thread;
 }
 
-export interface TaskMessageCreatedEvent {
-  type: "task.message.created";
-  workspaceId: string;
-  parentTaskId: string;
-  message: TaskMessage;
+export interface PlanCreatedEvent {
+  type: "plan.created";
+  planId: string;
+  plan: Plan;
 }
 
-export interface ChannelMessageCreatedEvent {
-  type: "channel.message.created";
-  workspaceId: string;
-  channelId: string;
-  message: ChannelMessage;
-}
-
-export interface WorkspaceProposalCreatedEvent {
-  type: "workspace.proposal.created";
-  workspaceId: string;
-  parentTaskId: string;
-  proposal: CoordinatorProposal;
-}
-
-export interface ChannelProposalCreatedEvent {
-  type: "channel.proposal.created";
-  workspaceId: string;
-  channelId: string;
-  proposal: CoordinatorProposal;
-}
-
-export interface WorkspaceProposalUpdatedEvent {
-  type: "workspace.proposal.updated";
-  workspaceId: string;
-  parentTaskId: string;
-  proposal: CoordinatorProposal;
-}
-
-export interface ChannelProposalUpdatedEvent {
-  type: "channel.proposal.updated";
-  workspaceId: string;
-  channelId: string;
-  proposal: CoordinatorProposal;
+export interface PlanUpdatedEvent {
+  type: "plan.updated";
+  planId: string;
+  plan: Plan;
 }
 
 export type ServerEvent =
@@ -185,17 +118,9 @@ export type ServerEvent =
   | TaskBlockedEvent
   | TaskUnblockedEvent
   | SchedulerEvaluatedEvent
-  | TeamUpdatedEvent
-  | TeamAgentMessageEvent
-  | TeamTaskCreatedEvent
-  | TeamProposalCreatedEvent
-  | TeamProposalUpdatedEvent
   | AgentUpdatedEvent
   | WorkspaceAgentUpdatedEvent
-  | WorkspaceChannelUpdatedEvent
-  | TaskMessageCreatedEvent
-  | ChannelMessageCreatedEvent
-  | WorkspaceProposalCreatedEvent
-  | WorkspaceProposalUpdatedEvent
-  | ChannelProposalCreatedEvent
-  | ChannelProposalUpdatedEvent;
+  | ThreadMessageEvent
+  | ThreadUpdatedEvent
+  | PlanCreatedEvent
+  | PlanUpdatedEvent;

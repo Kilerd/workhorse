@@ -9,24 +9,23 @@ import { and, asc, eq } from "drizzle-orm";
 import type {
   AccountAgent,
   AgentRole,
-  AgentTeam,
+  AgentSession,
   AppState,
-  ChannelMessage,
-  CoordinatorProposal,
-  CoordinatorProposalDraft,
-  CoordinatorProposalMode,
-  CoordinatorProposalStatus,
+  CoordinatorState,
   GlobalSettings,
+  Message,
+  MessageKind,
+  MessageSender,
+  Plan,
+  PlanDraft,
+  PlanStatus,
   Run,
   RunLogEntry,
   RunnerConfig,
   Task,
-  TaskMessage,
-  TeamMessage,
-  TeamPrStrategy,
+  Thread,
+  ThreadKind,
   Workspace,
-  WorkspaceChannel,
-  WorkspaceChannelKind,
   WorkspaceAgent
 } from "@workhorse/contracts";
 
@@ -40,6 +39,7 @@ import { resolveWorkspacePromptTemplates } from "../lib/workspace-prompt-templat
 import * as schema from "./schema.js";
 
 const SETTINGS_KEY = "global";
+const AGENT_DRIVEN_BOARD_BACKFILL_MARKER = "agent_driven_board_backfill_v1";
 
 // ---------------------------------------------------------------------------
 // JSON migration helpers (kept for one-shot migration from legacy state.json)
@@ -76,7 +76,7 @@ function migrateJsonState(state: AppState): AppState {
   });
 
   return {
-    schemaVersion: state.schemaVersion ?? 7,
+    schemaVersion: state.schemaVersion ?? 8,
     settings: resolvedSettings,
     workspaces: workspaceList,
     tasks: taskList,
@@ -113,47 +113,6 @@ function sanitizeStateForPersistence(state: AppState): AppState {
   };
 }
 
-function slugifyChannelName(value: string): string {
-  const slug = value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return slug || "channel";
-}
-
-function buildUniqueChannelSlug(
-  channels: Array<Pick<WorkspaceChannel, "id" | "workspaceId" | "slug">>,
-  workspaceId: string,
-  value: string,
-  excludeChannelId?: string
-): string {
-  const baseSlug = slugifyChannelName(value);
-  const existingSlugs = new Set(
-    channels
-      .filter(
-        (channel) =>
-          channel.workspaceId === workspaceId && channel.id !== excludeChannelId
-      )
-      .map((channel) => channel.slug)
-  );
-
-  if (!existingSlugs.has(baseSlug)) {
-    return baseSlug;
-  }
-
-  let suffix = 2;
-  while (existingSlugs.has(`${baseSlug}-${suffix}`)) {
-    suffix += 1;
-  }
-
-  return `${baseSlug}-${suffix}`;
-}
-
-function formatTaskChannelName(title: string): string {
-  return title.trim() || "Untitled task";
-}
-
 // ---------------------------------------------------------------------------
 // Row <-> domain type conversions
 // ---------------------------------------------------------------------------
@@ -162,13 +121,12 @@ type WorkspaceRow = typeof schema.workspaces.$inferSelect;
 type TaskRow = typeof schema.tasks.$inferSelect;
 type RunRow = typeof schema.runs.$inferSelect;
 type RunLogEntryRow = typeof schema.runLogEntries.$inferSelect;
-type TeamRow = typeof schema.teams.$inferSelect;
-type TeamMessageRow = typeof schema.teamMessages.$inferSelect;
 type AgentRow = typeof schema.agents.$inferSelect;
 type WorkspaceAgentRow = typeof schema.workspaceAgents.$inferSelect;
-type WorkspaceChannelRow = typeof schema.workspaceChannels.$inferSelect;
-type ChannelMessageRow = typeof schema.channelMessages.$inferSelect;
-type TaskMessageRow = typeof schema.taskMessages.$inferSelect;
+type ThreadRow = typeof schema.threads.$inferSelect;
+type MessageRow = typeof schema.messages.$inferSelect;
+type AgentSessionRow = typeof schema.agentSessions.$inferSelect;
+type PlanRow = typeof schema.plans.$inferSelect;
 
 function rowToWorkspace(row: WorkspaceRow): Workspace {
   return {
@@ -178,7 +136,8 @@ function rowToWorkspace(row: WorkspaceRow): Workspace {
     isGitRepo: Boolean(row.isGitRepo),
     codexSettings: JSON.parse(row.codexSettings),
     promptTemplates: row.promptTemplates ? JSON.parse(row.promptTemplates) : undefined,
-    prStrategy: (row.prStrategy as TeamPrStrategy) ?? undefined,
+    prStrategy:
+      (row.prStrategy as "independent" | "stacked" | "single") ?? undefined,
     autoApproveSubtasks: row.autoApproveSubtasks ?? undefined,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt
@@ -243,45 +202,78 @@ function rowToWorkspaceAgent(agentRow: AgentRow, waRow: WorkspaceAgentRow): Work
   };
 }
 
-function rowToWorkspaceChannel(row: WorkspaceChannelRow): WorkspaceChannel {
+function rowToThread(row: ThreadRow): Thread {
   return {
     id: row.id,
     workspaceId: row.workspaceId,
-    kind: row.kind as WorkspaceChannelKind,
-    name: row.name,
-    slug: row.slug,
+    kind: row.kind as ThreadKind,
     taskId: row.taskId ?? undefined,
+    coordinatorAgentId: row.coordinatorAgentId ?? undefined,
+    coordinatorState: row.coordinatorState as CoordinatorState,
     createdAt: row.createdAt,
     archivedAt: row.archivedAt ?? undefined
   };
 }
 
-function rowToChannelMessage(row: ChannelMessageRow): ChannelMessage {
+function rowToMessage(row: MessageRow): Message {
+  let sender: MessageSender;
+  if (row.senderType === "user") {
+    sender = { type: "user" };
+  } else if (row.senderType === "system") {
+    sender = { type: "system" };
+  } else if (row.senderType === "agent") {
+    sender = { type: "agent", agentId: row.senderAgentId ?? "" };
+  } else {
+    // Defensive fallback — unknown sender types are treated as system.
+    sender = { type: "system" };
+  }
+
+  let payload: unknown;
+  try {
+    payload = JSON.parse(row.payload);
+  } catch {
+    payload = row.payload;
+  }
+
   return {
     id: row.id,
-    channelId: row.channelId,
-    workspaceId: row.workspaceId,
-    taskId: row.taskId ?? undefined,
-    agentName: row.agentName,
-    senderType: row.senderType as ChannelMessage["senderType"],
-    messageType: row.messageType as ChannelMessage["messageType"],
-    content: row.content,
-    metadata: row.metadata
-      ? (JSON.parse(row.metadata) as Record<string, string>)
-      : undefined,
+    threadId: row.threadId,
+    sender,
+    kind: row.kind as MessageKind,
+    payload,
+    consumedByRunId: row.consumedByRunId ?? undefined,
     createdAt: row.createdAt
   };
 }
 
-function rowToTaskMessage(row: TaskMessageRow): TaskMessage {
+function rowToAgentSession(row: AgentSessionRow): AgentSession {
   return {
     id: row.id,
-    parentTaskId: row.parentTaskId,
-    taskId: row.taskId ?? undefined,
-    agentName: row.agentName,
-    senderType: row.senderType as TaskMessage["senderType"],
-    messageType: row.messageType as TaskMessage["messageType"],
-    content: row.content,
+    workspaceId: row.workspaceId,
+    agentId: row.agentId,
+    threadId: row.threadId,
+    runnerSessionKey: row.runnerSessionKey ?? undefined,
+    createdAt: row.createdAt
+  };
+}
+
+function rowToPlan(row: PlanRow): Plan {
+  let drafts: PlanDraft[] = [];
+  try {
+    const parsed = JSON.parse(row.drafts);
+    if (Array.isArray(parsed)) {
+      drafts = parsed as PlanDraft[];
+    }
+  } catch {
+    drafts = [];
+  }
+  return {
+    id: row.id,
+    threadId: row.threadId,
+    proposerAgentId: row.proposerAgentId,
+    status: row.status as PlanStatus,
+    drafts,
+    approvedAt: row.approvedAt ?? undefined,
     createdAt: row.createdAt
   };
 }
@@ -309,9 +301,10 @@ function rowToTask(row: TaskRow, depIds: string[]): Task {
     rejected: row.rejected,
     cancelledAt: row.cancelledAt ?? undefined,
     taskKind: (row.taskKind as Task["taskKind"] | null) ?? "user",
-    teamId: row.teamId ?? undefined,
     parentTaskId: row.parentTaskId ?? undefined,
-    teamAgentId: row.teamAgentId ?? undefined,
+    source: (row.source as Task["source"] | null) ?? "user",
+    planId: row.planId ?? undefined,
+    assigneeAgentId: row.assigneeAgentId ?? undefined,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt
   };
@@ -337,60 +330,12 @@ function taskToRow(task: Task): typeof schema.tasks.$inferInsert {
     rejected: task.rejected ?? false,
     cancelledAt: task.cancelledAt ?? null,
     taskKind: task.taskKind,
-    teamId: task.teamId ?? null,
     parentTaskId: task.parentTaskId ?? null,
-    teamAgentId: task.teamAgentId ?? null,
+    source: task.source ?? "user",
+    planId: task.planId ?? null,
+    assigneeAgentId: task.assigneeAgentId ?? null,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt
-  };
-}
-
-function rowToTeam(row: TeamRow): AgentTeam {
-  const rawAgents = JSON.parse(row.agents) as AgentTeam["agents"];
-  return {
-    id: row.id,
-    name: row.name,
-    description: row.description,
-    workspaceId: row.workspaceId,
-    agents: rawAgents.map((teamAgent) => ({
-      ...teamAgent,
-      runnerConfig: normalizeRunnerConfig(teamAgent.runnerConfig)
-    })),
-    prStrategy: row.prStrategy as AgentTeam["prStrategy"],
-    autoApproveSubtasks: row.autoApproveSubtasks,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt
-  };
-}
-
-function rowToTeamMessage(row: TeamMessageRow): TeamMessage {
-  return {
-    id: row.id,
-    teamId: row.teamId,
-    parentTaskId: row.parentTaskId,
-    taskId: row.taskId ?? undefined,
-    agentName: row.agentName,
-    senderType: row.senderType as TeamMessage["senderType"],
-    messageType: row.messageType as TeamMessage["messageType"],
-    content: row.content,
-    createdAt: row.createdAt
-  };
-}
-
-type ProposalRow = typeof schema.coordinatorProposals.$inferSelect;
-
-function rowToProposal(row: ProposalRow): CoordinatorProposal {
-  return {
-    id: row.id,
-    teamId: row.teamId,
-    workspaceId: row.workspaceId ?? undefined,
-    channelId: row.channelId ?? undefined,
-    parentTaskId: row.parentTaskId,
-    proposalMode: (row.proposalMode as CoordinatorProposalMode | null) ?? "subtasks",
-    status: row.status as CoordinatorProposalStatus,
-    drafts: JSON.parse(row.drafts) as CoordinatorProposalDraft[],
-    createdAt: row.createdAt,
-    decidedAt: row.decidedAt ?? undefined
   };
 }
 
@@ -460,7 +405,7 @@ export class StateStore {
   private db!: ReturnType<typeof drizzle<typeof schema>>;
 
   private state: AppState = {
-    schemaVersion: 7,
+    schemaVersion: 8,
     settings: resolveGlobalSettings(undefined),
     workspaces: [],
     tasks: [],
@@ -503,7 +448,6 @@ export class StateStore {
       }
     }
 
-    this.runChannelBackfills();
     this.state = this.readStateFromDb();
   }
 
@@ -634,258 +578,6 @@ export class StateStore {
         metadata: entry.metadata != null ? JSON.stringify(entry.metadata) : null
       })
       .run();
-  }
-
-  // -------------------------------------------------------------------------
-  // Team CRUD (go directly to SQLite, not buffered in AppState)
-  // -------------------------------------------------------------------------
-
-  public listTeams(workspaceId?: string): AgentTeam[] {
-    const query = this.db.select().from(schema.teams);
-    const rows = workspaceId
-      ? query.where(eq(schema.teams.workspaceId, workspaceId)).all()
-      : query.all();
-    return rows.map(rowToTeam);
-  }
-
-  public getTeam(teamId: string): AgentTeam | null {
-    const row = this.db
-      .select()
-      .from(schema.teams)
-      .where(eq(schema.teams.id, teamId))
-      .get();
-    return row ? rowToTeam(row) : null;
-  }
-
-  public createTeam(team: AgentTeam): AgentTeam {
-    this.db
-      .insert(schema.teams)
-      .values({
-        id: team.id,
-        name: team.name,
-        description: team.description,
-        workspaceId: team.workspaceId,
-        agents: JSON.stringify(team.agents),
-        prStrategy: team.prStrategy,
-        autoApproveSubtasks: team.autoApproveSubtasks,
-        createdAt: team.createdAt,
-        updatedAt: team.updatedAt
-      })
-      .run();
-    return team;
-  }
-
-  public updateTeam(teamId: string, updates: Partial<Pick<AgentTeam, "name" | "description" | "agents" | "prStrategy" | "autoApproveSubtasks">>): AgentTeam | null {
-    const existing = this.getTeam(teamId);
-    if (!existing) {
-      return null;
-    }
-    const updated: AgentTeam = {
-      ...existing,
-      ...updates,
-      updatedAt: new Date().toISOString()
-    };
-    this.db
-      .update(schema.teams)
-      .set({
-        name: updated.name,
-        description: updated.description,
-        agents: JSON.stringify(updated.agents),
-        prStrategy: updated.prStrategy,
-        autoApproveSubtasks: updated.autoApproveSubtasks,
-        updatedAt: updated.updatedAt
-      })
-      .where(eq(schema.teams.id, teamId))
-      .run();
-    return updated;
-  }
-
-  public deleteTeam(teamId: string): boolean {
-    const result = this.db
-      .delete(schema.teams)
-      .where(eq(schema.teams.id, teamId))
-      .run();
-    return result.changes > 0;
-  }
-
-  public listTeamMessages(teamId: string, parentTaskId?: string): TeamMessage[] {
-    const rows = parentTaskId
-      ? this.db
-          .select()
-          .from(schema.teamMessages)
-          .where(
-            and(
-              eq(schema.teamMessages.teamId, teamId),
-              eq(schema.teamMessages.parentTaskId, parentTaskId)
-            )
-          )
-          .orderBy(asc(schema.teamMessages.createdAt))
-          .all()
-      : this.db
-          .select()
-          .from(schema.teamMessages)
-          .where(eq(schema.teamMessages.teamId, teamId))
-          .orderBy(asc(schema.teamMessages.createdAt))
-          .all();
-    return rows.map(rowToTeamMessage);
-  }
-
-  public appendTeamMessage(message: TeamMessage): void {
-    const MAX_CONTENT_BYTES = 10 * 1024;
-    if (Buffer.byteLength(message.content, "utf8") > MAX_CONTENT_BYTES) {
-      throw new AppError(400, "MESSAGE_TOO_LARGE", "Message content exceeds 10KB limit");
-    }
-    this.db
-      .insert(schema.teamMessages)
-      .values({
-        id: message.id,
-        teamId: message.teamId,
-        parentTaskId: message.parentTaskId,
-        taskId: message.taskId ?? null,
-        agentName: message.agentName,
-        senderType: message.senderType,
-        messageType: message.messageType,
-        content: message.content,
-        createdAt: message.createdAt
-      })
-      .run();
-  }
-
-  // -------------------------------------------------------------------------
-  // Coordinator Proposals (go directly to SQLite, not buffered in AppState)
-  // -------------------------------------------------------------------------
-
-  public listProposals(teamId: string, parentTaskId?: string): CoordinatorProposal[] {
-    const rows = parentTaskId
-      ? this.db
-          .select()
-          .from(schema.coordinatorProposals)
-          .where(
-            and(
-              eq(schema.coordinatorProposals.teamId, teamId),
-              eq(schema.coordinatorProposals.parentTaskId, parentTaskId)
-            )
-          )
-          .orderBy(asc(schema.coordinatorProposals.createdAt))
-          .all()
-      : this.db
-          .select()
-          .from(schema.coordinatorProposals)
-          .where(eq(schema.coordinatorProposals.teamId, teamId))
-          .orderBy(asc(schema.coordinatorProposals.createdAt))
-          .all();
-    return rows.map(rowToProposal);
-  }
-
-  public listProposalsByWorkspace(
-    workspaceId: string,
-    parentTaskId?: string
-  ): CoordinatorProposal[] {
-    const rows = parentTaskId
-      ? this.db
-          .select()
-          .from(schema.coordinatorProposals)
-          .where(
-            and(
-              eq(schema.coordinatorProposals.workspaceId, workspaceId),
-              eq(schema.coordinatorProposals.parentTaskId, parentTaskId)
-            )
-          )
-          .orderBy(asc(schema.coordinatorProposals.createdAt))
-          .all()
-      : this.db
-          .select()
-          .from(schema.coordinatorProposals)
-          .where(eq(schema.coordinatorProposals.workspaceId, workspaceId))
-          .orderBy(asc(schema.coordinatorProposals.createdAt))
-          .all();
-    return rows.map(rowToProposal);
-  }
-
-  public listChannelProposals(channelId: string): CoordinatorProposal[] {
-    return this.db
-      .select()
-      .from(schema.coordinatorProposals)
-      .where(eq(schema.coordinatorProposals.channelId, channelId))
-      .orderBy(asc(schema.coordinatorProposals.createdAt))
-      .all()
-      .map(rowToProposal);
-  }
-
-  public getProposal(proposalId: string): CoordinatorProposal | null {
-    const row = this.db
-      .select()
-      .from(schema.coordinatorProposals)
-      .where(eq(schema.coordinatorProposals.id, proposalId))
-      .get();
-    return row ? rowToProposal(row) : null;
-  }
-
-  public saveProposal(proposal: CoordinatorProposal): CoordinatorProposal {
-    this.db
-      .insert(schema.coordinatorProposals)
-      .values({
-        id: proposal.id,
-        teamId: proposal.teamId,
-        workspaceId: proposal.workspaceId ?? null,
-        channelId: proposal.channelId ?? null,
-        parentTaskId: proposal.parentTaskId,
-        proposalMode: proposal.proposalMode,
-        status: proposal.status,
-        drafts: JSON.stringify(proposal.drafts),
-        createdAt: proposal.createdAt,
-        decidedAt: proposal.decidedAt ?? null
-      })
-      .run();
-    return proposal;
-  }
-
-  public updateProposalStatus(
-    proposalId: string,
-    status: CoordinatorProposalStatus,
-    decidedAt: string | null
-  ): CoordinatorProposal | null {
-    const existing = this.getProposal(proposalId);
-    if (!existing) {
-      return null;
-    }
-    this.db
-      .update(schema.coordinatorProposals)
-      .set({ status, decidedAt })
-      .where(eq(schema.coordinatorProposals.id, proposalId))
-      .run();
-    return { ...existing, status, decidedAt: decidedAt ?? undefined };
-  }
-
-  /**
-   * Compare-and-swap: updates status from `expectedStatus` to `newStatus` atomically.
-   * Returns the updated proposal on success, or null if the status did not match
-   * (i.e., a concurrent caller already changed it).
-   */
-  public updateProposalStatusCAS(
-    proposalId: string,
-    expectedStatus: CoordinatorProposalStatus,
-    newStatus: CoordinatorProposalStatus,
-    decidedAt: string
-  ): CoordinatorProposal | null {
-    const existing = this.getProposal(proposalId);
-    if (!existing) {
-      return null;
-    }
-    const result = this.db
-      .update(schema.coordinatorProposals)
-      .set({ status: newStatus, decidedAt })
-      .where(
-        and(
-          eq(schema.coordinatorProposals.id, proposalId),
-          eq(schema.coordinatorProposals.status, expectedStatus)
-        )
-      )
-      .run();
-    if (result.changes === 0) {
-      return null;
-    }
-    return { ...existing, status: newStatus, decidedAt };
   }
 
   // -------------------------------------------------------------------------
@@ -1070,201 +762,376 @@ export class StateStore {
   }
 
   // -------------------------------------------------------------------------
-  // Workspace Channels
+  // Threads / Messages / Agent Sessions (Spec 04)
   // -------------------------------------------------------------------------
 
-  public listWorkspaceChannels(workspaceId: string): WorkspaceChannel[] {
-    return this.db
-      .select()
-      .from(schema.workspaceChannels)
-      .where(eq(schema.workspaceChannels.workspaceId, workspaceId))
-      .orderBy(asc(schema.workspaceChannels.createdAt))
-      .all()
-      .map(rowToWorkspaceChannel);
-  }
-
-  public getWorkspaceChannel(channelId: string): WorkspaceChannel | null {
-    const row = this.db
-      .select()
-      .from(schema.workspaceChannels)
-      .where(eq(schema.workspaceChannels.id, channelId))
-      .get();
-    return row ? rowToWorkspaceChannel(row) : null;
-  }
-
-  public getWorkspaceChannelBySlug(
-    workspaceId: string,
-    channelSlug: string
-  ): WorkspaceChannel | null {
-    const row = this.db
-      .select()
-      .from(schema.workspaceChannels)
-      .where(
-        and(
-          eq(schema.workspaceChannels.workspaceId, workspaceId),
-          eq(schema.workspaceChannels.slug, channelSlug)
-        )
-      )
-      .get();
-    return row ? rowToWorkspaceChannel(row) : null;
-  }
-
-  public getWorkspaceAllChannel(workspaceId: string): WorkspaceChannel | null {
-    const row = this.db
-      .select()
-      .from(schema.workspaceChannels)
-      .where(
-        and(
-          eq(schema.workspaceChannels.workspaceId, workspaceId),
-          eq(schema.workspaceChannels.kind, "all")
-        )
-      )
-      .get();
-    return row ? rowToWorkspaceChannel(row) : null;
-  }
-
-  public getWorkspaceChannelByTaskId(taskId: string): WorkspaceChannel | null {
-    const row = this.db
-      .select()
-      .from(schema.workspaceChannels)
-      .where(eq(schema.workspaceChannels.taskId, taskId))
-      .get();
-    return row ? rowToWorkspaceChannel(row) : null;
-  }
-
-  public getTaskChannelByTaskId(taskId: string): WorkspaceChannel | null {
-    const row = this.db
-      .select()
-      .from(schema.workspaceChannels)
-      .where(
-        and(
-          eq(schema.workspaceChannels.taskId, taskId),
-          eq(schema.workspaceChannels.kind, "task")
-        )
-      )
-      .get();
-    return row ? rowToWorkspaceChannel(row) : null;
-  }
-
-  public saveWorkspaceChannel(channel: WorkspaceChannel): WorkspaceChannel {
+  public insertThread(thread: Thread): void {
     this.db
-      .insert(schema.workspaceChannels)
+      .insert(schema.threads)
       .values({
-        id: channel.id,
-        workspaceId: channel.workspaceId,
-        kind: channel.kind,
-        name: channel.name,
-        slug: channel.slug,
-        taskId: channel.taskId ?? null,
-        createdAt: channel.createdAt,
-        archivedAt: channel.archivedAt ?? null
+        id: thread.id,
+        workspaceId: thread.workspaceId,
+        kind: thread.kind,
+        taskId: thread.taskId ?? null,
+        coordinatorAgentId: thread.coordinatorAgentId ?? null,
+        coordinatorState: thread.coordinatorState,
+        createdAt: thread.createdAt,
+        archivedAt: thread.archivedAt ?? null
       })
       .run();
-    return channel;
   }
 
-  public updateWorkspaceChannel(
-    channelId: string,
-    updates: Partial<Pick<WorkspaceChannel, "workspaceId" | "name" | "slug" | "taskId" | "archivedAt">>
-  ): WorkspaceChannel | null {
-    const existing = this.getWorkspaceChannel(channelId);
-    if (!existing) {
+  public getThread(id: string): Thread | null {
+    const row = this.db
+      .select()
+      .from(schema.threads)
+      .where(eq(schema.threads.id, id))
+      .get();
+    return row ? rowToThread(row) : null;
+  }
+
+  public listThreadsByWorkspace(workspaceId: string): Thread[] {
+    return this.db
+      .select()
+      .from(schema.threads)
+      .where(eq(schema.threads.workspaceId, workspaceId))
+      .orderBy(asc(schema.threads.createdAt))
+      .all()
+      .map(rowToThread);
+  }
+
+  public archiveThread(id: string, archivedAt: string): Thread | null {
+    const result = this.sqlite
+      .prepare(
+        `UPDATE threads SET archived_at = ? WHERE id = ? AND archived_at IS NULL`
+      )
+      .run(archivedAt, id);
+    if (result.changes === 0) {
+      return this.getThread(id);
+    }
+    return this.getThread(id);
+  }
+
+  /**
+   * Transitions a thread's coordinator_state via CAS (expected_prev → next).
+   * Returns the updated thread, or null when the expected state did not match.
+   */
+  public transitionCoordinatorState(
+    id: string,
+    expectedPrev: CoordinatorState,
+    next: CoordinatorState
+  ): Thread | null {
+    const result = this.sqlite
+      .prepare(
+        `UPDATE threads SET coordinator_state = ?
+         WHERE id = ? AND coordinator_state = ?`
+      )
+      .run(next, id, expectedPrev);
+    if (result.changes === 0) {
       return null;
     }
-
-    const next: WorkspaceChannel = {
-      ...existing,
-      ...updates
-    };
-
-    this.db
-      .update(schema.workspaceChannels)
-      .set({
-        workspaceId: next.workspaceId,
-        name: next.name,
-        slug: next.slug,
-        taskId: next.taskId ?? null,
-        archivedAt: next.archivedAt ?? null
-      })
-      .where(eq(schema.workspaceChannels.id, channelId))
-      .run();
-
-    if (updates.workspaceId) {
-      this.db
-        .update(schema.channelMessages)
-        .set({ workspaceId: updates.workspaceId })
-        .where(eq(schema.channelMessages.channelId, channelId))
-        .run();
-    }
-
-    return next;
+    return this.getThread(id);
   }
 
-  public listChannelMessages(channelId: string): ChannelMessage[] {
-    return this.db
-      .select()
-      .from(schema.channelMessages)
-      .where(eq(schema.channelMessages.channelId, channelId))
-      .orderBy(asc(schema.channelMessages.createdAt))
-      .all()
-      .map(rowToChannelMessage);
-  }
-
-  public appendChannelMessage(message: ChannelMessage): void {
-    const MAX_CONTENT_BYTES = 10 * 1024;
-    if (Buffer.byteLength(message.content, "utf8") > MAX_CONTENT_BYTES) {
-      throw new AppError(400, "MESSAGE_TOO_LARGE", "Message content exceeds 10KB limit");
-    }
-
+  public insertMessage(message: Message): void {
+    const senderType = message.sender.type;
+    const senderAgentId =
+      message.sender.type === "agent" ? message.sender.agentId : null;
     this.db
-      .insert(schema.channelMessages)
+      .insert(schema.messages)
       .values({
         id: message.id,
-        channelId: message.channelId,
-        workspaceId: message.workspaceId,
-        taskId: message.taskId ?? null,
-        agentName: message.agentName,
-        senderType: message.senderType,
-        messageType: message.messageType,
-        content: message.content,
-        metadata: message.metadata ? JSON.stringify(message.metadata) : null,
+        threadId: message.threadId,
+        senderType,
+        senderAgentId,
+        kind: message.kind,
+        payload: JSON.stringify(message.payload ?? {}),
+        consumedByRunId: message.consumedByRunId ?? null,
         createdAt: message.createdAt
       })
       .run();
   }
 
-  // -------------------------------------------------------------------------
-  // Task Messages (Phase 4 — workspace-level, no team_id)
-  // -------------------------------------------------------------------------
-
-  public listTaskMessages(parentTaskId: string): TaskMessage[] {
-    return this.db
-      .select()
-      .from(schema.taskMessages)
-      .where(eq(schema.taskMessages.parentTaskId, parentTaskId))
-      .orderBy(asc(schema.taskMessages.createdAt))
-      .all()
-      .map(rowToTaskMessage);
+  public listMessages(
+    threadId: string,
+    opts: { after?: string; limit?: number } = {}
+  ): Message[] {
+    // Raw SQL keeps the `after` + `limit` path simple without drizzle op juggling.
+    const clauses: string[] = ["thread_id = ?"];
+    const params: unknown[] = [threadId];
+    if (opts.after) {
+      clauses.push("created_at > ?");
+      params.push(opts.after);
+    }
+    const limit = Math.max(1, Math.min(opts.limit ?? 500, 500));
+    const rows = this.sqlite
+      .prepare(
+        `SELECT id, thread_id, sender_type, sender_agent_id, kind, payload,
+                consumed_by_run_id, created_at
+         FROM messages
+         WHERE ${clauses.join(" AND ")}
+         ORDER BY created_at ASC, rowid ASC
+         LIMIT ?`
+      )
+      .all(...params, limit) as Array<{
+      id: string;
+      thread_id: string;
+      sender_type: string;
+      sender_agent_id: string | null;
+      kind: string;
+      payload: string;
+      consumed_by_run_id: string | null;
+      created_at: string;
+    }>;
+    return rows.map((row) =>
+      rowToMessage({
+        id: row.id,
+        threadId: row.thread_id,
+        senderType: row.sender_type,
+        senderAgentId: row.sender_agent_id,
+        kind: row.kind,
+        payload: row.payload,
+        consumedByRunId: row.consumed_by_run_id,
+        createdAt: row.created_at
+      } as MessageRow)
+    );
   }
 
-  public appendTaskMessage(message: TaskMessage): void {
-    const MAX_CONTENT_BYTES = 10 * 1024;
-    if (Buffer.byteLength(message.content, "utf8") > MAX_CONTENT_BYTES) {
-      throw new AppError(400, "MESSAGE_TOO_LARGE", "Message content exceeds 10KB limit");
+  /**
+   * Returns user-sent messages on the thread whose `consumed_by_run_id` is NULL.
+   * Used by the Orchestrator to flush pending input into the next coordinator run.
+   */
+  public listPendingCoordinatorMessages(threadId: string): Message[] {
+    // Both user chat and injected system_event messages feed the next turn.
+    // Agent-authored messages are the coordinator's own output and must not
+    // loop back into its input.
+    const rows = this.sqlite
+      .prepare(
+        `SELECT id, thread_id, sender_type, sender_agent_id, kind, payload,
+                consumed_by_run_id, created_at
+         FROM messages
+         WHERE thread_id = ?
+           AND consumed_by_run_id IS NULL
+           AND (sender_type = 'user' OR kind = 'system_event')
+         ORDER BY created_at ASC, rowid ASC`
+      )
+      .all(threadId) as Array<{
+      id: string;
+      thread_id: string;
+      sender_type: string;
+      sender_agent_id: string | null;
+      kind: string;
+      payload: string;
+      consumed_by_run_id: string | null;
+      created_at: string;
+    }>;
+    return rows.map((row) =>
+      rowToMessage({
+        id: row.id,
+        threadId: row.thread_id,
+        senderType: row.sender_type,
+        senderAgentId: row.sender_agent_id,
+        kind: row.kind,
+        payload: row.payload,
+        consumedByRunId: row.consumed_by_run_id,
+        createdAt: row.created_at
+      } as MessageRow)
+    );
+  }
+
+  public markMessagesConsumed(messageIds: string[], runId: string): void {
+    if (messageIds.length === 0) {
+      return;
     }
+    const stmt = this.sqlite.prepare(
+      `UPDATE messages SET consumed_by_run_id = ?
+       WHERE id = ? AND consumed_by_run_id IS NULL`
+    );
+    const tx = this.sqlite.transaction((ids: string[]) => {
+      for (const id of ids) {
+        stmt.run(runId, id);
+      }
+    });
+    tx(messageIds);
+  }
+
+  public getAgentSessionByThread(threadId: string): AgentSession | null {
+    const row = this.db
+      .select()
+      .from(schema.agentSessions)
+      .where(eq(schema.agentSessions.threadId, threadId))
+      .get();
+    return row ? rowToAgentSession(row) : null;
+  }
+
+  public insertAgentSession(session: AgentSession): void {
     this.db
-      .insert(schema.taskMessages)
+      .insert(schema.agentSessions)
       .values({
-        id: message.id,
-        parentTaskId: message.parentTaskId,
-        taskId: message.taskId ?? null,
-        agentName: message.agentName,
-        senderType: message.senderType,
-        messageType: message.messageType,
-        content: message.content,
-        createdAt: message.createdAt
+        id: session.id,
+        workspaceId: session.workspaceId,
+        agentId: session.agentId,
+        threadId: session.threadId,
+        runnerSessionKey: session.runnerSessionKey ?? null,
+        createdAt: session.createdAt
       })
       .run();
+  }
+
+  public updateAgentSessionRunnerKey(
+    sessionId: string,
+    runnerSessionKey: string
+  ): AgentSession | null {
+    const result = this.sqlite
+      .prepare(
+        `UPDATE agent_sessions SET runner_session_key = ? WHERE id = ?`
+      )
+      .run(runnerSessionKey, sessionId);
+    if (result.changes === 0) {
+      return null;
+    }
+    const row = this.db
+      .select()
+      .from(schema.agentSessions)
+      .where(eq(schema.agentSessions.id, sessionId))
+      .get();
+    return row ? rowToAgentSession(row) : null;
+  }
+
+  // ── Plans (agent-driven board) ────────────────────────────────────────────
+
+  public insertPlan(plan: Plan): void {
+    this.db
+      .insert(schema.plans)
+      .values({
+        id: plan.id,
+        threadId: plan.threadId,
+        proposerAgentId: plan.proposerAgentId,
+        status: plan.status,
+        drafts: JSON.stringify(plan.drafts ?? []),
+        approvedAt: plan.approvedAt ?? null,
+        createdAt: plan.createdAt
+      })
+      .run();
+  }
+
+  public getPlan(id: string): Plan | null {
+    const row = this.db
+      .select()
+      .from(schema.plans)
+      .where(eq(schema.plans.id, id))
+      .get();
+    return row ? rowToPlan(row) : null;
+  }
+
+  public listPlansByThread(threadId: string): Plan[] {
+    return this.db
+      .select()
+      .from(schema.plans)
+      .where(eq(schema.plans.threadId, threadId))
+      .orderBy(asc(schema.plans.createdAt))
+      .all()
+      .map(rowToPlan);
+  }
+
+  /**
+   * CAS the plan's status. Returns the updated plan when the expected status
+   * matched, null otherwise. When `approvedAt` is provided it is stored on the
+   * row (only meaningful for 'approved' transitions).
+   */
+  public casPlanStatus(
+    id: string,
+    expected: PlanStatus,
+    next: PlanStatus,
+    approvedAt?: string
+  ): Plan | null {
+    const stmt =
+      approvedAt != null
+        ? this.sqlite.prepare(
+            `UPDATE plans SET status = ?, approved_at = ?
+             WHERE id = ? AND status = ?`
+          )
+        : this.sqlite.prepare(
+            `UPDATE plans SET status = ?
+             WHERE id = ? AND status = ?`
+          );
+    const result =
+      approvedAt != null
+        ? stmt.run(next, approvedAt, id, expected)
+        : stmt.run(next, id, expected);
+    if (result.changes === 0) {
+      return null;
+    }
+    return this.getPlan(id);
+  }
+
+  /**
+   * Raw INSERT for a single task — used by PlanService inside a transaction
+   * so the CAS + task inserts + decision message commit atomically. Callers
+   * MUST append the task to the in-memory state.tasks cache after commit
+   * (see `appendTasksToMemory`), otherwise the next save() will wipe it.
+   */
+  public insertTaskRaw(task: Task): void {
+    const row = taskToRow(task);
+    this.sqlite
+      .prepare(
+        `INSERT INTO tasks (id, title, description, workspace_id, column, task_order, runner_type, runner_config, plan, worktree, last_run_id, last_run_status, continuation_run_id, pull_request_url, pull_request, rejected, cancelled_at, task_kind, parent_task_id, source, plan_id, assignee_agent_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        row.id,
+        row.title,
+        row.description,
+        row.workspaceId,
+        row.column,
+        row.taskOrder,
+        row.runnerType,
+        row.runnerConfig,
+        row.plan ?? null,
+        row.worktree,
+        row.lastRunId ?? null,
+        row.lastRunStatus ?? null,
+        row.continuationRunId ?? null,
+        row.pullRequestUrl ?? null,
+        row.pullRequest ?? null,
+        row.rejected ? 1 : 0,
+        row.cancelledAt ?? null,
+        row.taskKind,
+        row.parentTaskId ?? null,
+        row.source ?? "user",
+        row.planId ?? null,
+        row.assigneeAgentId ?? null,
+        row.createdAt,
+        row.updatedAt
+      );
+    const depStmt = this.sqlite.prepare(
+      "INSERT INTO task_dependencies (task_id, dep_id) VALUES (?, ?)"
+    );
+    for (const depId of task.dependencies) {
+      depStmt.run(task.id, depId);
+    }
+  }
+
+  /**
+   * Appends tasks to the in-memory state cache. Call after a DB transaction
+   * that inserted tasks via `insertTaskRaw`, so that subsequent `getTasks()`
+   * reads and the next `save()` include them.
+   */
+  public appendTasksToMemory(tasks: Task[]): void {
+    if (tasks.length === 0) {
+      return;
+    }
+    this.state.tasks = [...this.state.tasks, ...tasks];
+  }
+
+  /**
+   * Runs `fn` inside a synchronous SQLite transaction and returns its result.
+   * Exposed so services (PlanService) can compose CAS + multi-table writes
+   * atomically without pulling in raw better-sqlite3 handles.
+   */
+  public runInTransaction<T>(fn: () => T): T {
+    const tx = this.sqlite.transaction(fn);
+    return tx() as T;
   }
 
   /** Closes the underlying SQLite connection. Call on server shutdown. */
@@ -1305,6 +1172,20 @@ export class StateStore {
   }
 
   private initSchema(): void {
+    // v7 -> v8: drop legacy team / channel / proposal tables. Runtime moved to
+    // threads / messages / plans (Spec 01). Legacy tables (if present from an
+    // older install) are dropped unconditionally — any data worth preserving
+    // was migrated during P1-P3 dual-write. After this runs, subsequent loads
+    // hit DROP TABLE IF EXISTS as a no-op.
+    this.sqlite.exec(`
+      DROP TABLE IF EXISTS channel_messages;
+      DROP TABLE IF EXISTS task_messages;
+      DROP TABLE IF EXISTS workspace_channels;
+      DROP TABLE IF EXISTS coordinator_proposals;
+      DROP TABLE IF EXISTS team_messages;
+      DROP TABLE IF EXISTS teams;
+    `);
+
     this.sqlite.exec(`
       CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
@@ -1318,6 +1199,8 @@ export class StateStore {
         is_git_repo INTEGER NOT NULL DEFAULT 0,
         codex_settings TEXT NOT NULL,
         prompt_templates TEXT,
+        pr_strategy TEXT NOT NULL DEFAULT 'independent',
+        auto_approve_subtasks INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
@@ -1340,6 +1223,11 @@ export class StateStore {
         pull_request TEXT,
         rejected INTEGER NOT NULL DEFAULT 0,
         cancelled_at TEXT,
+        task_kind TEXT NOT NULL DEFAULT 'user',
+        parent_task_id TEXT,
+        source TEXT NOT NULL DEFAULT 'user',
+        plan_id TEXT,
+        assignee_agent_id TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
@@ -1388,54 +1276,6 @@ export class StateStore {
       CREATE INDEX IF NOT EXISTS idx_run_log_entries_run_id_ts
         ON run_log_entries (run_id, timestamp);
 
-      CREATE TABLE IF NOT EXISTS teams (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        description TEXT NOT NULL DEFAULT '',
-        workspace_id TEXT NOT NULL,
-        agents TEXT NOT NULL,
-        pr_strategy TEXT NOT NULL DEFAULT 'independent',
-        auto_approve_subtasks INTEGER NOT NULL DEFAULT 0,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_teams_workspace_id ON teams (workspace_id);
-
-      CREATE TABLE IF NOT EXISTS team_messages (
-        id TEXT PRIMARY KEY,
-        team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
-        parent_task_id TEXT NOT NULL,
-        task_id TEXT,
-        agent_name TEXT NOT NULL,
-        sender_type TEXT NOT NULL,
-        message_type TEXT NOT NULL,
-        content TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_team_messages_team_id ON team_messages (team_id);
-      CREATE INDEX IF NOT EXISTS idx_team_messages_team_parent_created_at
-        ON team_messages (team_id, parent_task_id, created_at);
-
-      -- team_id is nullable: Phase 4 workspace-scoped proposals set team_id=null
-      -- and workspace_id instead. team-scoped proposals (legacy) keep team_id set.
-      CREATE TABLE IF NOT EXISTS coordinator_proposals (
-        id TEXT PRIMARY KEY,
-        team_id TEXT REFERENCES teams(id) ON DELETE CASCADE,
-        workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE,
-        channel_id TEXT REFERENCES workspace_channels(id) ON DELETE CASCADE,
-        parent_task_id TEXT NOT NULL,
-        proposal_mode TEXT NOT NULL DEFAULT 'subtasks',
-        status TEXT NOT NULL DEFAULT 'pending',
-        drafts TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        decided_at TEXT
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_coordinator_proposals_parent_task_id
-        ON coordinator_proposals (team_id, parent_task_id);
-
       -- Phase 4: account-level agents + workspace mounting
       CREATE TABLE IF NOT EXISTS agents (
         id TEXT PRIMARY KEY,
@@ -1457,83 +1297,79 @@ export class StateStore {
       CREATE INDEX IF NOT EXISTS idx_workspace_agents_workspace_id
         ON workspace_agents (workspace_id);
 
-      CREATE TABLE IF NOT EXISTS workspace_channels (
+      -- === Agent-driven board (Spec 01): unified thread/message/plan tables ===
+
+      CREATE TABLE IF NOT EXISTS threads (
         id TEXT PRIMARY KEY,
         workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
         kind TEXT NOT NULL,
-        name TEXT NOT NULL,
-        slug TEXT NOT NULL,
         task_id TEXT,
+        coordinator_agent_id TEXT,
+        coordinator_state TEXT NOT NULL DEFAULT 'idle',
         created_at TEXT NOT NULL,
         archived_at TEXT
       );
 
-      CREATE INDEX IF NOT EXISTS idx_workspace_channels_workspace_id
-        ON workspace_channels (workspace_id, archived_at, kind, created_at);
+      CREATE INDEX IF NOT EXISTS idx_threads_workspace_kind
+        ON threads (workspace_id, kind);
+      CREATE INDEX IF NOT EXISTS idx_threads_task_id ON threads (task_id);
 
-      CREATE INDEX IF NOT EXISTS idx_workspace_channels_task_id
-        ON workspace_channels (task_id);
-
-      CREATE TABLE IF NOT EXISTS channel_messages (
+      CREATE TABLE IF NOT EXISTS messages (
         id TEXT PRIMARY KEY,
-        channel_id TEXT NOT NULL REFERENCES workspace_channels(id) ON DELETE CASCADE,
+        thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+        sender_type TEXT NOT NULL,
+        sender_agent_id TEXT,
+        kind TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        consumed_by_run_id TEXT,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_messages_thread_created_at
+        ON messages (thread_id, created_at);
+      -- Partial index supports the "pending to consume" query (user messages
+      -- waiting for the next coordinator run).
+      CREATE INDEX IF NOT EXISTS idx_messages_thread_pending
+        ON messages (thread_id) WHERE consumed_by_run_id IS NULL;
+
+      CREATE TABLE IF NOT EXISTS plans (
+        id TEXT PRIMARY KEY,
+        thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+        proposer_agent_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        drafts TEXT NOT NULL,
+        approved_at TEXT,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_plans_thread_status
+        ON plans (thread_id, status);
+
+      CREATE TABLE IF NOT EXISTS agent_sessions (
+        id TEXT PRIMARY KEY,
         workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-        task_id TEXT,
-        agent_name TEXT NOT NULL,
-        sender_type TEXT NOT NULL DEFAULT 'agent',
-        message_type TEXT NOT NULL DEFAULT 'context',
-        content TEXT NOT NULL,
-        metadata TEXT,
+        agent_id TEXT NOT NULL,
+        thread_id TEXT NOT NULL UNIQUE REFERENCES threads(id) ON DELETE CASCADE,
+        runner_session_key TEXT,
         created_at TEXT NOT NULL
       );
-
-      CREATE INDEX IF NOT EXISTS idx_channel_messages_channel_id
-        ON channel_messages (channel_id, created_at);
-
-      -- task_messages: workspace-level agent communication thread (no team_id).
-      -- This table is the long-term replacement for team_messages. The old
-      -- team_messages table is intentionally kept intact in this PR; the
-      -- create+copy+drop migration (dropping team_id) will happen in PR-E
-      -- once all service-layer consumers have been migrated off team_messages.
-      CREATE TABLE IF NOT EXISTS task_messages (
-        id TEXT PRIMARY KEY,
-        parent_task_id TEXT NOT NULL,
-        task_id TEXT,
-        agent_name TEXT NOT NULL,
-        sender_type TEXT NOT NULL DEFAULT 'agent',
-        message_type TEXT NOT NULL DEFAULT 'context',
-        content TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_task_messages_parent_task_id
-        ON task_messages (parent_task_id, created_at);
     `);
 
-    // Add new columns to existing tables. SQLite does not support IF NOT EXISTS
-    // on ALTER TABLE ADD COLUMN, so we use try/catch for idempotency.
+    // Idempotent column backfill for upgrades from v7 databases that already
+    // have the tasks / workspaces tables but lack the agent-driven-board
+    // provenance / config columns. SQLite does not support IF NOT EXISTS on
+    // ALTER TABLE ADD COLUMN, so we use try/catch.
     for (const col of [
-      "ALTER TABLE tasks ADD COLUMN team_id TEXT",
-      "ALTER TABLE tasks ADD COLUMN parent_task_id TEXT",
-      "ALTER TABLE tasks ADD COLUMN team_agent_id TEXT",
       "ALTER TABLE tasks ADD COLUMN last_run_status TEXT",
       "ALTER TABLE tasks ADD COLUMN rejected INTEGER NOT NULL DEFAULT 0",
       "ALTER TABLE tasks ADD COLUMN cancelled_at TEXT",
       "ALTER TABLE tasks ADD COLUMN task_kind TEXT NOT NULL DEFAULT 'user'",
-      // v1 -> v2 migration for team execution threads
-      "ALTER TABLE team_messages ADD COLUMN parent_task_id TEXT NOT NULL DEFAULT ''",
-      "ALTER TABLE teams ADD COLUMN pr_strategy TEXT NOT NULL DEFAULT 'independent'",
-      "ALTER TABLE teams ADD COLUMN auto_approve_subtasks INTEGER NOT NULL DEFAULT 0",
-      // Renamed from direction; default 'agent' covers rows written by the initial PR version
-      "ALTER TABLE team_messages ADD COLUMN sender_type TEXT NOT NULL DEFAULT 'agent'",
-      "ALTER TABLE team_messages ADD COLUMN message_type TEXT NOT NULL DEFAULT 'context'",
-      // Phase 4: workspace coordination config
+      "ALTER TABLE tasks ADD COLUMN parent_task_id TEXT",
+      "ALTER TABLE tasks ADD COLUMN source TEXT NOT NULL DEFAULT 'user'",
+      "ALTER TABLE tasks ADD COLUMN plan_id TEXT",
+      "ALTER TABLE tasks ADD COLUMN assignee_agent_id TEXT",
       "ALTER TABLE workspaces ADD COLUMN pr_strategy TEXT NOT NULL DEFAULT 'independent'",
-      "ALTER TABLE workspaces ADD COLUMN auto_approve_subtasks INTEGER NOT NULL DEFAULT 0",
-      // Phase 4: workspace-scoped coordinator proposals
-      "ALTER TABLE coordinator_proposals ADD COLUMN workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE",
-      "ALTER TABLE coordinator_proposals ADD COLUMN channel_id TEXT REFERENCES workspace_channels(id) ON DELETE CASCADE",
-      "ALTER TABLE coordinator_proposals ADD COLUMN proposal_mode TEXT NOT NULL DEFAULT 'subtasks'"
+      "ALTER TABLE workspaces ADD COLUMN auto_approve_subtasks INTEGER NOT NULL DEFAULT 0"
     ]) {
       try {
         this.sqlite.exec(col);
@@ -1542,274 +1378,21 @@ export class StateStore {
       }
     }
 
-    // Phase 4: team_id on coordinator_proposals is now nullable (workspace-scoped proposals
-    // leave team_id as null). The column cannot be altered directly in SQLite, so we handle
-    // this at the application layer by allowing null reads.
+    // v7 -> v8: drop legacy columns from the tasks table. SQLite 3.35+ supports
+    // ALTER TABLE DROP COLUMN. If the columns are absent (fresh install) the
+    // statements fail silently via try/catch.
+    for (const drop of [
+      "ALTER TABLE tasks DROP COLUMN team_id",
+      "ALTER TABLE tasks DROP COLUMN team_agent_id"
+    ]) {
+      try {
+        this.sqlite.exec(drop);
+      } catch {
+        // column already absent — safe to ignore
+      }
+    }
   }
 
-  private runChannelBackfills(): void {
-    this.sqlite.transaction(() => {
-      const workspaceRows = this.db.select().from(schema.workspaces).all();
-      const taskRows = this.db.select().from(schema.tasks).all();
-      const channelRows = this.db.select().from(schema.workspaceChannels).all();
-      const proposalRows = this.db.select().from(schema.coordinatorProposals).all();
-      const taskMessageRows = this.db.select().from(schema.taskMessages).all();
-      const coordinatorRows = this.db
-        .select({
-          workspaceId: schema.workspaceAgents.workspaceId,
-          agentId: schema.workspaceAgents.agentId,
-          runnerConfig: schema.agents.runnerConfig
-        })
-        .from(schema.workspaceAgents)
-        .innerJoin(schema.agents, eq(schema.workspaceAgents.agentId, schema.agents.id))
-        .where(eq(schema.workspaceAgents.role, "coordinator"))
-        .all();
-
-      const taskById = new Map(taskRows.map((task) => [task.id, task]));
-      const allChannelByWorkspaceId = new Map<string, WorkspaceChannelRow>();
-      const channelByTaskId = new Map<string, WorkspaceChannelRow>();
-
-      for (const channel of channelRows) {
-        if (channel.kind === "all") {
-          allChannelByWorkspaceId.set(channel.workspaceId, channel);
-        }
-        if (channel.kind === "task" && channel.taskId) {
-          channelByTaskId.set(channel.taskId, channel);
-        }
-      }
-
-      for (const workspace of workspaceRows) {
-        const existingAllChannel = allChannelByWorkspaceId.get(workspace.id);
-        if (existingAllChannel) {
-          if (
-            existingAllChannel.name !== "All" ||
-            existingAllChannel.slug !== "all" ||
-            existingAllChannel.archivedAt != null
-          ) {
-            this.updateWorkspaceChannel(existingAllChannel.id, {
-              name: "All",
-              slug: "all",
-              archivedAt: undefined
-            });
-          }
-          continue;
-        }
-
-        const channel: WorkspaceChannel = {
-          id: createId(),
-          workspaceId: workspace.id,
-          kind: "all",
-          name: "All",
-          slug: "all",
-          createdAt: workspace.createdAt,
-          archivedAt: undefined
-        };
-        this.saveWorkspaceChannel(channel);
-        const persisted = this.getWorkspaceChannel(channel.id);
-        if (persisted) {
-          allChannelByWorkspaceId.set(workspace.id, {
-            id: persisted.id,
-            workspaceId: persisted.workspaceId,
-            kind: persisted.kind,
-            name: persisted.name,
-            slug: persisted.slug,
-            taskId: persisted.taskId ?? null,
-            createdAt: persisted.createdAt,
-            archivedAt: persisted.archivedAt ?? null
-          });
-        }
-      }
-
-      for (const taskRow of taskRows) {
-        const taskKind = (taskRow.taskKind as Task["taskKind"] | null) ?? "user";
-        const shouldBeVisible = taskKind === "user" && taskRow.column !== "archived";
-        const existingChannel = channelByTaskId.get(taskRow.id);
-
-        if (!shouldBeVisible) {
-          if (existingChannel && existingChannel.archivedAt == null) {
-            const archivedAt = taskRow.updatedAt || new Date().toISOString();
-            this.updateWorkspaceChannel(existingChannel.id, { archivedAt });
-          }
-          continue;
-        }
-
-        const name = formatTaskChannelName(taskRow.title);
-        const slug = buildUniqueChannelSlug(
-          this.listWorkspaceChannels(taskRow.workspaceId),
-          taskRow.workspaceId,
-          taskRow.title,
-          existingChannel?.id
-        );
-        if (!existingChannel) {
-          const channel: WorkspaceChannel = {
-            id: createId(),
-            workspaceId: taskRow.workspaceId,
-            kind: "task",
-            name,
-            slug,
-            taskId: taskRow.id,
-            createdAt: taskRow.createdAt,
-            archivedAt: undefined
-          };
-          this.saveWorkspaceChannel(channel);
-          const persisted = this.getWorkspaceChannel(channel.id);
-          if (persisted) {
-            channelByTaskId.set(taskRow.id, {
-              id: persisted.id,
-              workspaceId: persisted.workspaceId,
-              kind: persisted.kind,
-              name: persisted.name,
-              slug: persisted.slug,
-              taskId: persisted.taskId ?? null,
-              createdAt: persisted.createdAt,
-              archivedAt: persisted.archivedAt ?? null
-            });
-          }
-        } else if (
-          existingChannel.workspaceId !== taskRow.workspaceId ||
-          existingChannel.name !== name ||
-          existingChannel.slug !== slug ||
-          existingChannel.archivedAt != null
-        ) {
-          this.updateWorkspaceChannel(existingChannel.id, {
-            workspaceId: taskRow.workspaceId,
-            name,
-            slug,
-            archivedAt: undefined
-          });
-        }
-      }
-
-      for (const coordinator of coordinatorRows) {
-        const allChannel = allChannelByWorkspaceId.get(coordinator.workspaceId);
-        if (!allChannel) {
-          continue;
-        }
-        if (allChannel.taskId) {
-          continue;
-        }
-
-        const existingBackingTask = taskRows.find(
-          (task) =>
-            task.workspaceId === coordinator.workspaceId &&
-            ((task.taskKind as Task["taskKind"] | null) ?? "user") === "channel_backing"
-        );
-
-        const backingTaskId = existingBackingTask?.id ?? createId();
-        if (!existingBackingTask) {
-          const workspace = workspaceRows.find((entry) => entry.id === coordinator.workspaceId);
-          if (!workspace) {
-            continue;
-          }
-          const workspaceDomain = rowToWorkspace(workspace);
-          const title = `${workspaceDomain.name} Coordinator`;
-          this.db
-            .insert(schema.tasks)
-            .values({
-              id: backingTaskId,
-              title,
-              description: "",
-              workspaceId: workspace.id,
-              column: "review",
-              taskOrder: -1,
-              runnerType: normalizeRunnerConfig(
-                JSON.parse(coordinator.runnerConfig)
-              ).type,
-              runnerConfig: coordinator.runnerConfig,
-              plan: null,
-              worktree: JSON.stringify(
-                createTaskWorktree(backingTaskId, title, {
-                  workspace: workspaceDomain,
-                  status: "removed"
-                })
-              ),
-              lastRunId: null,
-              lastRunStatus: null,
-              continuationRunId: null,
-              pullRequestUrl: null,
-              pullRequest: null,
-              rejected: false,
-              cancelledAt: null,
-              taskKind: "channel_backing",
-              teamId: null,
-              parentTaskId: null,
-              teamAgentId: null,
-              createdAt: workspace.createdAt,
-              updatedAt: workspace.updatedAt
-            })
-            .run();
-        }
-
-        this.updateWorkspaceChannel(allChannel.id, { taskId: backingTaskId });
-      }
-
-      const migratedChannelMessageIds = new Set(
-        this.db.select({ id: schema.channelMessages.id }).from(schema.channelMessages).all().map((row) => row.id)
-      );
-
-      for (const message of taskMessageRows) {
-        if (migratedChannelMessageIds.has(message.id)) {
-          continue;
-        }
-
-        const parentTask = taskById.get(message.parentTaskId);
-        if (!parentTask) {
-          continue;
-        }
-        const parentTaskKind = (parentTask.taskKind as Task["taskKind"] | null) ?? "user";
-        if (parentTaskKind !== "user") {
-          continue;
-        }
-
-        const channel = channelByTaskId.get(parentTask.id);
-        if (!channel) {
-          continue;
-        }
-
-        this.db
-          .insert(schema.channelMessages)
-          .values({
-            id: message.id,
-            channelId: channel.id,
-            workspaceId: parentTask.workspaceId,
-            taskId: message.taskId ?? null,
-            agentName: message.agentName,
-            senderType: message.senderType,
-            messageType: message.messageType,
-            content: message.content,
-            metadata: null,
-            createdAt: message.createdAt
-          })
-          .run();
-        migratedChannelMessageIds.add(message.id);
-      }
-
-      for (const proposal of proposalRows) {
-        if (!proposal.workspaceId || proposal.channelId) {
-          continue;
-        }
-
-        const parentTask = taskById.get(proposal.parentTaskId);
-        const taskKind = (parentTask?.taskKind as Task["taskKind"] | null) ?? "user";
-        const channel =
-          taskKind === "channel_backing"
-            ? allChannelByWorkspaceId.get(proposal.workspaceId)
-            : channelByTaskId.get(proposal.parentTaskId);
-        if (!channel) {
-          continue;
-        }
-
-        this.db
-          .update(schema.coordinatorProposals)
-          .set({
-            channelId: channel.id,
-            proposalMode: taskKind === "channel_backing" ? "top_level_tasks" : "subtasks"
-          })
-          .where(eq(schema.coordinatorProposals.id, proposal.id))
-          .run();
-      }
-    })();
-  }
 
   private readStateFromDb(): AppState {
     const settingsRow = this.db
@@ -1841,7 +1424,7 @@ export class StateStore {
     const runList = runRows.map(rowToRun);
 
     return {
-      schemaVersion: 7,
+      schemaVersion: 8,
       settings: globalSettings,
       workspaces: workspaceList,
       tasks: taskList,
@@ -1919,8 +1502,8 @@ export class StateStore {
         const row = taskToRow(task);
         this.sqlite
           .prepare(
-            `INSERT INTO tasks (id, title, description, workspace_id, column, task_order, runner_type, runner_config, plan, worktree, last_run_id, last_run_status, continuation_run_id, pull_request_url, pull_request, rejected, cancelled_at, task_kind, team_id, parent_task_id, team_agent_id, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            `INSERT INTO tasks (id, title, description, workspace_id, column, task_order, runner_type, runner_config, plan, worktree, last_run_id, last_run_status, continuation_run_id, pull_request_url, pull_request, rejected, cancelled_at, task_kind, parent_task_id, source, plan_id, assignee_agent_id, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
           )
           .run(
             row.id,
@@ -1941,9 +1524,10 @@ export class StateStore {
             row.rejected ? 1 : 0,
             row.cancelledAt ?? null,
             row.taskKind,
-            row.teamId ?? null,
             row.parentTaskId ?? null,
-            row.teamAgentId ?? null,
+            row.source ?? "user",
+            row.planId ?? null,
+            row.assigneeAgentId ?? null,
             row.createdAt,
             row.updatedAt
           );

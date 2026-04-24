@@ -1,27 +1,6 @@
-import type {
-  AccountAgent,
-  AgentTeam,
-  ChannelMessage,
-  TaskMessage,
-  TeamMessage,
-  Workspace,
-  WorkspaceAgent
-} from "@workhorse/contracts";
+import type { Workspace, WorkspaceAgent } from "@workhorse/contracts";
 
 import type { DisplayTask } from "./task-view";
-
-export type CoordinationMessage = Pick<
-  TaskMessage,
-  "id" | "taskId" | "agentName" | "senderType" | "messageType" | "content" | "createdAt"
-> & {
-  parentTaskId?: string;
-};
-
-export type CoordinationScope =
-  | { kind: "none" }
-  | { kind: "legacy_team"; teamId: string; parentTaskId: string }
-  | { kind: "workspace"; workspaceId: string; parentTaskId: string }
-  | { kind: "workspace_channel"; workspaceId: string; channelId: string };
 
 export function getCoordinatorWorkspaceAgent(
   agents: WorkspaceAgent[]
@@ -37,79 +16,16 @@ export function hasWorkspaceCoordinator(agents: WorkspaceAgent[]): boolean {
   return getCoordinatorWorkspaceAgent(agents) !== null;
 }
 
-export function getTaskCoordinationScope(
-  task: DisplayTask | null,
-  workspaceAgents: WorkspaceAgent[] = []
-): CoordinationScope {
-  if (!task) {
-    return { kind: "none" };
-  }
-
-  if (task.teamId) {
-    return {
-      kind: "legacy_team",
-      teamId: task.teamId,
-      parentTaskId: task.parentTaskId ?? task.id
-    };
-  }
-
-  if (task.parentTaskId) {
-    return {
-      kind: "workspace",
-      workspaceId: task.workspaceId,
-      parentTaskId: task.parentTaskId
-    };
-  }
-
-  if (hasWorkspaceCoordinator(workspaceAgents)) {
-    return {
-      kind: "workspace",
-      workspaceId: task.workspaceId,
-      parentTaskId: task.id
-    };
-  }
-
-  return { kind: "none" };
-}
-
-export function isCoordinationSubtask(task: DisplayTask, scope: CoordinationScope): boolean {
-  return scope.kind !== "none" && Boolean(task.parentTaskId);
-}
-
-export function normalizeCoordinationMessages(
-  messages: Array<ChannelMessage | TaskMessage | TeamMessage>
-): CoordinationMessage[] {
-  return messages.map((message) => ({
-    id: message.id,
-    parentTaskId: "parentTaskId" in message ? message.parentTaskId : undefined,
-    taskId: message.taskId,
-    agentName: message.agentName,
-    senderType: message.senderType,
-    messageType: message.messageType,
-    content: message.content,
-    createdAt: message.createdAt
-  }));
-}
-
-export function resolveCoordinationAgentName(input: {
-  task: DisplayTask;
-  legacyTeam?: AgentTeam | null;
-  accountAgents?: AccountAgent[];
-  workspaceAgents?: WorkspaceAgent[];
-}): string | null {
-  const { task, legacyTeam, accountAgents = [], workspaceAgents = [] } = input;
-  if (!task.teamAgentId) {
+export function resolveWorkspaceAgentName(
+  task: DisplayTask,
+  workspaceAgents: WorkspaceAgent[]
+): string | null {
+  if (!task.assigneeAgentId) {
     return null;
   }
-
-  if (legacyTeam) {
-    return legacyTeam.agents.find((agent) => agent.id === task.teamAgentId)?.agentName ?? null;
-  }
-
-  const workspaceAgent =
-    workspaceAgents.find((agent) => agent.id === task.teamAgentId) ??
-    accountAgents.find((agent) => agent.id === task.teamAgentId);
-  return workspaceAgent?.name ?? null;
+  return (
+    workspaceAgents.find((agent) => agent.id === task.assigneeAgentId)?.name ?? null
+  );
 }
 
 export function getCoordinationBadgeLabel(input: {
@@ -118,9 +34,6 @@ export function getCoordinationBadgeLabel(input: {
   workspaceAgents?: WorkspaceAgent[];
 }): string | null {
   const { task, workspace, workspaceAgents = [] } = input;
-  if (task.teamId) {
-    return "Legacy team";
-  }
 
   if (task.parentTaskId) {
     return null;

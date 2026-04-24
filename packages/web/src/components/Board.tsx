@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Draggable, Droppable } from "@hello-pangea/dnd";
-import type { AccountAgent, Workspace, WorkspaceAgent } from "@workhorse/contracts";
+import type { Workspace, WorkspaceAgent } from "@workhorse/contracts";
 
 import { formatRelativeTime, titleCase } from "@/lib/format";
-import { getTaskCoordinationScope, resolveCoordinationAgentName } from "@/lib/coordination";
+import { hasWorkspaceCoordinator, resolveWorkspaceAgentName } from "@/lib/coordination";
 import { BOARD_COLUMNS, type DisplayTask, type DisplayTaskColumn } from "@/lib/task-view";
 import { cn } from "@/lib/utils";
 import { CompactPullRequestStatus } from "./CompactPullRequestStatus";
@@ -23,7 +23,6 @@ interface ReviewCountdown {
 interface Props {
   tasks: DisplayTask[];
   allTasks: DisplayTask[];
-  accountAgents: AccountAgent[];
   workspaceAgentsByWorkspaceId: Map<string, WorkspaceAgent[]>;
   workspaces: Workspace[];
   reviewMonitor: ReviewMonitor;
@@ -229,7 +228,6 @@ function shouldShowBlockedBy(column: DisplayTaskColumn) {
 export function Board({
   tasks,
   allTasks,
-  accountAgents,
   workspaceAgentsByWorkspaceId,
   workspaces,
   reviewMonitor,
@@ -324,14 +322,11 @@ export function Board({
                   const workspaceName = workspace?.name ?? "Unknown";
                   const workspaceAgents =
                     workspaceAgentsByWorkspaceId.get(task.workspaceId) ?? [];
-                  const coordinationScope = getTaskCoordinationScope(task, workspaceAgents);
-                  const assignedAgentName = resolveCoordinationAgentName({
-                    task,
-                    accountAgents,
-                    workspaceAgents
-                  });
+                  const hasCoordination =
+                    Boolean(task.parentTaskId) || hasWorkspaceCoordinator(workspaceAgents);
+                  const assignedAgentName = resolveWorkspaceAgentName(task, workspaceAgents);
                   const childTasks =
-                    coordinationScope.kind !== "none" && !task.parentTaskId
+                    hasCoordination && !task.parentTaskId
                       ? childTaskMap.get(task.id) ?? []
                       : [];
                   const reviewCountdown =
@@ -373,6 +368,14 @@ export function Board({
                             <h3 className="m-0 min-w-0 overflow-hidden text-[0.95rem] font-[590] leading-[1.3] tracking-[-0.025em] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
                               {task.title}
                             </h3>
+                            {task.source === "agent_plan" ? (
+                              <span
+                                className="shrink-0 rounded-full border border-[rgba(113,112,255,0.28)] bg-[rgba(113,112,255,0.08)] px-2 py-0.5 font-mono text-[0.62rem] uppercase tracking-[0.08em] text-[var(--accent-strong)]"
+                                title="Materialized from an approved plan"
+                              >
+                                plan
+                              </span>
+                            ) : null}
                           </div>
 
                           {task.description ? (
@@ -381,18 +384,14 @@ export function Board({
                             </p>
                           ) : null}
 
-                          {coordinationScope.kind !== "none" ? (
+                          {hasCoordination ? (
                             <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                               <span className="inline-flex min-h-7 items-center rounded-full border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] tone-accent">
-                                {coordinationScope.kind === "legacy_team"
-                                  ? "Legacy team"
-                                  : `Agents · ${workspaceAgents.length} mounted`}
+                                {`Agents · ${workspaceAgents.length} mounted`}
                               </span>
                               {task.parentTaskId ? (
                                 <span className="inline-flex min-h-7 items-center rounded-full border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] tone-info">
-                                  {coordinationScope.kind === "legacy_team"
-                                    ? "Legacy subtask"
-                                    : `Subtask${assignedAgentName ? ` · ${assignedAgentName}` : ""}`}
+                                  {`Subtask${assignedAgentName ? ` · ${assignedAgentName}` : ""}`}
                                 </span>
                               ) : null}
                             </div>
@@ -411,11 +410,10 @@ export function Board({
                               {(isActive ? childTasks : childTasks.slice(0, 3)).map((childTask) => {
                                 const childWorkspaceAgents =
                                   workspaceAgentsByWorkspaceId.get(childTask.workspaceId) ?? [];
-                                const childAgentName = resolveCoordinationAgentName({
-                                  task: childTask,
-                                  accountAgents,
-                                  workspaceAgents: childWorkspaceAgents
-                                });
+                                const childAgentName = resolveWorkspaceAgentName(
+                                  childTask,
+                                  childWorkspaceAgents
+                                );
                                 const isReviewSubtask = childTask.column === "review";
                                 const isCancelableSubtask =
                                   Boolean(childTask.parentTaskId) &&

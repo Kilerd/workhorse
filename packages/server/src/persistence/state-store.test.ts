@@ -6,14 +6,10 @@ import { describe, expect, it } from "vitest";
 
 import type {
   AccountAgent,
-  AgentTeam,
   AppState,
   Run,
   Task,
-  TaskMessage,
-  TeamMessage,
-  Workspace,
-  WorkspaceChannel
+  Workspace
 } from "@workhorse/contracts";
 
 import { StateStore } from "./state-store.js";
@@ -239,179 +235,6 @@ describe("StateStore", () => {
   });
 });
 
-function makeTeam(workspaceId: string, overrides: Partial<AgentTeam> = {}): AgentTeam {
-  const now = new Date().toISOString();
-  return {
-    id: "team-1",
-    name: "Test Team",
-    description: "desc",
-    workspaceId,
-    agents: [
-      { id: "agent-1", agentName: "Coordinator", role: "coordinator", runnerConfig: { type: "shell", command: "true" } },
-      { id: "agent-2", agentName: "Worker", role: "worker", runnerConfig: { type: "shell", command: "true" } }
-    ],
-    prStrategy: "independent",
-    autoApproveSubtasks: false,
-    createdAt: now,
-    updatedAt: now,
-    ...overrides
-  };
-}
-
-describe("StateStore — Agent Teams", () => {
-  it("creates and retrieves a team", async () => {
-    const store = new StateStore(":memory:");
-    await store.load();
-
-    const team = makeTeam("ws-1");
-    store.createTeam(team);
-
-    const found = store.getTeam("team-1");
-    expect(found).not.toBeNull();
-    expect(found?.name).toBe("Test Team");
-    expect(found?.prStrategy).toBe("independent");
-    expect(found?.autoApproveSubtasks).toBe(false);
-    expect(found?.agents).toHaveLength(2);
-  });
-
-  it("lists teams filtered by workspaceId", async () => {
-    const store = new StateStore(":memory:");
-    await store.load();
-
-    store.createTeam(makeTeam("ws-1", { id: "team-1" }));
-    store.createTeam(makeTeam("ws-2", { id: "team-2" }));
-
-    expect(store.listTeams("ws-1")).toHaveLength(1);
-    expect(store.listTeams("ws-2")).toHaveLength(1);
-    expect(store.listTeams()).toHaveLength(2);
-  });
-
-  it("updates team fields including prStrategy", async () => {
-    const store = new StateStore(":memory:");
-    await store.load();
-
-    store.createTeam(makeTeam("ws-1"));
-    const updated = store.updateTeam("team-1", {
-      name: "Renamed",
-      prStrategy: "stacked",
-      autoApproveSubtasks: true
-    });
-
-    expect(updated?.name).toBe("Renamed");
-    expect(updated?.prStrategy).toBe("stacked");
-    expect(updated?.autoApproveSubtasks).toBe(true);
-  });
-
-  it("deletes a team and returns true; returns false for missing team", async () => {
-    const store = new StateStore(":memory:");
-    await store.load();
-
-    store.createTeam(makeTeam("ws-1"));
-    expect(store.deleteTeam("team-1")).toBe(true);
-    expect(store.getTeam("team-1")).toBeNull();
-    expect(store.deleteTeam("team-1")).toBe(false);
-  });
-
-  it("appends and lists team messages", async () => {
-    const store = new StateStore(":memory:");
-    await store.load();
-
-    store.createTeam(makeTeam("ws-1"));
-    const now = new Date().toISOString();
-    const msg: TeamMessage = {
-      id: "msg-1",
-      teamId: "team-1",
-      parentTaskId: "task-parent",
-      agentName: "Coordinator",
-      senderType: "agent",
-      messageType: "context",
-      content: "hello",
-      createdAt: now
-    };
-    store.appendTeamMessage(msg);
-    const messages = store.listTeamMessages("team-1");
-    expect(messages).toHaveLength(1);
-    expect(messages[0]?.senderType).toBe("agent");
-    expect(messages[0]?.messageType).toBe("context");
-    expect(messages[0]?.parentTaskId).toBe("task-parent");
-    expect(messages[0]?.content).toBe("hello");
-  });
-
-  it("filters team messages by parentTaskId", async () => {
-    const store = new StateStore(":memory:");
-    await store.load();
-
-    store.createTeam(makeTeam("ws-1"));
-    const now = new Date().toISOString();
-    store.appendTeamMessage({
-      id: "msg-1",
-      teamId: "team-1",
-      parentTaskId: "task-parent-a",
-      agentName: "Coordinator",
-      senderType: "agent",
-      messageType: "context",
-      content: "plan a",
-      createdAt: now
-    });
-    store.appendTeamMessage({
-      id: "msg-2",
-      teamId: "team-1",
-      parentTaskId: "task-parent-b",
-      agentName: "Coordinator",
-      senderType: "agent",
-      messageType: "status",
-      content: "plan b",
-      createdAt: now
-    });
-
-    expect(store.listTeamMessages("team-1", "task-parent-a")).toHaveLength(1);
-    expect(store.listTeamMessages("team-1", "task-parent-b")).toHaveLength(1);
-  });
-
-  it("rejects messages exceeding 10KB", async () => {
-    const store = new StateStore(":memory:");
-    await store.load();
-
-    store.createTeam(makeTeam("ws-1"));
-    const now = new Date().toISOString();
-    const msg: TeamMessage = {
-      id: "msg-big",
-      teamId: "team-1",
-      parentTaskId: "task-parent",
-      agentName: "Coordinator",
-      senderType: "agent",
-      messageType: "artifact",
-      content: "x".repeat(10 * 1024 + 1),
-      createdAt: now
-    };
-    expect(() => store.appendTeamMessage(msg)).toThrow("10KB");
-  });
-
-  it("cascades deletes team messages when team is deleted", async () => {
-    const store = new StateStore(":memory:");
-    await store.load();
-
-    store.createTeam(makeTeam("ws-1"));
-    const now = new Date().toISOString();
-    store.appendTeamMessage({
-      id: "msg-1",
-      teamId: "team-1",
-      parentTaskId: "task-parent",
-      agentName: "Coordinator",
-      senderType: "agent",
-      messageType: "context",
-      content: "hi",
-      createdAt: now
-    });
-    expect(store.listTeamMessages("team-1")).toHaveLength(1);
-
-    store.deleteTeam("team-1");
-    // After team deletion, messages are cascade-deleted; re-creating will start fresh
-    store.createTeam(makeTeam("ws-1"));
-    expect(store.listTeamMessages("team-1")).toHaveLength(0);
-  });
-});
-
 // ---------------------------------------------------------------------------
 // Helpers for Phase 4 agent model tests
 // ---------------------------------------------------------------------------
@@ -425,19 +248,6 @@ function makeAgent(overrides: Partial<AccountAgent> = {}): AccountAgent {
     runnerConfig: { type: "shell", command: "true" },
     createdAt: now,
     updatedAt: now,
-    ...overrides
-  };
-}
-
-function makeTaskMessage(parentTaskId: string, overrides: Partial<TaskMessage> = {}): TaskMessage {
-  return {
-    id: "msg-1",
-    parentTaskId,
-    agentName: "Agent",
-    senderType: "agent",
-    messageType: "context",
-    content: "hello",
-    createdAt: new Date().toISOString(),
     ...overrides
   };
 }
@@ -691,83 +501,200 @@ describe("StateStore — Workspace Config (Phase 4)", () => {
     expect(reloaded?.autoApproveSubtasks).toBe(true);
   });
 
-  it("keeps #all active when its backing task is a channel_backing task", async () => {
-    const dataDir = await mkdtemp(join(tmpdir(), "workhorse-all-channel-"));
-    const workspace = makeWorkspace();
-    const backingTask: Task = {
-      ...makeTask(workspace.id),
-      id: "task-backing",
-      title: "Sample Coordinator",
-      column: "review",
-      taskKind: "channel_backing"
-    };
-    const allChannel: WorkspaceChannel = {
-      id: "channel-all",
-      workspaceId: workspace.id,
-      kind: "all",
-      name: "All",
-      slug: "all",
-      taskId: backingTask.id,
-      createdAt: workspace.createdAt
-    };
-
-    const initialStore = new StateStore(dataDir);
-    await initialStore.load();
-    initialStore.setWorkspaces([workspace]);
-    initialStore.setTasks([backingTask]);
-    await initialStore.save();
-    initialStore.saveWorkspaceChannel(allChannel);
-
-    const reloadedStore = new StateStore(dataDir);
-    await reloadedStore.load();
-
-    const reloadedAllChannel = reloadedStore.getWorkspaceAllChannel(workspace.id);
-    expect(reloadedAllChannel?.taskId).toBe(backingTask.id);
-    expect(reloadedAllChannel?.archivedAt).toBeUndefined();
-    expect(reloadedStore.listWorkspaceChannels(workspace.id)[0]?.kind).toBe("all");
-    expect(reloadedStore.listWorkspaceChannels(workspace.id)[0]?.archivedAt).toBeUndefined();
-  });
 });
 
-describe("StateStore — Task Messages (Phase 4)", () => {
-  it("appends and lists task messages", async () => {
+describe("StateStore — Agent-driven board schema (Spec 01)", () => {
+  // These tests exercise the raw DDL added by Spec 01. StateStore does not yet
+  // expose public methods for threads/messages/plans (that's Spec 04); we reach
+  // into the internal sqlite connection to confirm the migration applied and
+  // round-trips cleanly.
+
+  function getSqlite(store: StateStore): import("better-sqlite3").Database {
+    return (store as unknown as { sqlite: import("better-sqlite3").Database })
+      .sqlite;
+  }
+
+  it("creates threads / messages / plans / agent_sessions tables", async () => {
     const store = new StateStore(":memory:");
     await store.load();
 
-    store.appendTaskMessage(makeTaskMessage("parent-1"));
-    const messages = store.listTaskMessages("parent-1");
-    expect(messages).toHaveLength(1);
-    expect(messages[0]?.content).toBe("hello");
+    const sqlite = getSqlite(store);
+    const rows = sqlite
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name IN (?, ?, ?, ?)"
+      )
+      .all("threads", "messages", "plans", "agent_sessions") as Array<{
+      name: string;
+    }>;
+    const names = new Set(rows.map((r) => r.name));
+    expect(names.has("threads")).toBe(true);
+    expect(names.has("messages")).toBe(true);
+    expect(names.has("plans")).toBe(true);
+    expect(names.has("agent_sessions")).toBe(true);
   });
 
-  it("filters by parentTaskId", async () => {
+  it("adds source / plan_id / assignee_agent_id columns to tasks", async () => {
     const store = new StateStore(":memory:");
     await store.load();
 
-    store.appendTaskMessage(makeTaskMessage("parent-a", { id: "msg-1" }));
-    store.appendTaskMessage(makeTaskMessage("parent-b", { id: "msg-2" }));
-
-    expect(store.listTaskMessages("parent-a")).toHaveLength(1);
-    expect(store.listTaskMessages("parent-b")).toHaveLength(1);
+    const sqlite = getSqlite(store);
+    const cols = sqlite
+      .prepare("PRAGMA table_info(tasks)")
+      .all() as Array<{ name: string; dflt_value: string | null; notnull: number }>;
+    const byName = new Map(cols.map((c) => [c.name, c]));
+    expect(byName.has("source")).toBe(true);
+    expect(byName.get("source")?.notnull).toBe(1);
+    expect(byName.has("plan_id")).toBe(true);
+    expect(byName.has("assignee_agent_id")).toBe(true);
   });
 
-  it("rejects task messages exceeding 10KB", async () => {
+  it("round-trips a thread + message + plan insert/select", async () => {
     const store = new StateStore(":memory:");
     await store.load();
+
+    const workspace = makeWorkspace();
+    store.setWorkspaces([workspace]);
+    await store.save();
+
+    const sqlite = getSqlite(store);
+    const now = new Date().toISOString();
+
+    sqlite
+      .prepare(
+        `INSERT INTO threads
+         (id, workspace_id, kind, coordinator_state, created_at)
+         VALUES (?, ?, ?, ?, ?)`
+      )
+      .run("thread-1", workspace.id, "coordinator", "idle", now);
+
+    sqlite
+      .prepare(
+        `INSERT INTO messages
+         (id, thread_id, sender_type, kind, payload, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      .run("msg-1", "thread-1", "user", "chat", JSON.stringify({ text: "hi" }), now);
+
+    sqlite
+      .prepare(
+        `INSERT INTO plans
+         (id, thread_id, proposer_agent_id, status, drafts, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        "plan-1",
+        "thread-1",
+        "agent-1",
+        "pending",
+        JSON.stringify([{ title: "step 1", description: "do it" }]),
+        now
+      );
+
+    const thread = sqlite
+      .prepare("SELECT * FROM threads WHERE id = ?")
+      .get("thread-1") as {
+      workspace_id: string;
+      kind: string;
+      coordinator_state: string;
+    };
+    expect(thread.workspace_id).toBe(workspace.id);
+    expect(thread.kind).toBe("coordinator");
+    expect(thread.coordinator_state).toBe("idle");
+
+    const msg = sqlite
+      .prepare("SELECT * FROM messages WHERE id = ?")
+      .get("msg-1") as { payload: string; consumed_by_run_id: string | null };
+    expect(JSON.parse(msg.payload)).toEqual({ text: "hi" });
+    expect(msg.consumed_by_run_id).toBeNull();
+
+    const plan = sqlite
+      .prepare("SELECT * FROM plans WHERE id = ?")
+      .get("plan-1") as { status: string; drafts: string };
+    expect(plan.status).toBe("pending");
+    expect(JSON.parse(plan.drafts)).toHaveLength(1);
+  });
+
+  it("enforces FK cascade: deleting a thread drops its messages and plans", async () => {
+    const store = new StateStore(":memory:");
+    await store.load();
+
+    const workspace = makeWorkspace();
+    store.setWorkspaces([workspace]);
+    await store.save();
+
+    const sqlite = getSqlite(store);
+    const now = new Date().toISOString();
+
+    sqlite
+      .prepare(
+        `INSERT INTO threads
+         (id, workspace_id, kind, coordinator_state, created_at)
+         VALUES (?, ?, ?, ?, ?)`
+      )
+      .run("thread-x", workspace.id, "coordinator", "idle", now);
+    sqlite
+      .prepare(
+        `INSERT INTO messages
+         (id, thread_id, sender_type, kind, payload, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      .run("msg-x", "thread-x", "user", "chat", "{}", now);
+    sqlite
+      .prepare(
+        `INSERT INTO plans
+         (id, thread_id, proposer_agent_id, status, drafts, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      .run("plan-x", "thread-x", "agent-1", "pending", "[]", now);
+
+    sqlite.prepare("DELETE FROM threads WHERE id = ?").run("thread-x");
+
+    const msgCount = (
+      sqlite.prepare("SELECT COUNT(*) AS c FROM messages").get() as { c: number }
+    ).c;
+    const planCount = (
+      sqlite.prepare("SELECT COUNT(*) AS c FROM plans").get() as { c: number }
+    ).c;
+    expect(msgCount).toBe(0);
+    expect(planCount).toBe(0);
+  });
+
+  it("agent_sessions.thread_id is unique (one session per thread)", async () => {
+    const store = new StateStore(":memory:");
+    await store.load();
+
+    const workspace = makeWorkspace();
+    store.setWorkspaces([workspace]);
+    await store.save();
+
+    const sqlite = getSqlite(store);
+    const now = new Date().toISOString();
+
+    sqlite
+      .prepare(
+        `INSERT INTO threads
+         (id, workspace_id, kind, coordinator_state, created_at)
+         VALUES (?, ?, ?, ?, ?)`
+      )
+      .run("thread-s2", workspace.id, "coordinator", "idle", now);
+
+    sqlite
+      .prepare(
+        `INSERT INTO agent_sessions
+         (id, workspace_id, agent_id, thread_id, created_at)
+         VALUES (?, ?, ?, ?, ?)`
+      )
+      .run("sess-1-a", workspace.id, "agent-1", "thread-s2", now);
 
     expect(() =>
-      store.appendTaskMessage(
-        makeTaskMessage("parent-1", { content: "x".repeat(10 * 1024 + 1) })
-      )
-    ).toThrow("10KB");
-  });
-
-  it("stores optional taskId and returns it", async () => {
-    const store = new StateStore(":memory:");
-    await store.load();
-
-    store.appendTaskMessage(makeTaskMessage("parent-1", { taskId: "subtask-1" }));
-    const messages = store.listTaskMessages("parent-1");
-    expect(messages[0]?.taskId).toBe("subtask-1");
+      sqlite
+        .prepare(
+          `INSERT INTO agent_sessions
+           (id, workspace_id, agent_id, thread_id, created_at)
+           VALUES (?, ?, ?, ?, ?)`
+        )
+        .run("sess-2-a", workspace.id, "agent-2", "thread-s2", now)
+    ).toThrow(/UNIQUE/i);
   });
 });
+

@@ -4,7 +4,6 @@ import { readStoredValue, writeStoredValue } from "@/lib/persist";
 const STORAGE_KEYS = {
   selectedWorkspaceId: "workhorse.selectedWorkspaceId",
   selectedTaskId: "workhorse.selectedTaskId",
-  selectedChannelId: "workhorse.selectedChannelId",
   sidebarCollapsed: "workhorse.sidebarCollapsed"
 } as const;
 
@@ -14,9 +13,6 @@ export function useSelectionState() {
   );
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(() =>
     readStoredValue<string | null>(STORAGE_KEYS.selectedTaskId, null)
-  );
-  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(() =>
-    readStoredValue<string | null>(STORAGE_KEYS.selectedChannelId, null)
   );
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsedRaw] = useState<boolean>(
@@ -47,21 +43,14 @@ export function useSelectionState() {
     setSelectedRunId(null);
   }, []);
 
-  const setChannelSelection = useCallback((channelId: string | null) => {
-    setSelectedChannelId(channelId);
-    writeStoredValue(STORAGE_KEYS.selectedChannelId, channelId);
-  }, []);
-
   return {
     selectedWorkspaceId,
     selectedTaskId,
-    selectedChannelId,
     selectedRunId,
     sidebarCollapsed,
     setSelectedRunId,
     setWorkspaceSelection,
     setTaskSelection,
-    setChannelSelection,
     toggleSidebarCollapsed,
     setSidebarCollapsed
   };

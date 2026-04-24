@@ -143,7 +143,7 @@ export interface Workspace {
   codexSettings: WorkspaceCodexSettings;
   promptTemplates?: WorkspacePromptTemplates;
   /** PR creation strategy for workspace-level agent coordination. */
-  prStrategy?: TeamPrStrategy;
+  prStrategy?: "independent" | "stacked" | "single";
   /** When true, succeeded subtasks skip manual human approval. */
   autoApproveSubtasks?: boolean;
   createdAt: string;
@@ -239,14 +239,22 @@ export interface Task {
   rejected?: boolean;
   /** Present when a team subtask was explicitly cancelled by a user. */
   cancelledAt?: string;
-  /** Internal visibility bucket for UI-facing vs. system backing tasks. Defaults to `user`. */
-  taskKind?: "user" | "channel_backing";
-  /** When set, this task belongs to an agent team. */
-  teamId?: string;
-  /** When set, this task is a subtask created by a team coordinator. */
+  /** Internal visibility bucket for UI-facing tasks. Defaults to `user`. */
+  taskKind?: "user";
+  /** When set, this task is a subtask created via an approved Plan. */
   parentTaskId?: string;
-  /** The TeamAgent.id responsible for this subtask. */
-  teamAgentId?: string;
+  /**
+   * Agent-driven board: provenance of this task.
+   * `user`        — hand-created from the kanban UI (default when missing).
+   * `agent_plan`  — materialized by approving a Plan.
+   * Optional on the TS side so legacy call sites that construct Task literals
+   * keep compiling; the DB layer always populates it (default 'user').
+   */
+  source?: "user" | "agent_plan";
+  /** Present when `source === "agent_plan"`; points at the originating Plan. */
+  planId?: string;
+  /** The WorkspaceAgent that should pick up this task (may be decided later). */
+  assigneeAgentId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -285,67 +293,9 @@ export interface AppState {
   runs: Run[];
 }
 
-// === Agent Teams ===
+// === Account-level Agents ===
 
 export type AgentRole = "coordinator" | "worker";
-
-export type TeamPrStrategy = "independent" | "stacked" | "single";
-
-/**
- * @deprecated Use AccountAgent / WorkspaceAgent from the Phase 4 agent model.
- */
-export interface TeamAgent {
-  /** Unique agent identifier within the team (nanoid). */
-  id: string;
-  agentName: string;
-  role: AgentRole;
-  runnerConfig: RunnerConfig;
-}
-
-export type TeamMessageSenderType = "agent" | "human" | "system";
-
-export type TeamMessageType = "status" | "artifact" | "context" | "feedback";
-
-/**
- * @deprecated Use TaskMessage from the Phase 4 agent model.
- */
-export interface TeamMessage {
-  id: string;
-  teamId: string;
-  /** Parent team task that owns this execution thread. */
-  parentTaskId: string;
-  /** The task this message is associated with (subtask or parent task). */
-  taskId?: string;
-  /** Name of the agent or user that sent the message. */
-  agentName: string;
-  /** Whether the message was sent by an agent, human, or the system. */
-  senderType: TeamMessageSenderType;
-  /** Semantic message category for prompt injection and UI rendering. */
-  messageType: TeamMessageType;
-  content: string;
-  createdAt: string;
-}
-
-/**
- * @deprecated Use workspace-mounted agents (AccountAgent / WorkspaceAgent) from the Phase 4 agent model.
- */
-export interface AgentTeam {
-  id: string;
-  name: string;
-  description: string;
-  workspaceId: string;
-  // agents is stored as a JSON column — always loaded with the team,
-  // so a separate table would add overhead without query benefit.
-  agents: TeamAgent[];
-  /** Strategy for creating pull requests from subtask branches. */
-  prStrategy: TeamPrStrategy;
-  /** When true, succeeded subtasks skip manual human approval. */
-  autoApproveSubtasks: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-// === Account-level Agents ===
 
 /**
  * An account-level agent definition. Agents are created once and can be
@@ -368,80 +318,76 @@ export interface WorkspaceAgent extends AccountAgent {
   role: AgentRole;
 }
 
-// === Workspace Channels ===
+// === Agent-driven board (Spec 02) ===
 
-export type WorkspaceChannelKind = "all" | "task";
+export type ThreadKind = "coordinator" | "task" | "direct";
 
-export interface WorkspaceChannel {
+export type CoordinatorState = "idle" | "queued" | "running";
+
+export interface Thread {
   id: string;
   workspaceId: string;
-  kind: WorkspaceChannelKind;
-  name: string;
-  slug: string;
-  /** `#all` uses this to point at its hidden backing coordinator task. */
+  kind: ThreadKind;
+  /** Set when `kind === "task"` — the task this thread belongs to. */
   taskId?: string;
+  /** The WorkspaceAgent that drives this thread (if any). */
+  coordinatorAgentId?: string;
+  coordinatorState: CoordinatorState;
   createdAt: string;
   archivedAt?: string;
 }
 
-export interface ChannelMessage {
+export type MessageKind =
+  | "chat"
+  | "status"
+  | "artifact"
+  | "plan_draft"
+  | "plan_decision"
+  | "system_event";
+
+export type MessageSender =
+  | { type: "user" }
+  | { type: "agent"; agentId: string }
+  | { type: "system" };
+
+export interface Message {
   id: string;
-  channelId: string;
-  workspaceId: string;
-  taskId?: string;
-  agentName: string;
-  senderType: TeamMessageSenderType;
-  messageType: TeamMessageType;
-  content: string;
-  metadata?: Record<string, string>;
+  threadId: string;
+  sender: MessageSender;
+  kind: MessageKind;
+  /** Payload shape is narrowed per `kind` by typia validators. */
+  payload: unknown;
+  /** When set, this message was consumed by the given coordinator run turn. */
+  consumedByRunId?: string;
   createdAt: string;
 }
 
-// === Task Messages (workspace-level agent communication) ===
+export type PlanStatus = "pending" | "approved" | "rejected" | "superseded";
 
-/** A message in a task's coordination thread, not tied to any team entity. */
-export interface TaskMessage {
-  id: string;
-  /** The parent coordinator task that owns this execution thread. */
-  parentTaskId: string;
-  /** The specific subtask this message is associated with (if any). */
-  taskId?: string;
-  agentName: string;
-  senderType: TeamMessageSenderType;
-  messageType: TeamMessageType;
-  content: string;
-  createdAt: string;
-}
-
-// === Coordinator Proposals ===
-
-export type CoordinatorProposalStatus = "pending" | "approved" | "rejected";
-export type CoordinatorProposalMode = "top_level_tasks" | "subtasks";
-
-/** A single subtask draft produced by the coordinator LLM output. */
-export interface CoordinatorProposalDraft {
+export interface PlanDraft {
   title: string;
   description: string;
-  assignedAgent: string;
-  dependencies: string[];
+  assigneeAgentId?: string;
+  /** References to other drafts' titles within the same plan. */
+  dependsOn?: string[];
 }
 
-/**
- * A coordinator proposal holds the parsed subtask plan from a coordinator
- * run and waits for human approval before subtasks are actually created.
- */
-export interface CoordinatorProposal {
+export interface Plan {
   id: string;
-  /** Legacy: team-scoped proposals. Null for workspace-scoped proposals. */
-  teamId: string | null;
-  /** Set for workspace-scoped proposals (new model). */
-  workspaceId?: string;
-  channelId?: string;
-  parentTaskId: string;
-  proposalMode: CoordinatorProposalMode;
-  status: CoordinatorProposalStatus;
-  drafts: CoordinatorProposalDraft[];
+  threadId: string;
+  proposerAgentId: string;
+  status: PlanStatus;
+  drafts: PlanDraft[];
+  approvedAt?: string;
   createdAt: string;
-  /** ISO timestamp of when the proposal was approved or rejected. */
-  decidedAt?: string;
+}
+
+export interface AgentSession {
+  id: string;
+  workspaceId: string;
+  agentId: string;
+  threadId: string;
+  /** Runner-level session handle: claude `--resume` id, codex session id, etc. */
+  runnerSessionKey?: string;
+  createdAt: string;
 }

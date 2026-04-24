@@ -423,7 +423,6 @@ async function createReviewSubtask(
   service: BoardService,
   input: {
     workspaceId: string;
-    teamId: string;
     parentTaskId: string;
     title: string;
     runnerType?: Task["runnerType"];
@@ -431,18 +430,17 @@ async function createReviewSubtask(
     lastRunStatus?: Run["status"];
   }
 ) {
-  return createTeamSubtask(service, {
+  return createSubtask(service, {
     ...input,
     column: "review",
     lastRunStatus: input.lastRunStatus ?? "succeeded"
   });
 }
 
-async function createTeamSubtask(
+async function createSubtask(
   service: BoardService,
   input: {
     workspaceId: string;
-    teamId: string;
     parentTaskId: string;
     title: string;
     description?: string;
@@ -478,16 +476,14 @@ async function createTeamSubtask(
     taskKind: "user",
     worktree: {
       baseRef: "main",
-      branchName: `team/${input.teamId}/${taskId}`,
+      branchName: `subtask/${taskId}`,
       status: "ready"
     },
     lastRunId: runId,
     lastRunStatus: input.lastRunStatus,
     rejected: input.rejected ?? false,
     cancelledAt: input.cancelledAt,
-    teamId: input.teamId,
     parentTaskId: input.parentTaskId,
-    teamAgentId: "agent-worker",
     createdAt: now,
     updatedAt: now
   };
@@ -595,185 +591,12 @@ describe("workhorse runtime", () => {
     });
   });
 
-  it("posts a human team message over HTTP and returns the created message", async () => {
-    const { app, service, workspaceDir } = await createRuntime();
-    const workspace = await createWorkspace(service, workspaceDir);
-    const team = service.createTeam({
-      name: "Delivery Team",
-      workspaceId: workspace.id,
-      agents: [
-        {
-          id: "agent-coordinator",
-          agentName: "Coordinator",
-          role: "coordinator",
-          runnerConfig: {
-            type: "codex",
-            prompt: "Coordinate the work."
-          }
-        },
-        {
-          id: "agent-worker",
-          agentName: "Worker",
-          role: "worker",
-          runnerConfig: {
-            type: "codex",
-            prompt: "Implement the assigned task."
-          }
-        }
-      ]
-    });
-    const task = await service.createTask({
-      title: "Coordinate rollout",
-      workspaceId: workspace.id,
-      teamId: team.id,
-      column: "todo",
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "echo should-be-overridden"
-      }
-    });
-
-    const response = await app.request(`/api/teams/${team.id}/messages`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        parentTaskId: task.id,
-        content: "Please wait for human approval before creating subtasks."
-      })
-    });
-
-    expect(response.status).toBe(201);
-    const payload = await response.json();
-    expect(payload.ok).toBe(true);
-    expect(payload.data.item).toMatchObject({
-      teamId: team.id,
-      parentTaskId: task.id,
-      taskId: task.id,
-      agentName: "User",
-      senderType: "human",
-      messageType: "feedback",
-      content: "Please wait for human approval before creating subtasks."
-    });
-
-    const listResponse = await app.request(
-      `/api/teams/${team.id}/messages?parentTaskId=${encodeURIComponent(task.id)}`
-    );
-    expect(listResponse.status).toBe(200);
-    const listPayload = await listResponse.json();
-    expect(listPayload.data.items).toHaveLength(1);
-    expect(listPayload.data.items[0]?.senderType).toBe("human");
-  });
-
-  it("rejects posting a human team message to a non-parent task thread", async () => {
-    const { app, service, workspaceDir } = await createRuntime();
-    const workspace = await createWorkspace(service, workspaceDir);
-    const team = service.createTeam({
-      name: "Delivery Team",
-      workspaceId: workspace.id,
-      agents: [
-        {
-          id: "agent-coordinator",
-          agentName: "Coordinator",
-          role: "coordinator",
-          runnerConfig: {
-            type: "codex",
-            prompt: "Coordinate the work."
-          }
-        },
-        {
-          id: "agent-worker",
-          agentName: "Worker",
-          role: "worker",
-          runnerConfig: {
-            type: "codex",
-            prompt: "Implement the assigned task."
-          }
-        }
-      ]
-    });
-    const unrelatedTask = await service.createTask({
-      title: "Standalone task",
-      workspaceId: workspace.id,
-      column: "todo",
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "echo standalone"
-      }
-    });
-
-    const response = await app.request(`/api/teams/${team.id}/messages`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        parentTaskId: unrelatedTask.id,
-        content: "Need more context here."
-      })
-    });
-
-    expect(response.status).toBe(400);
-    const payload = await response.json();
-    expect(payload.ok).toBe(false);
-    expect(payload.error.code).toBe("INVALID_PARENT_TASK");
-  });
-
-  it("returns 404 when posting a human team message for a missing team", async () => {
-    const { app } = await createRuntime();
-
-    const response = await app.request("/api/teams/team-missing/messages", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        parentTaskId: "task-parent",
-        content: "Need a human checkpoint."
-      })
-    });
-
-    expect(response.status).toBe(404);
-    const payload = await response.json();
-    expect(payload.ok).toBe(false);
-    expect(payload.error.code).toBe("TEAM_NOT_FOUND");
-  });
-
   it("approves a succeeded review subtask over HTTP", async () => {
     const { app, service, workspaceDir } = await createRuntime();
     const workspace = await createWorkspace(service, workspaceDir);
-    const team = service.createTeam({
-      name: "Delivery Team",
-      workspaceId: workspace.id,
-      autoApproveSubtasks: false,
-      agents: [
-        {
-          id: "agent-coordinator",
-          agentName: "Coordinator",
-          role: "coordinator",
-          runnerConfig: {
-            type: "codex",
-            prompt: "Coordinate the work."
-          }
-        },
-        {
-          id: "agent-worker",
-          agentName: "Worker",
-          role: "worker",
-          runnerConfig: {
-            type: "codex",
-            prompt: "Implement the assigned task."
-          }
-        }
-      ]
-    });
     const parentTask = await service.createTask({
       title: "Coordinate rollout",
       workspaceId: workspace.id,
-      teamId: team.id,
       column: "running",
       runnerType: "shell",
       runnerConfig: {
@@ -783,7 +606,6 @@ describe("workhorse runtime", () => {
     });
     const subtask = await createReviewSubtask(service, {
       workspaceId: workspace.id,
-      teamId: team.id,
       parentTaskId: parentTask.id,
       title: "Implement UI",
       lastRunStatus: "succeeded"
@@ -806,35 +628,9 @@ describe("workhorse runtime", () => {
   it("approves a review subtask when lastRunStatus falls back to the latest run", async () => {
     const { app, service, workspaceDir } = await createRuntime();
     const workspace = await createWorkspace(service, workspaceDir);
-    const team = service.createTeam({
-      name: "Delivery Team",
-      workspaceId: workspace.id,
-      autoApproveSubtasks: false,
-      agents: [
-        {
-          id: "agent-coordinator",
-          agentName: "Coordinator",
-          role: "coordinator",
-          runnerConfig: {
-            type: "codex",
-            prompt: "Coordinate the work."
-          }
-        },
-        {
-          id: "agent-worker",
-          agentName: "Worker",
-          role: "worker",
-          runnerConfig: {
-            type: "codex",
-            prompt: "Implement the assigned task."
-          }
-        }
-      ]
-    });
     const parentTask = await service.createTask({
       title: "Coordinate rollout",
       workspaceId: workspace.id,
-      teamId: team.id,
       column: "running",
       runnerType: "shell",
       runnerConfig: {
@@ -844,7 +640,6 @@ describe("workhorse runtime", () => {
     });
     const subtask = await createReviewSubtask(service, {
       workspaceId: workspace.id,
-      teamId: team.id,
       parentTaskId: parentTask.id,
       title: "Implement UI",
       lastRunStatus: "succeeded"
@@ -875,35 +670,9 @@ describe("workhorse runtime", () => {
   it("rejects a review subtask over HTTP and records the reason", async () => {
     const { app, service, workspaceDir } = await createRuntime();
     const workspace = await createWorkspace(service, workspaceDir);
-    const team = service.createTeam({
-      name: "Delivery Team",
-      workspaceId: workspace.id,
-      autoApproveSubtasks: false,
-      agents: [
-        {
-          id: "agent-coordinator",
-          agentName: "Coordinator",
-          role: "coordinator",
-          runnerConfig: {
-            type: "codex",
-            prompt: "Coordinate the work."
-          }
-        },
-        {
-          id: "agent-worker",
-          agentName: "Worker",
-          role: "worker",
-          runnerConfig: {
-            type: "codex",
-            prompt: "Implement the assigned task."
-          }
-        }
-      ]
-    });
     const parentTask = await service.createTask({
       title: "Coordinate rollout",
       workspaceId: workspace.id,
-      teamId: team.id,
       column: "running",
       runnerType: "shell",
       runnerConfig: {
@@ -913,7 +682,6 @@ describe("workhorse runtime", () => {
     });
     const subtask = await createReviewSubtask(service, {
       workspaceId: workspace.id,
-      teamId: team.id,
       parentTaskId: parentTask.id,
       title: "Implement API",
       lastRunStatus: "failed"
@@ -936,83 +704,6 @@ describe("workhorse runtime", () => {
       column: "done",
       rejected: true
     });
-    expect(
-      service
-        .listTeamMessages(team.id, parentTask.id)
-        .some((message) => message.content.includes("Out of scope"))
-    ).toBe(true);
-  });
-
-  it("cancels a review subtask over HTTP and aggregates the parent thread", async () => {
-    const { app, service, workspaceDir } = await createRuntime();
-    const workspace = await createWorkspace(service, workspaceDir);
-    const team = service.createTeam({
-      name: "Delivery Team",
-      workspaceId: workspace.id,
-      autoApproveSubtasks: false,
-      agents: [
-        {
-          id: "agent-coordinator",
-          agentName: "Coordinator",
-          role: "coordinator",
-          runnerConfig: {
-            type: "codex",
-            prompt: "Coordinate the work."
-          }
-        },
-        {
-          id: "agent-worker",
-          agentName: "Worker",
-          role: "worker",
-          runnerConfig: {
-            type: "shell",
-            command: "echo run worker task"
-          }
-        }
-      ]
-    });
-    const parentTask = await service.createTask({
-      title: "Coordinate rollout",
-      workspaceId: workspace.id,
-      teamId: team.id,
-      column: "running",
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "echo should-be-overridden"
-      }
-    });
-    const subtask = await createReviewSubtask(service, {
-      workspaceId: workspace.id,
-      teamId: team.id,
-      parentTaskId: parentTask.id,
-      title: "Implement API",
-      lastRunStatus: "succeeded"
-    });
-
-    const response = await app.request(`/api/teams/${team.id}/tasks/${subtask.id}/cancel`, {
-      method: "POST"
-    });
-
-    expect(response.status).toBe(200);
-    const payload = await response.json();
-    expect(payload.data.task).toMatchObject({
-      id: subtask.id,
-      column: "done",
-      rejected: false
-    });
-    expect(typeof payload.data.task.cancelledAt).toBe("string");
-    expect(service.getTask(parentTask.id).column).toBe("review");
-    expect(
-      service
-        .listTeamMessages(team.id, parentTask.id)
-        .some((message) => message.content.includes('User cancelled subtask "Implement API".'))
-    ).toBe(true);
-    expect(
-      service
-        .listTeamMessages(team.id, parentTask.id)
-        .some((message) => message.content.includes("Implement API (cancelled)"))
-    ).toBe(true);
   });
 
   it("retries a review subtask over HTTP", async () => {
@@ -1024,26 +715,9 @@ describe("workhorse runtime", () => {
       }
     });
     const workspace = await createWorkspace(service, workspaceDir);
-    const team = service.createTeam({
-      name: "Delivery Team",
-      workspaceId: workspace.id,
-      autoApproveSubtasks: false,
-      agents: [
-        {
-          id: "agent-coordinator",
-          agentName: "Coordinator",
-          role: "coordinator",
-          runnerConfig: {
-            type: "codex",
-            prompt: "Coordinate the work."
-          }
-        }
-      ]
-    });
     const parentTask = await service.createTask({
       title: "Coordinate rollout",
       workspaceId: workspace.id,
-      teamId: team.id,
       column: "todo",
       runnerType: "shell",
       runnerConfig: {
@@ -1053,7 +727,6 @@ describe("workhorse runtime", () => {
     });
     const subtask = await createReviewSubtask(service, {
       workspaceId: workspace.id,
-      teamId: team.id,
       parentTaskId: parentTask.id,
       title: "Retry task",
       runnerType: "shell",
@@ -1073,133 +746,6 @@ describe("workhorse runtime", () => {
     expect(["todo", "running"]).toContain(payload.data.task.column);
     expect(service.getTask(subtask.id).rejected).toBe(false);
     expect(service.getTask(subtask.id).lastRunStatus).not.toBe("failed");
-  });
-
-  it("cancels a running subtask over HTTP and preserves the done state after stopRun finishes", async () => {
-    const { app, service, workspaceDir } = await createRuntime({
-      runners: {
-        claude: new MockClaudeRunner(),
-        codex: new HoldingRunner("codex"),
-        shell: new HoldingRunner("shell")
-      }
-    });
-    const workspace = await createWorkspace(service, workspaceDir);
-    const team = service.createTeam({
-      name: "Delivery Team",
-      workspaceId: workspace.id,
-      autoApproveSubtasks: false,
-      agents: [
-        {
-          id: "agent-coordinator",
-          agentName: "Coordinator",
-          role: "coordinator",
-          runnerConfig: {
-            type: "codex",
-            prompt: "Coordinate the work."
-          }
-        },
-        {
-          id: "agent-worker",
-          agentName: "Worker",
-          role: "worker",
-          runnerConfig: {
-            type: "codex",
-            prompt: "Implement the assigned task."
-          }
-        }
-      ]
-    });
-    const parentTask = await service.createTask({
-      title: "Coordinate rollout",
-      workspaceId: workspace.id,
-      teamId: team.id,
-      column: "running",
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "echo should-be-overridden"
-      }
-    });
-    const subtask = await createTeamSubtask(service, {
-      workspaceId: workspace.id,
-      teamId: team.id,
-      parentTaskId: parentTask.id,
-      title: "Cancel in-flight task",
-      column: "todo",
-      runnerType: "codex",
-      runnerConfig: {
-        type: "codex",
-        prompt: "Cancel this task while it is running."
-      }
-    });
-
-    await service.startTask(subtask.id);
-    await waitForTaskColumn(service, subtask.id, "running");
-
-    const response = await app.request(`/api/teams/${team.id}/tasks/${subtask.id}/cancel`, {
-      method: "POST"
-    });
-
-    expect(response.status).toBe(200);
-    const payload = await response.json();
-    expect(payload.data.task.column).toBe("done");
-    expect(typeof payload.data.task.cancelledAt).toBe("string");
-
-    await waitForRunToFinish(service, subtask.id);
-    const finalTask = service.getTask(subtask.id);
-    expect(finalTask.column).toBe("done");
-    expect(finalTask.cancelledAt).toBeTruthy();
-    expect(finalTask.lastRunStatus).toBe("canceled");
-    expect(service.getTask(parentTask.id).column).toBe("review");
-  });
-
-  it("rejects cancelling already completed subtasks", async () => {
-    const { app, service, workspaceDir } = await createRuntime();
-    const workspace = await createWorkspace(service, workspaceDir);
-    const team = service.createTeam({
-      name: "Delivery Team",
-      workspaceId: workspace.id,
-      autoApproveSubtasks: false,
-      agents: [
-        {
-          id: "agent-coordinator",
-          agentName: "Coordinator",
-          role: "coordinator",
-          runnerConfig: {
-            type: "codex",
-            prompt: "Coordinate the work."
-          }
-        }
-      ]
-    });
-    const parentTask = await service.createTask({
-      title: "Coordinate rollout",
-      workspaceId: workspace.id,
-      teamId: team.id,
-      column: "running",
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "echo should-be-overridden"
-      }
-    });
-    const subtask = await createTeamSubtask(service, {
-      workspaceId: workspace.id,
-      teamId: team.id,
-      parentTaskId: parentTask.id,
-      title: "Already done",
-      column: "done",
-      lastRunStatus: "succeeded"
-    });
-
-    const response = await app.request(`/api/teams/${team.id}/tasks/${subtask.id}/cancel`, {
-      method: "POST"
-    });
-
-    expect(response.status).toBe(409);
-    const payload = await response.json();
-    expect(payload.ok).toBe(false);
-    expect(payload.error.code).toBe("TASK_CANCEL_NOT_ALLOWED");
   });
 
   it("reports review monitor timing in health responses", async () => {
@@ -2946,634 +2492,6 @@ describe("scheduler API", () => {
     expect(data.ok).toBe(true);
     expect(data.data.started).toEqual([]);
     expect(data.data.blocked).toEqual([]);
-  });
-});
-
-describe("workspace channel API", () => {
-  it("resolves #all and task channels by slug with unique task slugs", async () => {
-    const { app, service, workspaceDir } = await createRuntime();
-    const workspace = await createWorkspace(service, workspaceDir);
-    const firstTask = await service.createTask({
-      title: "One task",
-      workspaceId: workspace.id,
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "true"
-      }
-    });
-    const secondTask = await service.createTask({
-      title: "One task",
-      workspaceId: workspace.id,
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "true"
-      }
-    });
-
-    const listRes = await app.request(`/api/workspaces/${workspace.id}/channels`);
-    expect(listRes.status).toBe(200);
-    const listData = (await listRes.json()) as {
-      ok: boolean;
-      data: {
-        items: Array<{
-          id: string;
-          kind: "all" | "task";
-          slug: string;
-          taskId?: string;
-        }>;
-      };
-    };
-
-    const allChannel = listData.data.items.find((item) => item.kind === "all");
-    const firstTaskChannel = listData.data.items.find(
-      (item) => item.taskId === firstTask.id
-    );
-    const secondTaskChannel = listData.data.items.find(
-      (item) => item.taskId === secondTask.id
-    );
-
-    expect(allChannel).toMatchObject({ slug: "all" });
-    expect(firstTaskChannel).toMatchObject({ slug: "one-task" });
-    expect(secondTaskChannel).toMatchObject({ slug: "one-task-2" });
-
-    const allBySlugRes = await app.request(
-      `/api/workspaces/${workspace.id}/channels/by-slug/all`
-    );
-    expect(allBySlugRes.status).toBe(200);
-    const allBySlugData = (await allBySlugRes.json()) as {
-      ok: boolean;
-      data: { channel: { id: string; slug: string } };
-    };
-    expect(allBySlugData.data.channel).toMatchObject({
-      id: allChannel!.id,
-      slug: "all"
-    });
-
-    const taskBySlugRes = await app.request(
-      `/api/workspaces/${workspace.id}/channels/by-slug/one-task-2`
-    );
-    expect(taskBySlugRes.status).toBe(200);
-    const taskBySlugData = (await taskBySlugRes.json()) as {
-      ok: boolean;
-      data: { channel: { id: string; slug: string; taskId?: string } };
-    };
-    expect(taskBySlugData.data.channel).toMatchObject({
-      id: secondTaskChannel!.id,
-      slug: "one-task-2",
-      taskId: secondTask.id
-    });
-  });
-
-  it("lists #all first and only includes active task channels", async () => {
-    const { app, service, workspaceDir } = await createRuntime();
-    const workspace = await createWorkspace(service, workspaceDir);
-    const activeTask = await createShellTask(service, workspace.id);
-    const doneTask = await service.createTask({
-      title: "Done task",
-      workspaceId: workspace.id,
-      column: "done",
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "true"
-      }
-    });
-    const archivedTask = await service.createTask({
-      title: "Archived task",
-      workspaceId: workspace.id,
-      column: "archived",
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "true"
-      }
-    });
-
-    const res = await app.request(`/api/workspaces/${workspace.id}/channels`);
-    expect(res.status).toBe(200);
-
-    const data = (await res.json()) as {
-      ok: boolean;
-      data: {
-        items: Array<{
-          id: string;
-          kind: "all" | "task";
-          slug: string;
-          taskId?: string;
-        }>;
-      };
-    };
-
-    expect(data.ok).toBe(true);
-    expect(data.data.items[0]).toMatchObject({
-      kind: "all",
-      slug: "all"
-    });
-    expect(data.data.items.some((item) => item.taskId === activeTask.id)).toBe(true);
-    expect(data.data.items.some((item) => item.taskId === doneTask.id)).toBe(false);
-    expect(data.data.items.some((item) => item.taskId === archivedTask.id)).toBe(false);
-  });
-
-  it("treats plain-text #all replies as chat instead of a parse error", async () => {
-    const codexServer = createCodexAppServerStub();
-    const { app, service, workspaceDir } = await createRuntime({
-      codexAppServer: codexServer,
-      runners: {
-        claude: new CoordinatorTextRunner("你好，我是这个 workspace 的 coordinator。"),
-        shell: new ShellRunner(),
-        codex: new CodexAcpRunner(codexServer)
-      }
-    });
-    const workspace = await createWorkspace(service, workspaceDir);
-    const coordinator = service.createAgent({
-      name: "Workspace coordinator",
-      runnerConfig: {
-        type: "claude",
-        prompt: "Coordinate work"
-      }
-    });
-    service.mountAgent(workspace.id, {
-      agentId: coordinator.id,
-      role: "coordinator"
-    });
-
-    const allChannel = service
-      .listWorkspaceChannelsByWorkspace(workspace.id)
-      .find((item) => item.kind === "all");
-    expect(allChannel).toBeDefined();
-
-    const postRes = await app.request(
-      `/api/workspaces/${workspace.id}/channels/${allChannel!.id}/messages`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          content: "你好啊，你是谁？"
-        })
-      }
-    );
-    expect(postRes.status).toBe(201);
-
-    const refreshedAllChannel = service
-      .listWorkspaceChannelsByWorkspace(workspace.id)
-      .find((item) => item.id === allChannel!.id);
-    await waitForRunToFinish(service, refreshedAllChannel!.taskId!);
-
-    const messagesRes = await app.request(
-      `/api/workspaces/${workspace.id}/channels/${allChannel!.id}/messages`
-    );
-    expect(messagesRes.status).toBe(200);
-    const messagesData = (await messagesRes.json()) as {
-      ok: boolean;
-      data: {
-        items: Array<{
-          senderType: "agent" | "human" | "system";
-          content: string;
-        }>;
-      };
-    };
-
-    expect(messagesData.data.items).toHaveLength(2);
-    expect(messagesData.data.items[0]).toMatchObject({
-      senderType: "human",
-      content: "你好啊，你是谁？"
-    });
-    expect(messagesData.data.items[1]).toMatchObject({
-      senderType: "agent",
-      content: "你好，我是这个 workspace 的 coordinator。"
-    });
-
-    const proposalsRes = await app.request(
-      `/api/workspaces/${workspace.id}/channels/${allChannel!.id}/proposals`
-    );
-    const proposalsData = (await proposalsRes.json()) as {
-      ok: boolean;
-      data: { items: Array<{ id: string }> };
-    };
-    expect(proposalsData.data.items).toEqual([]);
-
-    const channelsAfterReply = service.listWorkspaceChannelsByWorkspace(workspace.id);
-    expect(channelsAfterReply.find((item) => item.kind === "all")).toMatchObject({
-      id: allChannel!.id,
-      slug: "all"
-    });
-  });
-
-  it("assembles streamed #all replies instead of keeping only the final delta", async () => {
-    const codexServer = createCodexAppServerStub();
-    const { app, service, workspaceDir } = await createRuntime({
-      codexAppServer: codexServer,
-      runners: {
-        claude: new StreamingCoordinatorTextRunner([
-          "你好",
-          "，我",
-          "是这个 workspace 的 coordinator",
-          "。"
-        ]),
-        shell: new ShellRunner(),
-        codex: new CodexAcpRunner(codexServer)
-      }
-    });
-    const workspace = await createWorkspace(service, workspaceDir);
-    const coordinator = service.createAgent({
-      name: "Workspace coordinator",
-      runnerConfig: {
-        type: "claude",
-        prompt: "Coordinate work"
-      }
-    });
-    service.mountAgent(workspace.id, {
-      agentId: coordinator.id,
-      role: "coordinator"
-    });
-
-    const allChannel = service
-      .listWorkspaceChannelsByWorkspace(workspace.id)
-      .find((item) => item.kind === "all");
-    expect(allChannel).toBeDefined();
-
-    const postRes = await app.request(
-      `/api/workspaces/${workspace.id}/channels/${allChannel!.id}/messages`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          content: "你好"
-        })
-      }
-    );
-    expect(postRes.status).toBe(201);
-
-    const refreshedAllChannel = service
-      .listWorkspaceChannelsByWorkspace(workspace.id)
-      .find((item) => item.id === allChannel!.id);
-    await waitForRunToFinish(service, refreshedAllChannel!.taskId!);
-
-    const messagesRes = await app.request(
-      `/api/workspaces/${workspace.id}/channels/${allChannel!.id}/messages`
-    );
-    expect(messagesRes.status).toBe(200);
-    const messagesData = (await messagesRes.json()) as {
-      ok: boolean;
-      data: {
-        items: Array<{
-          senderType: "agent" | "human" | "system";
-          content: string;
-        }>;
-      };
-    };
-
-    expect(messagesData.data.items).toHaveLength(2);
-    expect(messagesData.data.items[1]).toMatchObject({
-      senderType: "agent",
-      content: "你好，我是这个 workspace 的 coordinator。"
-    });
-  });
-
-  it("accepts repeated #all messages while the coordinator is still responding", async () => {
-    const codexServer = createCodexAppServerStub();
-    const { app, service, workspaceDir } = await createRuntime({
-      codexAppServer: codexServer,
-      runners: {
-        claude: new QueuedCoordinatorTextRunner([
-          "第一条消息我收到了。",
-          "第二条消息我也看到了。"
-        ]),
-        shell: new ShellRunner(),
-        codex: new CodexAcpRunner(codexServer)
-      }
-    });
-    const workspace = await createWorkspace(service, workspaceDir);
-    const coordinator = service.createAgent({
-      name: "Workspace coordinator",
-      runnerConfig: {
-        type: "claude",
-        prompt: "Coordinate work"
-      }
-    });
-    service.mountAgent(workspace.id, {
-      agentId: coordinator.id,
-      role: "coordinator"
-    });
-
-    const allChannel = service
-      .listWorkspaceChannelsByWorkspace(workspace.id)
-      .find((item) => item.kind === "all");
-    expect(allChannel).toBeDefined();
-
-    const firstRes = await app.request(
-      `/api/workspaces/${workspace.id}/channels/${allChannel!.id}/messages`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          content: "第一条消息"
-        })
-      }
-    );
-    expect(firstRes.status).toBe(201);
-
-    const secondRes = await app.request(
-      `/api/workspaces/${workspace.id}/channels/${allChannel!.id}/messages`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          content: "第二条消息"
-        })
-      }
-    );
-    expect(secondRes.status).toBe(201);
-
-    await sleep(150);
-
-    const refreshedAllChannel = service
-      .listWorkspaceChannelsByWorkspace(workspace.id)
-      .find((item) => item.id === allChannel!.id);
-    const backingTaskId = refreshedAllChannel?.taskId;
-    expect(backingTaskId).toBeTruthy();
-    expect(service.listRuns(backingTaskId!).length).toBe(2);
-
-    const messagesRes = await app.request(
-      `/api/workspaces/${workspace.id}/channels/${allChannel!.id}/messages`
-    );
-    const messagesData = (await messagesRes.json()) as {
-      ok: boolean;
-      data: {
-        items: Array<{
-          senderType: "agent" | "human" | "system";
-          content: string;
-        }>;
-      };
-    };
-
-    expect(messagesData.data.items.map((item) => item.content)).toEqual([
-      "第一条消息",
-      "第二条消息",
-      "第一条消息我收到了。",
-      "第二条消息我也看到了。"
-    ]);
-  });
-
-  it("refreshes #all coordinator runs after agent settings remove a claude agent profile", async () => {
-    const codexServer = createCodexAppServerStub();
-    const { app, service, workspaceDir } = await createRuntime({
-      codexAppServer: codexServer,
-      runners: {
-        claude: new ConfigAwareHoldingClaudeRunner(),
-        shell: new ShellRunner(),
-        codex: new CodexAcpRunner(codexServer)
-      }
-    });
-    const workspace = await createWorkspace(service, workspaceDir);
-    const coordinator = service.createAgent({
-      name: "Workspace coordinator",
-      runnerConfig: {
-        type: "claude",
-        prompt: "Coordinate work",
-        agent: "architecture",
-        model: {
-          mode: "custom",
-          id: "@preset/39-ai-claude-opus-46"
-        },
-        permissionMode: "default"
-      }
-    });
-    service.mountAgent(workspace.id, {
-      agentId: coordinator.id,
-      role: "coordinator"
-    });
-
-    const allChannel = service
-      .listWorkspaceChannelsByWorkspace(workspace.id)
-      .find((item) => item.kind === "all");
-    expect(allChannel).toBeDefined();
-
-    const firstRes = await app.request(
-      `/api/workspaces/${workspace.id}/channels/${allChannel!.id}/messages`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          content: "第一轮，先告诉我你是谁。"
-        })
-      }
-    );
-    expect(firstRes.status).toBe(201);
-
-    const refreshedAllChannel = service
-      .listWorkspaceChannelsByWorkspace(workspace.id)
-      .find((item) => item.id === allChannel!.id);
-    const backingTaskId = refreshedAllChannel?.taskId;
-    expect(backingTaskId).toBeTruthy();
-
-    const initialBackingTask = service.getTask(backingTaskId!);
-    expect(initialBackingTask.runnerType).toBe("claude");
-    expect(initialBackingTask.runnerConfig).toMatchObject({
-      type: "claude",
-      agent: "architecture"
-    });
-
-    const initialRun = service.listRuns(backingTaskId!)[0];
-    expect(initialRun?.command).toContain("--agent architecture");
-
-    await service.updateAgent(coordinator.id, {
-      runnerConfig: {
-        type: "claude",
-        prompt: "Coordinate work",
-        model: {
-          mode: "custom",
-          id: "@preset/39-ai-claude-opus-46"
-        },
-        permissionMode: "default"
-      }
-    });
-
-    const stoppedRun = await waitForRunToFinish(service, backingTaskId!, 1_000);
-    expect(stoppedRun.status).toBe("canceled");
-
-    const syncedBackingTask = service.getTask(backingTaskId!);
-    expect(syncedBackingTask.runnerType).toBe("claude");
-    expect(syncedBackingTask.runnerConfig).toMatchObject({
-      type: "claude"
-    });
-    expect(syncedBackingTask.runnerConfig).not.toHaveProperty("agent");
-
-    const secondRes = await app.request(
-      `/api/workspaces/${workspace.id}/channels/${allChannel!.id}/messages`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          content: "第二轮，重新开始，你是谁。"
-        })
-      }
-    );
-    expect(secondRes.status).toBe(201);
-
-    const restartedRun = service.listRuns(backingTaskId!)[0];
-    expect(restartedRun?.status).toBe("running");
-    expect(restartedRun?.command).not.toContain("--agent");
-
-    await service.stopTask(backingTaskId!);
-    await waitForRunToFinish(service, backingTaskId!, 1_000);
-  });
-
-  it("creates top-level tasks from #all proposals through channel approval", async () => {
-    const codexServer = createCodexAppServerStub();
-    const { app, service, workspaceDir } = await createRuntime({
-      codexAppServer: codexServer,
-      runners: {
-        claude: new CoordinatorJsonRunner({
-          reply: "I split this into one focused implementation task.",
-          tasks: [
-            {
-              title: "Implement sidebar channels",
-              description: "Add #all and per-task channels to the workspace sidebar.",
-              assignedAgent: "Workspace coordinator",
-              dependencies: []
-            }
-          ]
-        }),
-        shell: new ShellRunner(),
-        codex: new CodexAcpRunner(codexServer)
-      }
-    });
-    const workspace = await createWorkspace(service, workspaceDir);
-    const coordinator = service.createAgent({
-      name: "Workspace coordinator",
-      runnerConfig: {
-        type: "claude",
-        prompt: "Coordinate work"
-      }
-    });
-    service.mountAgent(workspace.id, {
-      agentId: coordinator.id,
-      role: "coordinator"
-    });
-
-    const channelsRes = await app.request(`/api/workspaces/${workspace.id}/channels`);
-    const channelsData = (await channelsRes.json()) as {
-      ok: boolean;
-      data: {
-        items: Array<{
-          id: string;
-          kind: "all" | "task";
-          taskId?: string;
-        }>;
-      };
-    };
-    const allChannel = channelsData.data.items.find((item) => item.kind === "all");
-    expect(allChannel).toBeDefined();
-
-    const postRes = await app.request(
-      `/api/workspaces/${workspace.id}/channels/${allChannel!.id}/messages`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          content: "Please break sidebar chat into deliverable tasks."
-        })
-      }
-    );
-    expect(postRes.status).toBe(201);
-
-    const refreshedAllChannel = service
-      .listWorkspaceChannelsByWorkspace(workspace.id)
-      .find((item) => item.id === allChannel!.id);
-    expect(refreshedAllChannel?.taskId).toBeTruthy();
-
-    await waitForRunToFinish(service, refreshedAllChannel!.taskId!);
-
-    const messagesRes = await app.request(
-      `/api/workspaces/${workspace.id}/channels/${allChannel!.id}/messages`
-    );
-    expect(messagesRes.status).toBe(200);
-    const messagesData = (await messagesRes.json()) as {
-      ok: boolean;
-      data: {
-        items: Array<{
-          senderType: "agent" | "human" | "system";
-          content: string;
-        }>;
-      };
-    };
-    expect(messagesData.data.items.map((item) => item.senderType)).toEqual([
-      "human",
-      "agent"
-    ]);
-    expect(messagesData.data.items[1]?.content).toContain("focused implementation task");
-
-    const proposalsRes = await app.request(
-      `/api/workspaces/${workspace.id}/channels/${allChannel!.id}/proposals`
-    );
-    expect(proposalsRes.status).toBe(200);
-    const proposalsData = (await proposalsRes.json()) as {
-      ok: boolean;
-      data: {
-        items: Array<{
-          id: string;
-          channelId?: string;
-          proposalMode: "top_level_tasks" | "subtasks";
-          status: "pending" | "approved" | "rejected";
-          drafts: Array<{ title: string }>;
-        }>;
-      };
-    };
-    expect(proposalsData.data.items).toHaveLength(1);
-    expect(proposalsData.data.items[0]).toMatchObject({
-      channelId: allChannel!.id,
-      proposalMode: "top_level_tasks",
-      status: "pending"
-    });
-    expect(proposalsData.data.items[0]?.drafts[0]?.title).toBe("Implement sidebar channels");
-
-    const approveRes = await app.request(
-      `/api/workspaces/${workspace.id}/channels/${allChannel!.id}/proposals/${proposalsData.data.items[0]!.id}/approve`,
-      {
-        method: "POST"
-      }
-    );
-    expect(approveRes.status).toBe(200);
-
-    const userTasks = service.listTasks({}).filter((task) => task.workspaceId === workspace.id);
-    expect(userTasks).toHaveLength(1);
-    expect(userTasks[0]).toMatchObject({
-      title: "Implement sidebar channels",
-      taskKind: "user"
-    });
-
-    const refreshedChannelsRes = await app.request(`/api/workspaces/${workspace.id}/channels`);
-    const refreshedChannelsData = (await refreshedChannelsRes.json()) as {
-      ok: boolean;
-      data: {
-        items: Array<{
-          kind: "all" | "task";
-          taskId?: string;
-        }>;
-      };
-    };
-    expect(
-      refreshedChannelsData.data.items.some(
-        (item) => item.kind === "task" && item.taskId === userTasks[0]?.id
-      )
-    ).toBe(true);
   });
 });
 

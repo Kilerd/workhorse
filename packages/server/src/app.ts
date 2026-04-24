@@ -2,35 +2,21 @@ import { Hono } from "hono";
 
 import {
   buildOpenApiDocument,
-  validateApproveProposalParams,
   validateCleanupTaskWorktreeParams,
-  validateCancelSubtaskParams,
   validateCreateTaskBody,
-  validateCreateTeamBody,
   validateCreateWorkspaceBody,
   validateDeleteTaskParams,
-  validateDeleteTeamParams,
   validateDeleteWorkspaceParams,
-  validateGetProposalParams,
   validateGetTaskDependenciesParams,
-  validateGetTeamParams,
-  validateListProposalsParams,
-  validateListProposalsQuery,
-  validateListTeamMessagesQuery,
-  validateListTeamMessagesParams,
-  validateListTeamsQuery,
   validateListWorkspaceGitRefsParams,
   validateListRunsParams,
   validateListTasksQuery,
   validatePlanFeedbackBody,
   validatePlanFeedbackParams,
   validatePlanTaskParams,
-  validatePostTeamMessageBody,
-  validatePostTeamMessageParams,
   validateApproveTaskParams,
   validateRejectTaskBody,
   validateRejectTaskParams,
-  validateRejectProposalParams,
   validateRequestTaskReviewParams,
   validateRetryTaskParams,
   validateSetTaskDependenciesBody,
@@ -45,17 +31,10 @@ import {
   validateUpdateSettingsBody,
   validateUpdateTaskBody,
   validateUpdateTaskParams,
-  validateUpdateTeamBody,
-  validateUpdateTeamParams,
   validateUpdateWorkspaceBody,
   validateUpdateWorkspaceParams,
   validateWorkspaceGitStatusParams,
   validateWorkspaceGitPullParams,
-  validateWorkspaceListProposalsParams,
-  validateWorkspaceGetProposalParams,
-  validateWorkspaceApproveProposalParams,
-  validateWorkspaceRejectProposalParams,
-  validateWorkspaceCancelSubtaskParams,
   validateAgentParams,
   validateCreateAgentBody,
   validateUpdateAgentBody,
@@ -65,27 +44,22 @@ import {
   validateUpdateAgentRoleBody,
   validateUpdateWorkspaceConfigParams,
   validateUpdateWorkspaceConfigBody,
-  validateListTaskMessagesParams,
-  validateListTaskMessagesQuery,
-  validatePostTaskMessageParams,
-  validatePostTaskMessageBody,
-  validateListWorkspaceChannelsParams,
-  validateWorkspaceChannelSlugParams,
-  validateWorkspaceChannelParams,
-  validateWorkspaceChannelProposalParams,
-  validatePostChannelMessageBody
+  validateListThreadsParams,
+  validateCreateThreadBody,
+  validateListThreadMessagesParams,
+  validateListThreadMessagesQuery,
+  validatePostThreadMessageParams,
+  validatePostThreadMessageBody,
+  validatePlanParams
 } from "@workhorse/contracts";
-import type {
-  ListTeamMessagesParams,
-  PostTeamMessageBody,
-  PostTeamMessageParams,
-  RejectTaskBody
-} from "@workhorse/contracts";
+import type { RejectTaskBody } from "@workhorse/contracts";
 
 import { getGitReviewMonitorIntervalMs } from "./config.js";
 import { AppError } from "./lib/errors.js";
 import { errorStatus, ok, toApiError, validateOrThrow } from "./lib/http.js";
 import type { BoardService } from "./services/board-service.js";
+import type { PlanService } from "./services/plan-service.js";
+import type { ThreadService } from "./services/thread-service.js";
 
 function queryObject(url: string): Record<string, string> {
   const search = new URL(url).searchParams;
@@ -110,12 +84,16 @@ async function readOptionalJsonBody(
 
 interface CreateAppOptions {
   reviewMonitorIntervalMs?: number;
+  threads?: ThreadService;
+  plans?: PlanService;
 }
 
 export function createApp(
   service: BoardService,
   options: CreateAppOptions = {}
 ): Hono {
+  const threads = options.threads;
+  const plans = options.plans;
   const app = new Hono();
   const openApiDocument = buildOpenApiDocument();
   const reviewMonitorIntervalMs =
@@ -306,16 +284,6 @@ export function createApp(
     return c.json(ok({ task }));
   });
 
-  app.post("/api/teams/:teamId/tasks/:taskId/cancel", async (c) => {
-    const params = validateOrThrow(
-      c.req.param(),
-      validateCancelSubtaskParams,
-      "Invalid cancel subtask params"
-    );
-    const task = await service.cancelSubtask(params.teamId, params.taskId);
-    return c.json(ok({ task }));
-  });
-
   app.delete("/api/tasks/:taskId", async (c) => {
     const params = validateOrThrow(
       c.req.param(),
@@ -473,189 +441,6 @@ export function createApp(
     return c.json(ok(await service.evaluateScheduler()));
   });
 
-  app.get("/api/teams", (c) => {
-    const query = validateOrThrow(
-      Object.fromEntries(new URL(c.req.url).searchParams),
-      validateListTeamsQuery,
-      "Invalid teams query"
-    );
-    return c.json(ok({ items: service.listTeams(query.workspaceId) }));
-  });
-
-  app.post("/api/teams", async (c) => {
-    const body = validateOrThrow(
-      await c.req.json(),
-      validateCreateTeamBody,
-      "Invalid team payload"
-    );
-    const team = service.createTeam(body);
-    return c.json(ok({ team }), 201);
-  });
-
-  app.get("/api/teams/:teamId", (c) => {
-    const params = validateOrThrow(
-      c.req.param(),
-      validateGetTeamParams,
-      "Invalid team params"
-    );
-    const team = service.getTeam(params.teamId);
-    return c.json(ok({ team }));
-  });
-
-  app.patch("/api/teams/:teamId", async (c) => {
-    const params = validateOrThrow(
-      c.req.param(),
-      validateUpdateTeamParams,
-      "Invalid team params"
-    );
-    const body = validateOrThrow(
-      await c.req.json(),
-      validateUpdateTeamBody,
-      "Invalid team payload"
-    );
-    const team = service.updateTeam(params.teamId, body);
-    return c.json(ok({ team }));
-  });
-
-  app.delete("/api/teams/:teamId", (c) => {
-    const params = validateOrThrow(
-      c.req.param(),
-      validateDeleteTeamParams,
-      "Invalid team params"
-    );
-    const result = service.deleteTeam(params.teamId);
-    return c.json(ok(result));
-  });
-
-  app.get("/api/teams/:teamId/messages", (c) => {
-    const params: ListTeamMessagesParams = validateOrThrow(
-      c.req.param(),
-      validateListTeamMessagesParams,
-      "Invalid team params"
-    );
-    const query = validateOrThrow(
-      Object.fromEntries(new URL(c.req.url).searchParams),
-      validateListTeamMessagesQuery,
-      "Invalid team messages query"
-    );
-    const items = service.listTeamMessages(params.teamId, query.parentTaskId);
-    return c.json(ok({ items }));
-  });
-
-  app.post("/api/teams/:teamId/messages", async (c) => {
-    const params: PostTeamMessageParams = validateOrThrow(
-      c.req.param(),
-      validatePostTeamMessageParams,
-      "Invalid team params"
-    );
-    const body: PostTeamMessageBody = validateOrThrow(
-      await readOptionalJsonBody(c.req, "Invalid team message body"),
-      validatePostTeamMessageBody,
-      "Invalid team message body"
-    );
-    const item = service.postHumanTeamMessage(
-      params.teamId,
-      body.parentTaskId,
-      body.content
-    );
-    return c.json(ok({ item }), 201);
-  });
-
-  app.get("/api/teams/:teamId/proposals", (c) => {
-    const params = validateOrThrow(
-      c.req.param(),
-      validateListProposalsParams,
-      "Invalid team params"
-    );
-    const query = validateOrThrow(
-      Object.fromEntries(new URL(c.req.url).searchParams),
-      validateListProposalsQuery,
-      "Invalid proposals query"
-    );
-    const items = service.listProposals(params.teamId, query);
-    return c.json(ok({ items }));
-  });
-
-  app.get("/api/teams/:teamId/proposals/:proposalId", (c) => {
-    const params = validateOrThrow(
-      c.req.param(),
-      validateGetProposalParams,
-      "Invalid proposal params"
-    );
-    const proposal = service.getProposal(params.teamId, params.proposalId);
-    return c.json(ok({ proposal }));
-  });
-
-  app.post("/api/teams/:teamId/proposals/:proposalId/approve", async (c) => {
-    const params = validateOrThrow(
-      c.req.param(),
-      validateApproveProposalParams,
-      "Invalid proposal params"
-    );
-    await service.approveProposal(params.teamId, params.proposalId);
-    const proposal = service.getProposal(params.teamId, params.proposalId);
-    return c.json(ok({ proposal }));
-  });
-
-  app.post("/api/teams/:teamId/proposals/:proposalId/reject", (c) => {
-    const params = validateOrThrow(
-      c.req.param(),
-      validateRejectProposalParams,
-      "Invalid proposal params"
-    );
-    service.rejectProposal(params.teamId, params.proposalId);
-    const proposal = service.getProposal(params.teamId, params.proposalId);
-    return c.json(ok({ proposal }));
-  });
-
-  // Workspace-scoped coordinator proposal routes (Phase 4)
-  app.get("/api/workspaces/:workspaceId/proposals", (c) => {
-    const params = validateOrThrow(
-      c.req.param(),
-      validateWorkspaceListProposalsParams,
-      "Invalid workspace params"
-    );
-    const query = validateOrThrow(
-      queryObject(c.req.url),
-      validateListProposalsQuery,
-      "Invalid proposals query"
-    );
-    const items = service.listProposalsByWorkspace(params.workspaceId, query);
-    return c.json(ok({ items }));
-  });
-
-  app.get("/api/workspaces/:workspaceId/proposals/:proposalId", (c) => {
-    const params = validateOrThrow(
-      c.req.param(),
-      validateWorkspaceGetProposalParams,
-      "Invalid proposal params"
-    );
-    const proposal = service.getProposalByWorkspace(params.workspaceId, params.proposalId);
-    return c.json(ok({ proposal }));
-  });
-
-  app.post("/api/workspaces/:workspaceId/proposals/:proposalId/approve", async (c) => {
-    const params = validateOrThrow(
-      c.req.param(),
-      validateWorkspaceApproveProposalParams,
-      "Invalid proposal params"
-    );
-    await service.approveProposalByWorkspace(params.workspaceId, params.proposalId);
-    const proposal = service.getProposalByWorkspace(params.workspaceId, params.proposalId);
-    return c.json(ok({ proposal }));
-  });
-
-  app.post("/api/workspaces/:workspaceId/proposals/:proposalId/reject", (c) => {
-    const params = validateOrThrow(
-      c.req.param(),
-      validateWorkspaceRejectProposalParams,
-      "Invalid proposal params"
-    );
-    service.rejectProposalByWorkspace(params.workspaceId, params.proposalId);
-    const proposal = service.getProposalByWorkspace(params.workspaceId, params.proposalId);
-    return c.json(ok({ proposal }));
-  });
-
   // Agent CRUD routes (Phase 4)
   app.get("/api/agents", (c) => {
     const items = service.listAgents();
@@ -774,165 +559,118 @@ export function createApp(
     return c.json(ok({ workspace }));
   });
 
-  // Workspace channels routes
-  app.get("/api/workspaces/:workspaceId/channels", (c) => {
-    const params = validateOrThrow(
-      c.req.param(),
-      validateListWorkspaceChannelsParams,
-      "Invalid workspace params"
-    );
-    const items = service.listWorkspaceChannelsByWorkspace(params.workspaceId);
-    return c.json(ok({ items }));
-  });
-
-  app.get("/api/workspaces/:workspaceId/channels/by-slug/:channelSlug", (c) => {
-    const params = validateOrThrow(
-      c.req.param(),
-      validateWorkspaceChannelSlugParams,
-      "Invalid workspace channel slug params"
-    );
-    const channel = service.getWorkspaceChannelBySlug(
-      params.workspaceId,
-      params.channelSlug
-    );
-    return c.json(ok({ channel }));
-  });
-
-  app.get("/api/workspaces/:workspaceId/channels/:channelId", (c) => {
-    const params = validateOrThrow(
-      c.req.param(),
-      validateWorkspaceChannelParams,
-      "Invalid workspace channel params"
-    );
-    const channel = service.getWorkspaceChannelByWorkspace(
-      params.workspaceId,
-      params.channelId
-    );
-    return c.json(ok({ channel }));
-  });
-
-  app.get("/api/workspaces/:workspaceId/channels/:channelId/messages", (c) => {
-    const params = validateOrThrow(
-      c.req.param(),
-      validateWorkspaceChannelParams,
-      "Invalid workspace channel params"
-    );
-    const items = service.listChannelMessagesByWorkspace(
-      params.workspaceId,
-      params.channelId
-    );
-    return c.json(ok({ items }));
-  });
-
-  app.post("/api/workspaces/:workspaceId/channels/:channelId/messages", async (c) => {
-    const params = validateOrThrow(
-      c.req.param(),
-      validateWorkspaceChannelParams,
-      "Invalid workspace channel params"
-    );
-    const body = validateOrThrow(
-      await readOptionalJsonBody(c.req, "Invalid channel message body"),
-      validatePostChannelMessageBody,
-      "Invalid channel message body"
-    );
-    const item = await service.postChannelMessageByWorkspace(
-      params.workspaceId,
-      params.channelId,
-      body
-    );
-    return c.json(ok({ item }), 201);
-  });
-
-  app.get("/api/workspaces/:workspaceId/channels/:channelId/proposals", (c) => {
-    const params = validateOrThrow(
-      c.req.param(),
-      validateWorkspaceChannelParams,
-      "Invalid workspace channel params"
-    );
-    const items = service.listChannelProposalsByWorkspace(
-      params.workspaceId,
-      params.channelId
-    );
-    return c.json(ok({ items }));
-  });
-
-  app.post(
-    "/api/workspaces/:workspaceId/channels/:channelId/proposals/:proposalId/approve",
-    async (c) => {
+  // ── Agent-driven board: Thread / Message routes (Spec 04) ─────────────────
+  if (threads) {
+    app.get("/api/workspaces/:workspaceId/threads", (c) => {
       const params = validateOrThrow(
         c.req.param(),
-        validateWorkspaceChannelProposalParams,
-        "Invalid channel proposal params"
+        validateListThreadsParams,
+        "Invalid list threads params"
       );
-      await service.approveChannelProposalByWorkspace(
-        params.workspaceId,
-        params.channelId,
-        params.proposalId
-      );
-      const proposal = service.getProposalByWorkspace(params.workspaceId, params.proposalId);
-      return c.json(ok({ proposal }));
-    }
-  );
+      const items = threads.listThreads(params.workspaceId);
+      return c.json(ok({ items }));
+    });
 
-  app.post(
-    "/api/workspaces/:workspaceId/channels/:channelId/proposals/:proposalId/reject",
-    (c) => {
+    app.post("/api/workspaces/:workspaceId/threads", async (c) => {
       const params = validateOrThrow(
         c.req.param(),
-        validateWorkspaceChannelProposalParams,
-        "Invalid channel proposal params"
+        validateListThreadsParams,
+        "Invalid create thread params"
       );
-      service.rejectChannelProposalByWorkspace(
-        params.workspaceId,
-        params.channelId,
-        params.proposalId
+      const body = validateOrThrow(
+        await c.req.json(),
+        validateCreateThreadBody,
+        "Invalid create thread body"
       );
-      const proposal = service.getProposalByWorkspace(params.workspaceId, params.proposalId);
-      return c.json(ok({ proposal }));
-    }
-  );
+      const thread = threads.createThread({
+        workspaceId: params.workspaceId,
+        kind: body.kind,
+        taskId: body.taskId,
+        coordinatorAgentId: body.coordinatorAgentId
+      });
+      return c.json(ok({ thread }), 201);
+    });
 
-  // Task Messages routes (Phase 4)
-  app.get("/api/workspaces/:workspaceId/task-messages", (c) => {
-    const params = validateOrThrow(
-      c.req.param(),
-      validateListTaskMessagesParams,
-      "Invalid workspace params"
-    );
-    const query = validateOrThrow(
-      queryObject(c.req.url),
-      validateListTaskMessagesQuery,
-      "Invalid task messages query"
-    );
-    const items = service.listTaskMessagesByWorkspace(params.workspaceId, query.parentTaskId);
-    return c.json(ok({ items }));
-  });
+    app.get("/api/threads/:threadId/messages", (c) => {
+      const params = validateOrThrow(
+        c.req.param(),
+        validateListThreadMessagesParams,
+        "Invalid list thread messages params"
+      );
+      const query = validateOrThrow(
+        queryObject(c.req.url),
+        validateListThreadMessagesQuery,
+        "Invalid list thread messages query"
+      );
+      const items = threads.listMessages(params.threadId, {
+        after: query.after,
+        limit: query.limit
+      });
+      return c.json(ok({ items }));
+    });
 
-  app.post("/api/workspaces/:workspaceId/task-messages", async (c) => {
-    const params = validateOrThrow(
-      c.req.param(),
-      validatePostTaskMessageParams,
-      "Invalid workspace params"
-    );
-    const body = validateOrThrow(
-      await c.req.json(),
-      validatePostTaskMessageBody,
-      "Invalid post task message body"
-    );
-    const item = service.postTaskMessage(params.workspaceId, body);
-    return c.json(ok({ item }), 201);
-  });
+    app.post("/api/threads/:threadId/messages", async (c) => {
+      const params = validateOrThrow(
+        c.req.param(),
+        validatePostThreadMessageParams,
+        "Invalid post thread message params"
+      );
+      const body = validateOrThrow(
+        await c.req.json(),
+        validatePostThreadMessageBody,
+        "Invalid post thread message body"
+      );
+      const message = threads.appendMessage({
+        threadId: params.threadId,
+        sender: { type: "user" },
+        kind: body.kind ?? "chat",
+        payload: { text: body.content }
+      });
+      return c.json(ok({ message }), 201);
+    });
+  }
 
-  // Workspace cancel subtask route (Phase 4)
-  app.post("/api/workspaces/:workspaceId/tasks/:taskId/cancel", async (c) => {
-    const params = validateOrThrow(
-      c.req.param(),
-      validateWorkspaceCancelSubtaskParams,
-      "Invalid workspace cancel subtask params"
-    );
-    const task = await service.cancelSubtaskByWorkspace(params.workspaceId, params.taskId);
-    return c.json(ok({ task }));
-  });
+  // ── Agent-driven board: Plan routes (Spec 05) ────────────────────────────
+  if (plans) {
+    app.get("/api/plans/:planId", (c) => {
+      const params = validateOrThrow(
+        c.req.param(),
+        validatePlanParams,
+        "Invalid plan params"
+      );
+      const plan = plans.requirePlan(params.planId);
+      return c.json(ok({ plan }));
+    });
+
+    app.post("/api/plans/:planId/approve", async (c) => {
+      const params = validateOrThrow(
+        c.req.param(),
+        validatePlanParams,
+        "Invalid plan params"
+      );
+      // Approve body is currently unused; reserved for future approver metadata.
+      await readOptionalJsonBody(c.req, "Invalid approve body");
+      const { plan } = plans.approve(params.planId);
+      return c.json(ok({ plan }));
+    });
+
+    app.post("/api/plans/:planId/reject", async (c) => {
+      const params = validateOrThrow(
+        c.req.param(),
+        validatePlanParams,
+        "Invalid plan params"
+      );
+      const raw = (await readOptionalJsonBody(c.req, "Invalid reject body")) as
+        | { reason?: string }
+        | undefined;
+      const reason =
+        raw && typeof raw === "object" && typeof raw.reason === "string"
+          ? raw.reason
+          : undefined;
+      const plan = plans.reject(params.planId, {}, reason);
+      return c.json(ok({ plan }));
+    });
+  }
 
   return app;
 }

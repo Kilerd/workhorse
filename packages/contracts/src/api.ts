@@ -2,16 +2,16 @@ import type { tags } from "typia";
 
 import type {
   AccountAgent,
-  AgentTeam,
   AgentRole,
-  ChannelMessage,
   AppState,
-  CoordinatorProposal,
   GlobalSettings,
+  Message,
+  MessageKind,
+  Plan,
   RunnerConfig,
   RunnerType,
-  TaskMessage,
-  TeamPrStrategy,
+  Thread,
+  ThreadKind,
   WorkspaceAgent,
   WorkspaceCodexSettings,
   WorkspacePromptTemplates,
@@ -19,8 +19,6 @@ import type {
   RunLogEntry,
   Task,
   TaskColumn,
-  TeamMessage,
-  WorkspaceChannel,
   WorkspaceGitRef,
   Workspace
 } from "./domain.js";
@@ -143,7 +141,6 @@ export interface CreateTaskBody {
   title: string;
   description?: string;
   workspaceId: string;
-  teamId?: string;
   worktreeBaseRef?: string;
   column?: TaskColumn;
   order?: number;
@@ -168,11 +165,6 @@ export interface RejectTaskBody {
 }
 
 export interface RetryTaskParams {
-  taskId: string;
-}
-
-export interface CancelSubtaskParams {
-  teamId: string;
   taskId: string;
 }
 
@@ -388,199 +380,6 @@ export type TaskDependenciesResponse = ApiSuccess<TaskDependenciesData>;
 export type SchedulerStatusResponse = ApiSuccess<SchedulerStatusData>;
 export type SchedulerEvaluateResponse = ApiSuccess<SchedulerEvaluateData>;
 
-// === Agent Teams ===
-
-export interface ListTeamsQuery {
-  workspaceId?: string;
-}
-
-export interface CreateTeamBody {
-  name: string;
-  description?: string;
-  workspaceId: string;
-  prStrategy?: TeamPrStrategy;
-  autoApproveSubtasks?: boolean;
-  agents: Array<{
-    id: string;
-    agentName: string;
-    role: AgentRole;
-    runnerConfig: RunnerConfig;
-  }>;
-}
-
-export interface UpdateTeamParams {
-  teamId: string;
-}
-
-export interface UpdateTeamBody {
-  name?: string;
-  description?: string;
-  prStrategy?: TeamPrStrategy;
-  autoApproveSubtasks?: boolean;
-  agents?: Array<{
-    id: string;
-    agentName: string;
-    role: AgentRole;
-    runnerConfig: RunnerConfig;
-  }>;
-}
-
-export interface GetTeamParams {
-  teamId: string;
-}
-
-export interface DeleteTeamParams {
-  teamId: string;
-}
-
-export interface ListTeamMessagesParams {
-  teamId: string;
-}
-
-export interface ListTeamMessagesQuery {
-  parentTaskId?: string;
-}
-
-export interface PostTeamMessageParams {
-  teamId: string;
-}
-
-export interface PostTeamMessageBody {
-  parentTaskId: string;
-  content: string & tags.MaxLength<10_240>;
-}
-
-export interface ListTeamsData {
-  items: AgentTeam[];
-}
-
-export interface AgentTeamData {
-  team: AgentTeam;
-}
-
-export interface TeamMessagesData {
-  items: TeamMessage[];
-}
-
-export interface TeamMessageData {
-  item: TeamMessage;
-}
-
-export type TeamsResponse = ApiSuccess<ListTeamsData>;
-export type AgentTeamResponse = ApiSuccess<AgentTeamData>;
-export type DeleteTeamResponse = ApiSuccess<DeleteResult>;
-export type TeamMessagesResponse = ApiSuccess<TeamMessagesData>;
-export type TeamMessageResponse = ApiSuccess<TeamMessageData>;
-
-// === Coordinator Proposals ===
-
-export interface ListProposalsParams {
-  teamId: string;
-}
-
-export interface ListProposalsQuery {
-  parentTaskId?: string;
-}
-
-export interface GetProposalParams {
-  teamId: string;
-  proposalId: string;
-}
-
-export interface ApproveProposalParams {
-  teamId: string;
-  proposalId: string;
-}
-
-export interface RejectProposalParams {
-  teamId: string;
-  proposalId: string;
-}
-
-export interface ProposalData {
-  proposal: CoordinatorProposal;
-}
-
-export interface ListProposalsData {
-  items: CoordinatorProposal[];
-}
-
-export type ProposalResponse = ApiSuccess<ProposalData>;
-export type ListProposalsResponse = ApiSuccess<ListProposalsData>;
-
-// === Workspace-scoped Coordinator Proposals (Phase 4) ===
-
-export interface WorkspaceListProposalsParams {
-  workspaceId: string;
-}
-
-export interface WorkspaceGetProposalParams {
-  workspaceId: string;
-  proposalId: string;
-}
-
-export interface WorkspaceApproveProposalParams {
-  workspaceId: string;
-  proposalId: string;
-}
-
-export interface WorkspaceRejectProposalParams {
-  workspaceId: string;
-  proposalId: string;
-}
-
-export interface WorkspaceCancelSubtaskParams {
-  workspaceId: string;
-  taskId: string;
-}
-
-// === Workspace Channels ===
-
-export interface ListWorkspaceChannelsParams {
-  workspaceId: string;
-}
-
-export interface WorkspaceChannelParams {
-  workspaceId: string;
-  channelId: string;
-}
-
-export interface WorkspaceChannelSlugParams {
-  workspaceId: string;
-  channelSlug: string;
-}
-
-export interface WorkspaceChannelProposalParams {
-  workspaceId: string;
-  channelId: string;
-  proposalId: string;
-}
-
-export interface PostChannelMessageBody {
-  content: string & tags.MaxLength<10_240>;
-}
-
-export interface ListWorkspaceChannelsData {
-  items: WorkspaceChannel[];
-}
-
-export interface WorkspaceChannelData {
-  channel: WorkspaceChannel;
-}
-
-export interface ChannelMessagesData {
-  items: ChannelMessage[];
-}
-
-export interface ChannelMessageData {
-  item: ChannelMessage;
-}
-
-export type WorkspaceChannelsResponse = ApiSuccess<ListWorkspaceChannelsData>;
-export type WorkspaceChannelResponse = ApiSuccess<WorkspaceChannelData>;
-export type ChannelMessagesResponse = ApiSuccess<ChannelMessagesData>;
-export type ChannelMessageResponse = ApiSuccess<ChannelMessageData>;
-
 // === Account-level Agents (Phase 4) ===
 
 export interface CreateAgentBody {
@@ -618,28 +417,11 @@ export interface UpdateAgentRoleBody {
 }
 
 export interface UpdateWorkspaceConfigBody {
-  prStrategy?: TeamPrStrategy;
+  prStrategy?: "independent" | "stacked" | "single";
   autoApproveSubtasks?: boolean;
 }
 
 export interface UpdateWorkspaceConfigParams {
-  workspaceId: string;
-}
-
-export interface ListTaskMessagesParams {
-  workspaceId: string;
-}
-
-export interface ListTaskMessagesQuery {
-  parentTaskId?: string;
-}
-
-export interface PostTaskMessageBody {
-  parentTaskId: string;
-  content: string & tags.MaxLength<10_240>;
-}
-
-export interface PostTaskMessageParams {
   workspaceId: string;
 }
 
@@ -659,21 +441,73 @@ export interface ListWorkspaceAgentsData {
   items: WorkspaceAgent[];
 }
 
-export interface TaskMessagesData {
-  items: TaskMessage[];
-}
-
-export interface TaskMessageData {
-  item: TaskMessage;
-}
-
 export type AgentResponse = ApiSuccess<AgentData>;
 export type ListAgentsResponse = ApiSuccess<ListAgentsData>;
 export type DeleteAgentResponse = ApiSuccess<DeleteResult>;
 export type WorkspaceAgentResponse = ApiSuccess<WorkspaceAgentData>;
 export type ListWorkspaceAgentsResponse = ApiSuccess<ListWorkspaceAgentsData>;
-export type TaskMessagesResponse = ApiSuccess<TaskMessagesData>;
-export type TaskMessageResponse = ApiSuccess<TaskMessageData>;
+
+// === Agent-driven board (Spec 02) ===
+
+export interface ListThreadsParams {
+  workspaceId: string;
+}
+
+export interface ListThreadsData {
+  items: Thread[];
+}
+
+export interface ThreadData {
+  thread: Thread;
+}
+
+export interface CreateThreadBody {
+  kind: ThreadKind;
+  taskId?: string;
+  coordinatorAgentId?: string;
+}
+
+export interface PostThreadMessageParams {
+  threadId: string;
+}
+
+export interface PostThreadMessageBody {
+  content: string;
+  /** Defaults to "chat" when omitted. Server may reject other kinds for human senders. */
+  kind?: MessageKind;
+}
+
+export interface ListThreadMessagesParams {
+  threadId: string;
+}
+
+export interface ListThreadMessagesQuery {
+  /** Message id cursor — return messages created strictly after this one. */
+  after?: string;
+  limit?: number & tags.Type<"int32"> & tags.Minimum<1> & tags.Maximum<500>;
+}
+
+export interface ListThreadMessagesData {
+  items: Message[];
+}
+
+export interface MessageData {
+  message: Message;
+}
+
+export interface PlanParams {
+  planId: string;
+}
+
+export interface PlanData {
+  plan: Plan;
+}
+
+export type ListThreadsResponse = ApiSuccess<ListThreadsData>;
+export type ThreadResponse = ApiSuccess<ThreadData>;
+export type ListThreadMessagesResponse = ApiSuccess<ListThreadMessagesData>;
+export type MessageResponse = ApiSuccess<MessageData>;
+export type PlanResponse = ApiSuccess<PlanData>;
 
 export type HttpMethod = "get" | "post" | "put" | "patch" | "delete";
 
@@ -718,7 +552,6 @@ export type SchemaName =
   | "RejectTaskParams"
   | "RejectTaskBody"
   | "RetryTaskParams"
-  | "CancelSubtaskParams"
   | "UpdateTaskParams"
   | "UpdateTaskBody"
   | "DeleteTaskParams"
@@ -761,63 +594,37 @@ export type SchemaName =
   | "TaskDependenciesResponse"
   | "SchedulerStatusResponse"
   | "SchedulerEvaluateResponse"
-  | "ListTeamsQuery"
-  | "CreateTeamBody"
-  | "UpdateTeamParams"
-  | "UpdateTeamBody"
-  | "GetTeamParams"
-  | "DeleteTeamParams"
-  | "ListTeamMessagesParams"
-  | "ListTeamMessagesQuery"
-  | "PostTeamMessageParams"
-  | "PostTeamMessageBody"
-  | "TeamsResponse"
-  | "AgentTeamResponse"
-  | "DeleteTeamResponse"
-  | "TeamMessagesResponse"
-  | "TeamMessageResponse"
   | "AccountAgent"
-  | "WorkspaceChannel"
-  | "ChannelMessage"
   | "WorkspaceAgent"
-  | "TaskMessage"
   | "CreateAgentBody"
   | "UpdateAgentBody"
   | "AgentParams"
-  | "ListWorkspaceChannelsParams"
-  | "WorkspaceChannelParams"
-  | "WorkspaceChannelSlugParams"
-  | "WorkspaceChannelProposalParams"
-  | "PostChannelMessageBody"
   | "ListWorkspaceAgentsParams"
   | "MountAgentBody"
   | "WorkspaceAgentParams"
   | "UpdateAgentRoleBody"
   | "UpdateWorkspaceConfigBody"
   | "UpdateWorkspaceConfigParams"
-  | "ListTaskMessagesParams"
-  | "ListTaskMessagesQuery"
-  | "PostTaskMessageBody"
-  | "PostTaskMessageParams"
   | "AgentResponse"
   | "ListAgentsResponse"
   | "DeleteAgentResponse"
-  | "WorkspaceChannelsResponse"
-  | "WorkspaceChannelResponse"
-  | "ChannelMessagesResponse"
-  | "ChannelMessageResponse"
   | "WorkspaceAgentResponse"
   | "ListWorkspaceAgentsResponse"
-  | "TaskMessagesResponse"
-  | "TaskMessageResponse"
-  | "WorkspaceListProposalsParams"
-  | "WorkspaceGetProposalParams"
-  | "WorkspaceApproveProposalParams"
-  | "WorkspaceRejectProposalParams"
-  | "WorkspaceCancelSubtaskParams"
-  | "ListProposalsResponse"
-  | "ProposalResponse"
-  | "ListProposalsQuery";
+  | "Thread"
+  | "Message"
+  | "Plan"
+  | "ListThreadsParams"
+  | "CreateThreadBody"
+  | "PostThreadMessageParams"
+  | "PostThreadMessageBody"
+  | "ListThreadMessagesParams"
+  | "ListThreadMessagesQuery"
+  | "PlanParams"
+  | "ListThreadsResponse"
+  | "ThreadResponse"
+  | "ListThreadMessagesResponse"
+  | "MessageResponse"
+  | "PlanResponse";
 
 export const endpointRegistry: EndpointSpec[] = [
   {
@@ -1175,31 +982,6 @@ export const endpointRegistry: EndpointSpec[] = [
     ]
   },
   {
-    operationId: "cancelSubtask",
-    method: "post",
-    path: "/api/teams/{teamId}/tasks/{taskId}/cancel",
-    summary: "Cancel a team subtask",
-    tag: "Teams",
-    paramsSchema: "CancelSubtaskParams",
-    responses: [
-      {
-        status: 200,
-        description: "Cancelled task",
-        schema: "TaskResponse"
-      },
-      {
-        status: 404,
-        description: "Task or team not found",
-        schema: "ApiError"
-      },
-      {
-        status: 409,
-        description: "Task cannot be cancelled",
-        schema: "ApiError"
-      }
-    ]
-  },
-  {
     operationId: "deleteTask",
     method: "delete",
     path: "/api/tasks/{taskId}",
@@ -1536,154 +1318,6 @@ export const endpointRegistry: EndpointSpec[] = [
       }
     ]
   },
-  {
-    operationId: "listTeams",
-    method: "get",
-    path: "/api/teams",
-    summary: "List agent teams",
-    tag: "Teams",
-    querySchema: "ListTeamsQuery",
-    responses: [
-      {
-        status: 200,
-        description: "Team collection",
-        schema: "TeamsResponse"
-      }
-    ]
-  },
-  {
-    operationId: "createTeam",
-    method: "post",
-    path: "/api/teams",
-    summary: "Create an agent team",
-    tag: "Teams",
-    bodySchema: "CreateTeamBody",
-    responses: [
-      {
-        status: 201,
-        description: "Created team",
-        schema: "AgentTeamResponse"
-      },
-      {
-        status: 400,
-        description: "Validation error",
-        schema: "ApiError"
-      }
-    ]
-  },
-  {
-    operationId: "getTeam",
-    method: "get",
-    path: "/api/teams/{teamId}",
-    summary: "Get an agent team",
-    tag: "Teams",
-    paramsSchema: "GetTeamParams",
-    responses: [
-      {
-        status: 200,
-        description: "Team details",
-        schema: "AgentTeamResponse"
-      },
-      {
-        status: 404,
-        description: "Team not found",
-        schema: "ApiError"
-      }
-    ]
-  },
-  {
-    operationId: "updateTeam",
-    method: "patch",
-    path: "/api/teams/{teamId}",
-    summary: "Update an agent team",
-    tag: "Teams",
-    paramsSchema: "UpdateTeamParams",
-    bodySchema: "UpdateTeamBody",
-    responses: [
-      {
-        status: 200,
-        description: "Updated team",
-        schema: "AgentTeamResponse"
-      },
-      {
-        status: 400,
-        description: "Validation error",
-        schema: "ApiError"
-      },
-      {
-        status: 404,
-        description: "Team not found",
-        schema: "ApiError"
-      }
-    ]
-  },
-  {
-    operationId: "deleteTeam",
-    method: "delete",
-    path: "/api/teams/{teamId}",
-    summary: "Delete an agent team",
-    tag: "Teams",
-    paramsSchema: "DeleteTeamParams",
-    responses: [
-      {
-        status: 200,
-        description: "Deleted team id",
-        schema: "DeleteTeamResponse"
-      },
-      {
-        status: 404,
-        description: "Team not found",
-        schema: "ApiError"
-      }
-    ]
-  },
-  {
-    operationId: "listTeamMessages",
-    method: "get",
-    path: "/api/teams/{teamId}/messages",
-    summary: "List messages for a team",
-    tag: "Teams",
-    paramsSchema: "ListTeamMessagesParams",
-    querySchema: "ListTeamMessagesQuery",
-    responses: [
-      {
-        status: 200,
-        description: "Team message collection",
-        schema: "TeamMessagesResponse"
-      },
-      {
-        status: 404,
-        description: "Team not found",
-        schema: "ApiError"
-      }
-    ]
-  },
-  {
-    operationId: "postTeamMessage",
-    method: "post",
-    path: "/api/teams/{teamId}/messages",
-    summary: "Post a human message into a team task thread",
-    tag: "Teams",
-    paramsSchema: "PostTeamMessageParams",
-    bodySchema: "PostTeamMessageBody",
-    responses: [
-      {
-        status: 201,
-        description: "Created team message",
-        schema: "TeamMessageResponse"
-      },
-      {
-        status: 400,
-        description: "Validation error",
-        schema: "ApiError"
-      },
-      {
-        status: 404,
-        description: "Team not found",
-        schema: "ApiError"
-      }
-    ]
-  },
   // === Account-level Agents (Phase 4) ===
   {
     operationId: "listAgents",
@@ -1904,315 +1538,114 @@ export const endpointRegistry: EndpointSpec[] = [
     ]
   },
   {
-    operationId: "listWorkspaceChannels",
+    operationId: "listWorkspaceThreads",
     method: "get",
-    path: "/api/workspaces/{workspaceId}/channels",
-    summary: "List visible channels for a workspace",
-    tag: "Workspace Channels",
-    paramsSchema: "ListWorkspaceChannelsParams",
+    path: "/api/workspaces/{workspaceId}/threads",
+    summary: "List threads for a workspace",
+    tag: "Threads",
+    paramsSchema: "ListThreadsParams",
     responses: [
       {
         status: 200,
-        description: "Workspace channel collection",
-        schema: "WorkspaceChannelsResponse"
-      },
-      {
-        status: 404,
-        description: "Workspace not found",
-        schema: "ApiError"
+        description: "Workspace threads",
+        schema: "ListThreadsResponse"
       }
     ]
   },
   {
-    operationId: "getWorkspaceChannelBySlug",
-    method: "get",
-    path: "/api/workspaces/{workspaceId}/channels/by-slug/{channelSlug}",
-    summary: "Get a workspace channel by slug",
-    tag: "Workspace Channels",
-    paramsSchema: "WorkspaceChannelSlugParams",
-    responses: [
-      {
-        status: 200,
-        description: "Workspace channel",
-        schema: "WorkspaceChannelResponse"
-      },
-      {
-        status: 404,
-        description: "Channel not found",
-        schema: "ApiError"
-      }
-    ]
-  },
-  {
-    operationId: "getWorkspaceChannel",
-    method: "get",
-    path: "/api/workspaces/{workspaceId}/channels/{channelId}",
-    summary: "Get a workspace channel",
-    tag: "Workspace Channels",
-    paramsSchema: "WorkspaceChannelParams",
-    responses: [
-      {
-        status: 200,
-        description: "Workspace channel",
-        schema: "WorkspaceChannelResponse"
-      },
-      {
-        status: 404,
-        description: "Channel not found",
-        schema: "ApiError"
-      }
-    ]
-  },
-  {
-    operationId: "listChannelMessages",
-    method: "get",
-    path: "/api/workspaces/{workspaceId}/channels/{channelId}/messages",
-    summary: "List chat messages for a workspace channel",
-    tag: "Workspace Channels",
-    paramsSchema: "WorkspaceChannelParams",
-    responses: [
-      {
-        status: 200,
-        description: "Channel message collection",
-        schema: "ChannelMessagesResponse"
-      },
-      {
-        status: 404,
-        description: "Channel not found",
-        schema: "ApiError"
-      }
-    ]
-  },
-  {
-    operationId: "postChannelMessage",
+    operationId: "createWorkspaceThread",
     method: "post",
-    path: "/api/workspaces/{workspaceId}/channels/{channelId}/messages",
-    summary: "Post a message into a workspace channel",
-    tag: "Workspace Channels",
-    paramsSchema: "WorkspaceChannelParams",
-    bodySchema: "PostChannelMessageBody",
+    path: "/api/workspaces/{workspaceId}/threads",
+    summary: "Create a thread in a workspace",
+    tag: "Threads",
+    paramsSchema: "ListThreadsParams",
+    bodySchema: "CreateThreadBody",
     responses: [
       {
         status: 201,
-        description: "Created channel message",
-        schema: "ChannelMessageResponse"
-      },
-      {
-        status: 400,
-        description: "Validation error",
-        schema: "ApiError"
-      },
-      {
-        status: 404,
-        description: "Channel not found",
-        schema: "ApiError"
+        description: "Created thread",
+        schema: "ThreadResponse"
       }
     ]
   },
   {
-    operationId: "listChannelProposals",
+    operationId: "listThreadMessages",
     method: "get",
-    path: "/api/workspaces/{workspaceId}/channels/{channelId}/proposals",
-    summary: "List coordinator proposals for a workspace channel",
-    tag: "Workspace Channels",
-    paramsSchema: "WorkspaceChannelParams",
+    path: "/api/threads/{threadId}/messages",
+    summary: "List messages in a thread",
+    tag: "Threads",
+    paramsSchema: "ListThreadMessagesParams",
+    querySchema: "ListThreadMessagesQuery",
     responses: [
       {
         status: 200,
-        description: "Proposal collection",
-        schema: "ListProposalsResponse"
+        description: "Messages in the thread",
+        schema: "ListThreadMessagesResponse"
       },
       {
         status: 404,
-        description: "Channel not found",
+        description: "Thread not found",
         schema: "ApiError"
       }
     ]
   },
   {
-    operationId: "approveChannelProposal",
+    operationId: "postThreadMessage",
     method: "post",
-    path: "/api/workspaces/{workspaceId}/channels/{channelId}/proposals/{proposalId}/approve",
-    summary: "Approve a workspace channel proposal",
-    tag: "Workspace Channels",
-    paramsSchema: "WorkspaceChannelProposalParams",
+    path: "/api/threads/{threadId}/messages",
+    summary: "Append a chat message to a thread",
+    tag: "Threads",
+    paramsSchema: "PostThreadMessageParams",
+    bodySchema: "PostThreadMessageBody",
     responses: [
       {
         status: 200,
-        description: "Approved proposal",
-        schema: "ProposalResponse"
-      },
-      {
-        status: 409,
-        description: "Proposal already decided",
-        schema: "ApiError"
-      }
-    ]
-  },
-  {
-    operationId: "rejectChannelProposal",
-    method: "post",
-    path: "/api/workspaces/{workspaceId}/channels/{channelId}/proposals/{proposalId}/reject",
-    summary: "Reject a workspace channel proposal",
-    tag: "Workspace Channels",
-    paramsSchema: "WorkspaceChannelProposalParams",
-    responses: [
-      {
-        status: 200,
-        description: "Rejected proposal",
-        schema: "ProposalResponse"
-      },
-      {
-        status: 409,
-        description: "Proposal already decided",
-        schema: "ApiError"
-      }
-    ]
-  },
-  {
-    operationId: "listTaskMessages",
-    method: "get",
-    path: "/api/workspaces/{workspaceId}/task-messages",
-    summary: "List task coordination messages for a workspace",
-    tag: "Agents",
-    paramsSchema: "ListTaskMessagesParams",
-    querySchema: "ListTaskMessagesQuery",
-    responses: [
-      {
-        status: 200,
-        description: "Task message collection",
-        schema: "TaskMessagesResponse"
+        description: "Appended message",
+        schema: "MessageResponse"
       },
       {
         status: 404,
-        description: "Workspace not found",
+        description: "Thread not found",
         schema: "ApiError"
       }
     ]
   },
   {
-    operationId: "postTaskMessage",
+    operationId: "approvePlan",
     method: "post",
-    path: "/api/workspaces/{workspaceId}/task-messages",
-    summary: "Post a coordination message into a task thread",
-    tag: "Agents",
-    paramsSchema: "PostTaskMessageParams",
-    bodySchema: "PostTaskMessageBody",
-    responses: [
-      {
-        status: 201,
-        description: "Created task message",
-        schema: "TaskMessageResponse"
-      },
-      {
-        status: 400,
-        description: "Validation error",
-        schema: "ApiError"
-      },
-      {
-        status: 404,
-        description: "Workspace not found",
-        schema: "ApiError"
-      }
-    ]
-  },
-  {
-    operationId: "listWorkspaceProposals",
-    method: "get",
-    path: "/api/workspaces/{workspaceId}/proposals",
-    summary: "List coordinator proposals for a workspace",
-    tag: "Workspace Agents",
-    paramsSchema: "WorkspaceListProposalsParams",
-    querySchema: "ListProposalsQuery",
+    path: "/api/plans/{planId}/approve",
+    summary: "Approve a plan and materialize its subtasks",
+    tag: "Plans",
+    paramsSchema: "PlanParams",
     responses: [
       {
         status: 200,
-        description: "Proposal collection",
-        schema: "ListProposalsResponse"
-      },
-      {
-        status: 404,
-        description: "Workspace not found",
-        schema: "ApiError"
-      }
-    ]
-  },
-  {
-    operationId: "getWorkspaceProposal",
-    method: "get",
-    path: "/api/workspaces/{workspaceId}/proposals/{proposalId}",
-    summary: "Get a coordinator proposal by workspace",
-    tag: "Workspace Agents",
-    paramsSchema: "WorkspaceGetProposalParams",
-    responses: [
-      {
-        status: 200,
-        description: "Coordinator proposal",
-        schema: "ProposalResponse"
-      },
-      {
-        status: 404,
-        description: "Proposal not found",
-        schema: "ApiError"
-      }
-    ]
-  },
-  {
-    operationId: "approveWorkspaceProposal",
-    method: "post",
-    path: "/api/workspaces/{workspaceId}/proposals/{proposalId}/approve",
-    summary: "Approve a workspace coordinator proposal",
-    tag: "Workspace Agents",
-    paramsSchema: "WorkspaceApproveProposalParams",
-    responses: [
-      {
-        status: 200,
-        description: "Approved proposal",
-        schema: "ProposalResponse"
+        description: "Approved plan",
+        schema: "PlanResponse"
       },
       {
         status: 409,
-        description: "Proposal already decided",
+        description: "Plan already decided",
         schema: "ApiError"
       }
     ]
   },
   {
-    operationId: "rejectWorkspaceProposal",
+    operationId: "rejectPlan",
     method: "post",
-    path: "/api/workspaces/{workspaceId}/proposals/{proposalId}/reject",
-    summary: "Reject a workspace coordinator proposal",
-    tag: "Workspace Agents",
-    paramsSchema: "WorkspaceRejectProposalParams",
+    path: "/api/plans/{planId}/reject",
+    summary: "Reject a plan",
+    tag: "Plans",
+    paramsSchema: "PlanParams",
     responses: [
       {
         status: 200,
-        description: "Rejected proposal",
-        schema: "ProposalResponse"
+        description: "Rejected plan",
+        schema: "PlanResponse"
       },
       {
         status: 409,
-        description: "Proposal already decided",
-        schema: "ApiError"
-      }
-    ]
-  },
-  {
-    operationId: "cancelSubtaskByWorkspace",
-    method: "post",
-    path: "/api/workspaces/{workspaceId}/tasks/{taskId}/cancel",
-    summary: "Cancel a workspace subtask",
-    tag: "Workspace Agents",
-    paramsSchema: "WorkspaceCancelSubtaskParams",
-    responses: [
-      {
-        status: 200,
-        description: "Cancelled subtask",
-        schema: "TaskResponse"
-      },
-      {
-        status: 409,
-        description: "Task cannot be cancelled",
+        description: "Plan already decided",
         schema: "ApiError"
       }
     ]

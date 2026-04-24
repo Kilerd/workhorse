@@ -135,29 +135,6 @@ describe("ClaudeCliRunner", () => {
     expect(prompt).toContain("Focus on test coverage gaps.");
   });
 
-  it("uses the raw workspace channel prompt for channel backing tasks", () => {
-    const runner = new ClaudeCliRunner();
-    const prompt = runner.buildPrompt(
-      createClaudeContext({
-        task: {
-          ...createClaudeContext().task,
-          taskKind: "channel_backing",
-          title: "Workspace Coordinator",
-          description: "Should not leak into the final prompt."
-        }
-      }),
-      {
-        type: "claude",
-        prompt: "RAW #all PROMPT"
-      }
-    );
-
-    expect(prompt).toBe("RAW #all PROMPT");
-    expect(prompt).not.toContain("Task:");
-    expect(prompt).not.toContain("Task description:");
-    expect(prompt).not.toContain("Working directory:");
-  });
-
   it("captures init metadata and emits assistant output from Claude stream-json events", async () => {
     const runner = new ClaudeCliRunner() as any;
     const output: Array<{ kind: string; title?: string; text: string }> = [];

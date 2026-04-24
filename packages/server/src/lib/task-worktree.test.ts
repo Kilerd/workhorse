@@ -8,8 +8,7 @@ import {
   createTaskWorktree,
   deriveTaskBranchName,
   deriveTaskBranchFallbackName,
-  deriveTaskWorktreePath,
-  deriveTeamSubtaskBranchName
+  deriveTaskWorktreePath
 } from "./task-worktree.js";
 
 const workspace: Workspace = {
@@ -161,35 +160,3 @@ describe("task worktree naming", () => {
   });
 });
 
-describe("deriveTeamSubtaskBranchName", () => {
-  it("produces team/{teamId}/{taskId}-{slug} branch name", () => {
-    expect(deriveTeamSubtaskBranchName("team-abc", "task-1", "Implement auth module")).toBe(
-      "team/team-abc/task-1-implement-auth-module"
-    );
-  });
-
-  it("slugifies special characters in title", () => {
-    expect(deriveTeamSubtaskBranchName("t1", "tid", "Fix bug: handle null & empty!")).toBe(
-      "team/t1/tid-fix-bug-handle-null-empty"
-    );
-  });
-
-  it("falls back to taskId when title is empty", () => {
-    expect(deriveTeamSubtaskBranchName("t1", "tid", "   ")).toBe("team/t1/tid-tid");
-  });
-
-  it("truncates long titles at 48 characters in slug", () => {
-    const longTitle = "a".repeat(60);
-    const branch = deriveTeamSubtaskBranchName("t1", "tid", longTitle);
-    // segment is "{taskId}-{slug}", slug part is capped at 48
-    const segment = branch.split("/").at(-1)!;
-    const slugPart = segment.slice("tid-".length);
-    expect(slugPart.length).toBeLessThanOrEqual(48);
-  });
-
-  it("prevents collision between subtasks with same title slug via taskId", () => {
-    const branch1 = deriveTeamSubtaskBranchName("team1", "task-a", "Fix auth");
-    const branch2 = deriveTeamSubtaskBranchName("team1", "task-b", "Fix auth");
-    expect(branch1).not.toBe(branch2);
-  });
-});

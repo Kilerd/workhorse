@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "workhorse-dev",
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": [
+        "-c",
+        "WORKHORSE_PORT=3998 WORKHORSE_DATA_DIR=/tmp/workhorse-smoke ANTHROPIC_AUTH_TOKEN=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 ANTHROPIC_BASE_URL=https://openrouter.ai/api ANTHROPIC_API_KEY= npm run dev --workspace @workhorse/server"
+      ],
+      "port": 3998
+    },
+    {
+      "name": "workhorse-e2e",
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": [
+        "-c",
+        "WORKHORSE_PORT=4399 WORKHORSE_DATA_DIR=/tmp/workhorse-e2e npm run dev --workspace @workhorse/server"
+      ],
+      "port": 4399
+    }
+  ]
+}

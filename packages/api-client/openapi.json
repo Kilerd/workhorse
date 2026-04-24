@@ -776,65 +776,6 @@
         ]
       }
     },
-    "/api/teams/{teamId}/tasks/{taskId}/cancel": {
-      "post": {
-        "operationId": "cancelSubtask",
-        "summary": "Cancel a team subtask",
-        "tags": [
-          "Teams"
-        ],
-        "responses": {
-          "200": {
-            "description": "Cancelled task",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TaskResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Task or team not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Task cannot be cancelled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "teamId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "taskId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
     "/api/tasks/{taskId}/worktree/cleanup": {
       "post": {
         "operationId": "cleanupTaskWorktree",
@@ -1497,323 +1438,6 @@
         }
       }
     },
-    "/api/teams": {
-      "get": {
-        "operationId": "listTeams",
-        "summary": "List agent teams",
-        "tags": [
-          "Teams"
-        ],
-        "responses": {
-          "200": {
-            "description": "Team collection",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TeamsResponse"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "workspaceId",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      },
-      "post": {
-        "operationId": "createTeam",
-        "summary": "Create an agent team",
-        "tags": [
-          "Teams"
-        ],
-        "responses": {
-          "201": {
-            "description": "Created team",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentTeamResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Validation error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateTeamBody"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/teams/{teamId}": {
-      "get": {
-        "operationId": "getTeam",
-        "summary": "Get an agent team",
-        "tags": [
-          "Teams"
-        ],
-        "responses": {
-          "200": {
-            "description": "Team details",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentTeamResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Team not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "teamId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      },
-      "patch": {
-        "operationId": "updateTeam",
-        "summary": "Update an agent team",
-        "tags": [
-          "Teams"
-        ],
-        "responses": {
-          "200": {
-            "description": "Updated team",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentTeamResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Validation error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Team not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "teamId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateTeamBody"
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "operationId": "deleteTeam",
-        "summary": "Delete an agent team",
-        "tags": [
-          "Teams"
-        ],
-        "responses": {
-          "200": {
-            "description": "Deleted team id",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DeleteTeamResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Team not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "teamId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/api/teams/{teamId}/messages": {
-      "get": {
-        "operationId": "listTeamMessages",
-        "summary": "List messages for a team",
-        "tags": [
-          "Teams"
-        ],
-        "responses": {
-          "200": {
-            "description": "Team message collection",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TeamMessagesResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Team not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "teamId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "parentTaskId",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      },
-      "post": {
-        "operationId": "postTeamMessage",
-        "summary": "Post a human message into a team task thread",
-        "tags": [
-          "Teams"
-        ],
-        "responses": {
-          "201": {
-            "description": "Created team message",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TeamMessageResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Validation error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Team not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "teamId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PostTeamMessageBody"
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/agents": {
       "get": {
         "operationId": "listAgents",
@@ -2290,30 +1914,20 @@
         }
       }
     },
-    "/api/workspaces/{workspaceId}/channels": {
+    "/api/workspaces/{workspaceId}/threads": {
       "get": {
-        "operationId": "listWorkspaceChannels",
-        "summary": "List visible channels for a workspace",
+        "operationId": "listWorkspaceThreads",
+        "summary": "List threads for a workspace",
         "tags": [
-          "Workspace Channels"
+          "Threads"
         ],
         "responses": {
           "200": {
-            "description": "Workspace channel collection",
+            "description": "Workspace threads",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WorkspaceChannelsResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Workspace not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
+                  "$ref": "#/components/schemas/ListThreadsResponse"
                 }
               }
             }
@@ -2322,104 +1936,6 @@
         "parameters": [
           {
             "name": "workspaceId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/api/workspaces/{workspaceId}/channels/{channelId}": {
-      "get": {
-        "operationId": "getWorkspaceChannel",
-        "summary": "Get a workspace channel",
-        "tags": [
-          "Workspace Channels"
-        ],
-        "responses": {
-          "200": {
-            "description": "Workspace channel",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorkspaceChannelResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Channel not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "workspaceId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "channelId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/api/workspaces/{workspaceId}/channels/{channelId}/messages": {
-      "get": {
-        "operationId": "listChannelMessages",
-        "summary": "List chat messages for a workspace channel",
-        "tags": [
-          "Workspace Channels"
-        ],
-        "responses": {
-          "200": {
-            "description": "Channel message collection",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChannelMessagesResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Channel not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "workspaceId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "channelId",
             "in": "path",
             "required": true,
             "schema": {
@@ -2429,317 +1945,18 @@
         ]
       },
       "post": {
-        "operationId": "postChannelMessage",
-        "summary": "Post a message into a workspace channel",
+        "operationId": "createWorkspaceThread",
+        "summary": "Create a thread in a workspace",
         "tags": [
-          "Workspace Channels"
+          "Threads"
         ],
         "responses": {
           "201": {
-            "description": "Created channel message",
+            "description": "Created thread",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ChannelMessageResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Validation error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Channel not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "workspaceId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "channelId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PostChannelMessageBody"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/workspaces/{workspaceId}/channels/{channelId}/proposals": {
-      "get": {
-        "operationId": "listChannelProposals",
-        "summary": "List coordinator proposals for a workspace channel",
-        "tags": [
-          "Workspace Channels"
-        ],
-        "responses": {
-          "200": {
-            "description": "Proposal collection",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ListProposalsResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Channel not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "workspaceId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "channelId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/api/workspaces/{workspaceId}/channels/{channelId}/proposals/{proposalId}/approve": {
-      "post": {
-        "operationId": "approveChannelProposal",
-        "summary": "Approve a workspace channel proposal",
-        "tags": [
-          "Workspace Channels"
-        ],
-        "responses": {
-          "200": {
-            "description": "Approved proposal",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProposalResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Proposal already decided",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "workspaceId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "channelId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "proposalId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/api/workspaces/{workspaceId}/channels/{channelId}/proposals/{proposalId}/reject": {
-      "post": {
-        "operationId": "rejectChannelProposal",
-        "summary": "Reject a workspace channel proposal",
-        "tags": [
-          "Workspace Channels"
-        ],
-        "responses": {
-          "200": {
-            "description": "Rejected proposal",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProposalResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Proposal already decided",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "workspaceId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "channelId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "proposalId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/api/workspaces/{workspaceId}/task-messages": {
-      "get": {
-        "operationId": "listTaskMessages",
-        "summary": "List task coordination messages for a workspace",
-        "tags": [
-          "Agents"
-        ],
-        "responses": {
-          "200": {
-            "description": "Task message collection",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TaskMessagesResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Workspace not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "workspaceId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "parentTaskId",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      },
-      "post": {
-        "operationId": "postTaskMessage",
-        "summary": "Post a coordination message into a task thread",
-        "tags": [
-          "Agents"
-        ],
-        "responses": {
-          "201": {
-            "description": "Created task message",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TaskMessageResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Validation error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Workspace not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
+                  "$ref": "#/components/schemas/ThreadResponse"
                 }
               }
             }
@@ -2760,33 +1977,33 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PostTaskMessageBody"
+                "$ref": "#/components/schemas/CreateThreadBody"
               }
             }
           }
         }
       }
     },
-    "/api/workspaces/{workspaceId}/proposals": {
+    "/api/threads/{threadId}/messages": {
       "get": {
-        "operationId": "listWorkspaceProposals",
-        "summary": "List coordinator proposals for a workspace",
+        "operationId": "listThreadMessages",
+        "summary": "List messages in a thread",
         "tags": [
-          "Workspace Agents"
+          "Threads"
         ],
         "responses": {
           "200": {
-            "description": "Proposal collection",
+            "description": "Messages in the thread",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ListProposalsResponse"
+                  "$ref": "#/components/schemas/ListThreadMessagesResponse"
                 }
               }
             }
           },
           "404": {
-            "description": "Workspace not found",
+            "description": "Thread not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -2798,7 +2015,7 @@
         },
         "parameters": [
           {
-            "name": "workspaceId",
+            "name": "threadId",
             "in": "path",
             "required": true,
             "schema": {
@@ -2806,36 +2023,45 @@
             }
           },
           {
-            "name": "parentTaskId",
+            "name": "after",
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string"
+              "type": "string",
+              "description": "Message id cursor — return messages created strictly after this one."
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
             }
           }
         ]
-      }
-    },
-    "/api/workspaces/{workspaceId}/proposals/{proposalId}": {
-      "get": {
-        "operationId": "getWorkspaceProposal",
-        "summary": "Get a coordinator proposal by workspace",
+      },
+      "post": {
+        "operationId": "postThreadMessage",
+        "summary": "Append a chat message to a thread",
         "tags": [
-          "Workspace Agents"
+          "Threads"
         ],
         "responses": {
           "200": {
-            "description": "Coordinator proposal",
+            "description": "Appended message",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProposalResponse"
+                  "$ref": "#/components/schemas/MessageResponse"
                 }
               }
             }
           },
           "404": {
-            "description": "Proposal not found",
+            "description": "Thread not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -2847,15 +2073,58 @@
         },
         "parameters": [
           {
-            "name": "workspaceId",
+            "name": "threadId",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string"
             }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostThreadMessageBody"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/plans/{planId}/approve": {
+      "post": {
+        "operationId": "approvePlan",
+        "summary": "Approve a plan and materialize its subtasks",
+        "tags": [
+          "Plans"
+        ],
+        "responses": {
+          "200": {
+            "description": "Approved plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanResponse"
+                }
+              }
+            }
           },
+          "409": {
+            "description": "Plan already decided",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
           {
-            "name": "proposalId",
+            "name": "planId",
             "in": "path",
             "required": true,
             "schema": {
@@ -2865,26 +2134,26 @@
         ]
       }
     },
-    "/api/workspaces/{workspaceId}/proposals/{proposalId}/approve": {
+    "/api/plans/{planId}/reject": {
       "post": {
-        "operationId": "approveWorkspaceProposal",
-        "summary": "Approve a workspace coordinator proposal",
+        "operationId": "rejectPlan",
+        "summary": "Reject a plan",
         "tags": [
-          "Workspace Agents"
+          "Plans"
         ],
         "responses": {
           "200": {
-            "description": "Approved proposal",
+            "description": "Rejected plan",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProposalResponse"
+                  "$ref": "#/components/schemas/PlanResponse"
                 }
               }
             }
           },
           "409": {
-            "description": "Proposal already decided",
+            "description": "Plan already decided",
             "content": {
               "application/json": {
                 "schema": {
@@ -2896,113 +2165,7 @@
         },
         "parameters": [
           {
-            "name": "workspaceId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "proposalId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/api/workspaces/{workspaceId}/proposals/{proposalId}/reject": {
-      "post": {
-        "operationId": "rejectWorkspaceProposal",
-        "summary": "Reject a workspace coordinator proposal",
-        "tags": [
-          "Workspace Agents"
-        ],
-        "responses": {
-          "200": {
-            "description": "Rejected proposal",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProposalResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Proposal already decided",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "workspaceId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "proposalId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
-      }
-    },
-    "/api/workspaces/{workspaceId}/tasks/{taskId}/cancel": {
-      "post": {
-        "operationId": "cancelSubtaskByWorkspace",
-        "summary": "Cancel a workspace subtask",
-        "tags": [
-          "Workspace Agents"
-        ],
-        "responses": {
-          "200": {
-            "description": "Cancelled subtask",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TaskResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Task cannot be cancelled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "workspaceId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "taskId",
+            "name": "planId",
             "in": "path",
             "required": true,
             "schema": {
@@ -3457,6 +2620,16 @@
             "description": "Present when a team subtask was explicitly cancelled by a user."
           },
           "taskKind": {
+            "enum": [
+              "user"
+            ],
+            "description": "Internal visibility bucket for UI-facing tasks. Defaults to `user`."
+          },
+          "parentTaskId": {
+            "type": "string",
+            "description": "When set, this task is a subtask created via an approved Plan."
+          },
+          "source": {
             "oneOf": [
               {
                 "enum": [
@@ -3465,23 +2638,19 @@
               },
               {
                 "enum": [
-                  "channel_backing"
+                  "agent_plan"
                 ]
               }
             ],
-            "description": "Internal visibility bucket for UI-facing vs. system backing tasks. Defaults to `user`."
+            "description": "Agent-driven board: provenance of this task.\n`user`        — hand-created from the kanban UI (default when missing).\n`agent_plan`  — materialized by approving a Plan.\nOptional on the TS side so legacy call sites that construct Task literals\nkeep compiling; the DB layer always populates it (default 'user')."
           },
-          "teamId": {
+          "planId": {
             "type": "string",
-            "description": "When set, this task belongs to an agent team."
+            "description": "Present when `source === \"agent_plan\"`; points at the originating Plan."
           },
-          "parentTaskId": {
+          "assigneeAgentId": {
             "type": "string",
-            "description": "When set, this task is a subtask created by a team coordinator."
-          },
-          "teamAgentId": {
-            "type": "string",
-            "description": "The TeamAgent.id responsible for this subtask."
+            "description": "The WorkspaceAgent that should pick up this task (may be decided later)."
           },
           "createdAt": {
             "type": "string"
@@ -4123,9 +3292,6 @@
           "workspaceId": {
             "type": "string"
           },
-          "teamId": {
-            "type": "string"
-          },
           "worktreeBaseRef": {
             "type": "string"
           },
@@ -4225,21 +3391,6 @@
           }
         },
         "required": [
-          "taskId"
-        ]
-      },
-      "CancelSubtaskParams": {
-        "type": "object",
-        "properties": {
-          "teamId": {
-            "type": "string"
-          },
-          "taskId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "teamId",
           "taskId"
         ]
       },
@@ -5584,552 +4735,6 @@
           "blocked"
         ]
       },
-      "AgentTeam": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          },
-          "workspaceId": {
-            "type": "string"
-          },
-          "agents": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/TeamAgent"
-            }
-          },
-          "prStrategy": {
-            "$ref": "#/components/schemas/TeamPrStrategy",
-            "description": "Strategy for creating pull requests from subtask branches."
-          },
-          "autoApproveSubtasks": {
-            "type": "boolean",
-            "description": "When true, succeeded subtasks skip manual human approval."
-          },
-          "createdAt": {
-            "type": "string"
-          },
-          "updatedAt": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "description",
-          "workspaceId",
-          "agents",
-          "prStrategy",
-          "autoApproveSubtasks",
-          "createdAt",
-          "updatedAt"
-        ]
-      },
-      "TeamAgent": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "description": "Unique agent identifier within the team (nanoid)."
-          },
-          "agentName": {
-            "type": "string"
-          },
-          "role": {
-            "$ref": "#/components/schemas/AgentRole"
-          },
-          "runnerConfig": {
-            "$ref": "#/components/schemas/RunnerConfig"
-          }
-        },
-        "required": [
-          "id",
-          "agentName",
-          "role",
-          "runnerConfig"
-        ]
-      },
-      "AgentRole": {
-        "oneOf": [
-          {
-            "enum": [
-              "coordinator"
-            ]
-          },
-          {
-            "enum": [
-              "worker"
-            ]
-          }
-        ]
-      },
-      "TeamPrStrategy": {
-        "oneOf": [
-          {
-            "enum": [
-              "independent"
-            ]
-          },
-          {
-            "enum": [
-              "stacked"
-            ]
-          },
-          {
-            "enum": [
-              "single"
-            ]
-          }
-        ]
-      },
-      "TeamMessage": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "teamId": {
-            "type": "string"
-          },
-          "parentTaskId": {
-            "type": "string",
-            "description": "Parent team task that owns this execution thread."
-          },
-          "taskId": {
-            "type": "string",
-            "description": "The task this message is associated with (subtask or parent task)."
-          },
-          "agentName": {
-            "type": "string",
-            "description": "Name of the agent or user that sent the message."
-          },
-          "senderType": {
-            "$ref": "#/components/schemas/TeamMessageSenderType",
-            "description": "Whether the message was sent by an agent, human, or the system."
-          },
-          "messageType": {
-            "$ref": "#/components/schemas/TeamMessageType",
-            "description": "Semantic message category for prompt injection and UI rendering."
-          },
-          "content": {
-            "type": "string"
-          },
-          "createdAt": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "teamId",
-          "parentTaskId",
-          "agentName",
-          "senderType",
-          "messageType",
-          "content",
-          "createdAt"
-        ]
-      },
-      "TeamMessageSenderType": {
-        "oneOf": [
-          {
-            "enum": [
-              "system"
-            ]
-          },
-          {
-            "enum": [
-              "agent"
-            ]
-          },
-          {
-            "enum": [
-              "human"
-            ]
-          }
-        ]
-      },
-      "TeamMessageType": {
-        "oneOf": [
-          {
-            "enum": [
-              "status"
-            ]
-          },
-          {
-            "enum": [
-              "artifact"
-            ]
-          },
-          {
-            "enum": [
-              "context"
-            ]
-          },
-          {
-            "enum": [
-              "feedback"
-            ]
-          }
-        ]
-      },
-      "CreateTeamBody": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          },
-          "workspaceId": {
-            "type": "string"
-          },
-          "prStrategy": {
-            "oneOf": [
-              {
-                "enum": [
-                  "independent"
-                ]
-              },
-              {
-                "enum": [
-                  "stacked"
-                ]
-              },
-              {
-                "enum": [
-                  "single"
-                ]
-              }
-            ]
-          },
-          "autoApproveSubtasks": {
-            "type": "boolean"
-          },
-          "agents": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "agentName": {
-                  "type": "string"
-                },
-                "role": {
-                  "$ref": "#/components/schemas/AgentRole"
-                },
-                "runnerConfig": {
-                  "$ref": "#/components/schemas/RunnerConfig"
-                }
-              },
-              "required": [
-                "id",
-                "agentName",
-                "role",
-                "runnerConfig"
-              ]
-            }
-          }
-        },
-        "required": [
-          "name",
-          "workspaceId",
-          "agents"
-        ]
-      },
-      "UpdateTeamParams": {
-        "type": "object",
-        "properties": {
-          "teamId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "teamId"
-        ]
-      },
-      "UpdateTeamBody": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          },
-          "prStrategy": {
-            "oneOf": [
-              {
-                "enum": [
-                  "independent"
-                ]
-              },
-              {
-                "enum": [
-                  "stacked"
-                ]
-              },
-              {
-                "enum": [
-                  "single"
-                ]
-              }
-            ]
-          },
-          "autoApproveSubtasks": {
-            "type": "boolean"
-          },
-          "agents": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "agentName": {
-                  "type": "string"
-                },
-                "role": {
-                  "$ref": "#/components/schemas/AgentRole"
-                },
-                "runnerConfig": {
-                  "$ref": "#/components/schemas/RunnerConfig"
-                }
-              },
-              "required": [
-                "id",
-                "agentName",
-                "role",
-                "runnerConfig"
-              ]
-            }
-          }
-        },
-        "required": []
-      },
-      "GetTeamParams": {
-        "type": "object",
-        "properties": {
-          "teamId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "teamId"
-        ]
-      },
-      "DeleteTeamParams": {
-        "type": "object",
-        "properties": {
-          "teamId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "teamId"
-        ]
-      },
-      "ListTeamMessagesParams": {
-        "type": "object",
-        "properties": {
-          "teamId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "teamId"
-        ]
-      },
-      "ListTeamMessagesQuery": {
-        "type": "object",
-        "properties": {
-          "parentTaskId": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "PostTeamMessageParams": {
-        "type": "object",
-        "properties": {
-          "teamId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "teamId"
-        ]
-      },
-      "PostTeamMessageBody": {
-        "type": "object",
-        "properties": {
-          "parentTaskId": {
-            "type": "string"
-          },
-          "content": {
-            "type": "string",
-            "maxLength": 10240
-          }
-        },
-        "required": [
-          "parentTaskId",
-          "content"
-        ]
-      },
-      "ListTeamsQuery": {
-        "type": "object",
-        "properties": {
-          "workspaceId": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "TeamsResponse": {
-        "type": "object",
-        "properties": {
-          "ok": {
-            "enum": [
-              true
-            ]
-          },
-          "data": {
-            "$ref": "#/components/schemas/ListTeamsData"
-          }
-        },
-        "required": [
-          "ok",
-          "data"
-        ]
-      },
-      "ListTeamsData": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/AgentTeam"
-            }
-          }
-        },
-        "required": [
-          "items"
-        ]
-      },
-      "AgentTeamResponse": {
-        "type": "object",
-        "properties": {
-          "ok": {
-            "enum": [
-              true
-            ]
-          },
-          "data": {
-            "$ref": "#/components/schemas/AgentTeamData"
-          }
-        },
-        "required": [
-          "ok",
-          "data"
-        ]
-      },
-      "AgentTeamData": {
-        "type": "object",
-        "properties": {
-          "team": {
-            "$ref": "#/components/schemas/AgentTeam"
-          }
-        },
-        "required": [
-          "team"
-        ]
-      },
-      "DeleteTeamResponse": {
-        "type": "object",
-        "properties": {
-          "ok": {
-            "enum": [
-              true
-            ]
-          },
-          "data": {
-            "$ref": "#/components/schemas/DeleteResult"
-          }
-        },
-        "required": [
-          "ok",
-          "data"
-        ]
-      },
-      "TeamMessagesResponse": {
-        "type": "object",
-        "properties": {
-          "ok": {
-            "enum": [
-              true
-            ]
-          },
-          "data": {
-            "$ref": "#/components/schemas/TeamMessagesData"
-          }
-        },
-        "required": [
-          "ok",
-          "data"
-        ]
-      },
-      "TeamMessagesData": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/TeamMessage"
-            }
-          }
-        },
-        "required": [
-          "items"
-        ]
-      },
-      "TeamMessageResponse": {
-        "type": "object",
-        "properties": {
-          "ok": {
-            "enum": [
-              true
-            ]
-          },
-          "data": {
-            "$ref": "#/components/schemas/TeamMessageData"
-          }
-        },
-        "required": [
-          "ok",
-          "data"
-        ]
-      },
-      "TeamMessageData": {
-        "type": "object",
-        "properties": {
-          "item": {
-            "$ref": "#/components/schemas/TeamMessage"
-          }
-        },
-        "required": [
-          "item"
-        ]
-      },
       "AccountAgent": {
         "type": "object",
         "properties": {
@@ -6160,103 +4765,6 @@
           "updatedAt"
         ],
         "description": "An account-level agent definition. Agents are created once and can be\nmounted to multiple workspaces with different roles."
-      },
-      "WorkspaceChannel": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "workspaceId": {
-            "type": "string"
-          },
-          "kind": {
-            "$ref": "#/components/schemas/WorkspaceChannelKind"
-          },
-          "name": {
-            "type": "string"
-          },
-          "slug": {
-            "type": "string"
-          },
-          "taskId": {
-            "type": "string",
-            "description": "`#all` uses this to point at its hidden backing coordinator task."
-          },
-          "createdAt": {
-            "type": "string"
-          },
-          "archivedAt": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "workspaceId",
-          "kind",
-          "name",
-          "slug",
-          "createdAt"
-        ]
-      },
-      "WorkspaceChannelKind": {
-        "oneOf": [
-          {
-            "enum": [
-              "all"
-            ]
-          },
-          {
-            "enum": [
-              "task"
-            ]
-          }
-        ]
-      },
-      "ChannelMessage": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "channelId": {
-            "type": "string"
-          },
-          "workspaceId": {
-            "type": "string"
-          },
-          "taskId": {
-            "type": "string"
-          },
-          "agentName": {
-            "type": "string"
-          },
-          "senderType": {
-            "$ref": "#/components/schemas/TeamMessageSenderType"
-          },
-          "messageType": {
-            "$ref": "#/components/schemas/TeamMessageType"
-          },
-          "content": {
-            "type": "string"
-          },
-          "metadata": {
-            "$ref": "#/components/schemas/Recordstringstring"
-          },
-          "createdAt": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "channelId",
-          "workspaceId",
-          "agentName",
-          "senderType",
-          "messageType",
-          "content",
-          "createdAt"
-        ]
       },
       "WorkspaceAgent": {
         "type": "object",
@@ -6293,46 +4801,19 @@
         ],
         "description": "An AccountAgent with the role it was assigned when mounted to a workspace.\nReturned by listWorkspaceAgents()."
       },
-      "TaskMessage": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
+      "AgentRole": {
+        "oneOf": [
+          {
+            "enum": [
+              "coordinator"
+            ]
           },
-          "parentTaskId": {
-            "type": "string",
-            "description": "The parent coordinator task that owns this execution thread."
-          },
-          "taskId": {
-            "type": "string",
-            "description": "The specific subtask this message is associated with (if any)."
-          },
-          "agentName": {
-            "type": "string"
-          },
-          "senderType": {
-            "$ref": "#/components/schemas/TeamMessageSenderType"
-          },
-          "messageType": {
-            "$ref": "#/components/schemas/TeamMessageType"
-          },
-          "content": {
-            "type": "string"
-          },
-          "createdAt": {
-            "type": "string"
+          {
+            "enum": [
+              "worker"
+            ]
           }
-        },
-        "required": [
-          "id",
-          "parentTaskId",
-          "agentName",
-          "senderType",
-          "messageType",
-          "content",
-          "createdAt"
-        ],
-        "description": "A message in a task's coordination thread, not tied to any team entity."
+        ]
       },
       "CreateAgentBody": {
         "type": "object",
@@ -6394,63 +4875,6 @@
         },
         "required": [
           "agentId"
-        ]
-      },
-      "ListWorkspaceChannelsParams": {
-        "type": "object",
-        "properties": {
-          "workspaceId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "workspaceId"
-        ]
-      },
-      "WorkspaceChannelParams": {
-        "type": "object",
-        "properties": {
-          "workspaceId": {
-            "type": "string"
-          },
-          "channelId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "workspaceId",
-          "channelId"
-        ]
-      },
-      "WorkspaceChannelProposalParams": {
-        "type": "object",
-        "properties": {
-          "workspaceId": {
-            "type": "string"
-          },
-          "channelId": {
-            "type": "string"
-          },
-          "proposalId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "workspaceId",
-          "channelId",
-          "proposalId"
-        ]
-      },
-      "PostChannelMessageBody": {
-        "type": "object",
-        "properties": {
-          "content": {
-            "type": "string",
-            "maxLength": 10240
-          }
-        },
-        "required": [
-          "content"
         ]
       },
       "ListWorkspaceAgentsParams": {
@@ -6544,53 +4968,6 @@
           "workspaceId"
         ]
       },
-      "ListTaskMessagesParams": {
-        "type": "object",
-        "properties": {
-          "workspaceId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "workspaceId"
-        ]
-      },
-      "ListTaskMessagesQuery": {
-        "type": "object",
-        "properties": {
-          "parentTaskId": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "PostTaskMessageBody": {
-        "type": "object",
-        "properties": {
-          "parentTaskId": {
-            "type": "string"
-          },
-          "content": {
-            "type": "string",
-            "maxLength": 10240
-          }
-        },
-        "required": [
-          "parentTaskId",
-          "content"
-        ]
-      },
-      "PostTaskMessageParams": {
-        "type": "object",
-        "properties": {
-          "workspaceId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "workspaceId"
-        ]
-      },
       "AgentResponse": {
         "type": "object",
         "properties": {
@@ -6667,124 +5044,6 @@
           "data"
         ]
       },
-      "WorkspaceChannelsResponse": {
-        "type": "object",
-        "properties": {
-          "ok": {
-            "enum": [
-              true
-            ]
-          },
-          "data": {
-            "$ref": "#/components/schemas/ListWorkspaceChannelsData"
-          }
-        },
-        "required": [
-          "ok",
-          "data"
-        ]
-      },
-      "ListWorkspaceChannelsData": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/WorkspaceChannel"
-            }
-          }
-        },
-        "required": [
-          "items"
-        ]
-      },
-      "WorkspaceChannelResponse": {
-        "type": "object",
-        "properties": {
-          "ok": {
-            "enum": [
-              true
-            ]
-          },
-          "data": {
-            "$ref": "#/components/schemas/WorkspaceChannelData"
-          }
-        },
-        "required": [
-          "ok",
-          "data"
-        ]
-      },
-      "WorkspaceChannelData": {
-        "type": "object",
-        "properties": {
-          "channel": {
-            "$ref": "#/components/schemas/WorkspaceChannel"
-          }
-        },
-        "required": [
-          "channel"
-        ]
-      },
-      "ChannelMessagesResponse": {
-        "type": "object",
-        "properties": {
-          "ok": {
-            "enum": [
-              true
-            ]
-          },
-          "data": {
-            "$ref": "#/components/schemas/ChannelMessagesData"
-          }
-        },
-        "required": [
-          "ok",
-          "data"
-        ]
-      },
-      "ChannelMessagesData": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ChannelMessage"
-            }
-          }
-        },
-        "required": [
-          "items"
-        ]
-      },
-      "ChannelMessageResponse": {
-        "type": "object",
-        "properties": {
-          "ok": {
-            "enum": [
-              true
-            ]
-          },
-          "data": {
-            "$ref": "#/components/schemas/ChannelMessageData"
-          }
-        },
-        "required": [
-          "ok",
-          "data"
-        ]
-      },
-      "ChannelMessageData": {
-        "type": "object",
-        "properties": {
-          "item": {
-            "$ref": "#/components/schemas/ChannelMessage"
-          }
-        },
-        "required": [
-          "item"
-        ]
-      },
       "WorkspaceAgentResponse": {
         "type": "object",
         "properties": {
@@ -6844,240 +5103,236 @@
           "items"
         ]
       },
-      "TaskMessagesResponse": {
-        "type": "object",
-        "properties": {
-          "ok": {
-            "enum": [
-              true
-            ]
-          },
-          "data": {
-            "$ref": "#/components/schemas/TaskMessagesData"
-          }
-        },
-        "required": [
-          "ok",
-          "data"
-        ]
-      },
-      "TaskMessagesData": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/TaskMessage"
-            }
-          }
-        },
-        "required": [
-          "items"
-        ]
-      },
-      "TaskMessageResponse": {
-        "type": "object",
-        "properties": {
-          "ok": {
-            "enum": [
-              true
-            ]
-          },
-          "data": {
-            "$ref": "#/components/schemas/TaskMessageData"
-          }
-        },
-        "required": [
-          "ok",
-          "data"
-        ]
-      },
-      "TaskMessageData": {
-        "type": "object",
-        "properties": {
-          "item": {
-            "$ref": "#/components/schemas/TaskMessage"
-          }
-        },
-        "required": [
-          "item"
-        ]
-      },
-      "WorkspaceListProposalsParams": {
-        "type": "object",
-        "properties": {
-          "workspaceId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "workspaceId"
-        ]
-      },
-      "WorkspaceGetProposalParams": {
-        "type": "object",
-        "properties": {
-          "workspaceId": {
-            "type": "string"
-          },
-          "proposalId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "workspaceId",
-          "proposalId"
-        ]
-      },
-      "WorkspaceApproveProposalParams": {
-        "type": "object",
-        "properties": {
-          "workspaceId": {
-            "type": "string"
-          },
-          "proposalId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "workspaceId",
-          "proposalId"
-        ]
-      },
-      "WorkspaceRejectProposalParams": {
-        "type": "object",
-        "properties": {
-          "workspaceId": {
-            "type": "string"
-          },
-          "proposalId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "workspaceId",
-          "proposalId"
-        ]
-      },
-      "WorkspaceCancelSubtaskParams": {
-        "type": "object",
-        "properties": {
-          "workspaceId": {
-            "type": "string"
-          },
-          "taskId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "workspaceId",
-          "taskId"
-        ]
-      },
-      "ListProposalsResponse": {
-        "type": "object",
-        "properties": {
-          "ok": {
-            "enum": [
-              true
-            ]
-          },
-          "data": {
-            "$ref": "#/components/schemas/ListProposalsData"
-          }
-        },
-        "required": [
-          "ok",
-          "data"
-        ]
-      },
-      "ListProposalsData": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CoordinatorProposal"
-            }
-          }
-        },
-        "required": [
-          "items"
-        ]
-      },
-      "CoordinatorProposal": {
+      "Thread": {
         "type": "object",
         "properties": {
           "id": {
             "type": "string"
           },
-          "teamId": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "type": "string"
-              }
-            ],
-            "description": "Legacy: team-scoped proposals. Null for workspace-scoped proposals."
-          },
           "workspaceId": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ThreadKind"
+          },
+          "taskId": {
             "type": "string",
-            "description": "Set for workspace-scoped proposals (new model)."
+            "description": "Set when `kind === \"task\"` — the task this thread belongs to."
           },
-          "channelId": {
-            "type": "string"
+          "coordinatorAgentId": {
+            "type": "string",
+            "description": "The WorkspaceAgent that drives this thread (if any)."
           },
-          "parentTaskId": {
-            "type": "string"
-          },
-          "proposalMode": {
-            "$ref": "#/components/schemas/CoordinatorProposalMode"
-          },
-          "status": {
-            "$ref": "#/components/schemas/CoordinatorProposalStatus"
-          },
-          "drafts": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CoordinatorProposalDraft"
-            }
+          "coordinatorState": {
+            "$ref": "#/components/schemas/CoordinatorState"
           },
           "createdAt": {
             "type": "string"
           },
-          "decidedAt": {
-            "type": "string",
-            "description": "ISO timestamp of when the proposal was approved or rejected."
+          "archivedAt": {
+            "type": "string"
           }
         },
         "required": [
           "id",
-          "teamId",
-          "parentTaskId",
-          "proposalMode",
-          "status",
-          "drafts",
+          "workspaceId",
+          "kind",
+          "coordinatorState",
           "createdAt"
-        ],
-        "description": "A coordinator proposal holds the parsed subtask plan from a coordinator\nrun and waits for human approval before subtasks are actually created."
+        ]
       },
-      "CoordinatorProposalMode": {
+      "ThreadKind": {
         "oneOf": [
           {
             "enum": [
-              "top_level_tasks"
+              "coordinator"
             ]
           },
           {
             "enum": [
-              "subtasks"
+              "task"
+            ]
+          },
+          {
+            "enum": [
+              "direct"
             ]
           }
         ]
       },
-      "CoordinatorProposalStatus": {
+      "CoordinatorState": {
+        "oneOf": [
+          {
+            "enum": [
+              "running"
+            ]
+          },
+          {
+            "enum": [
+              "queued"
+            ]
+          },
+          {
+            "enum": [
+              "idle"
+            ]
+          }
+        ]
+      },
+      "Message": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "sender": {
+            "$ref": "#/components/schemas/MessageSender"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/MessageKind"
+          },
+          "payload": {
+            "description": "Payload shape is narrowed per `kind` by typia validators."
+          },
+          "consumedByRunId": {
+            "type": "string",
+            "description": "When set, this message was consumed by the given coordinator run turn."
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "threadId",
+          "sender",
+          "kind",
+          "payload",
+          "createdAt"
+        ]
+      },
+      "MessageSender": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "enum": [
+                  "user"
+                ]
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "enum": [
+                  "agent"
+                ]
+              },
+              "agentId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "agentId"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "enum": [
+                  "system"
+                ]
+              }
+            },
+            "required": [
+              "type"
+            ]
+          }
+        ]
+      },
+      "MessageKind": {
+        "oneOf": [
+          {
+            "enum": [
+              "status"
+            ]
+          },
+          {
+            "enum": [
+              "chat"
+            ]
+          },
+          {
+            "enum": [
+              "artifact"
+            ]
+          },
+          {
+            "enum": [
+              "plan_draft"
+            ]
+          },
+          {
+            "enum": [
+              "plan_decision"
+            ]
+          },
+          {
+            "enum": [
+              "system_event"
+            ]
+          }
+        ]
+      },
+      "Plan": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "proposerAgentId": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PlanStatus"
+          },
+          "drafts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlanDraft"
+            }
+          },
+          "approvedAt": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "threadId",
+          "proposerAgentId",
+          "status",
+          "drafts",
+          "createdAt"
+        ]
+      },
+      "PlanStatus": {
         "oneOf": [
           {
             "enum": [
@@ -7093,10 +5348,15 @@
             "enum": [
               "rejected"
             ]
+          },
+          {
+            "enum": [
+              "superseded"
+            ]
           }
         ]
       },
-      "CoordinatorProposalDraft": {
+      "PlanDraft": {
         "type": "object",
         "properties": {
           "title": {
@@ -7105,25 +5365,145 @@
           "description": {
             "type": "string"
           },
-          "assignedAgent": {
+          "assigneeAgentId": {
             "type": "string"
           },
-          "dependencies": {
+          "dependsOn": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "References to other drafts' titles within the same plan."
           }
         },
         "required": [
           "title",
-          "description",
-          "assignedAgent",
-          "dependencies"
-        ],
-        "description": "A single subtask draft produced by the coordinator LLM output."
+          "description"
+        ]
       },
-      "ProposalResponse": {
+      "ListThreadsParams": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId"
+        ]
+      },
+      "CreateThreadBody": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ThreadKind"
+          },
+          "taskId": {
+            "type": "string"
+          },
+          "coordinatorAgentId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "PostThreadMessageParams": {
+        "type": "object",
+        "properties": {
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "threadId"
+        ]
+      },
+      "PostThreadMessageBody": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "kind": {
+            "oneOf": [
+              {
+                "enum": [
+                  "status"
+                ]
+              },
+              {
+                "enum": [
+                  "chat"
+                ]
+              },
+              {
+                "enum": [
+                  "artifact"
+                ]
+              },
+              {
+                "enum": [
+                  "plan_draft"
+                ]
+              },
+              {
+                "enum": [
+                  "plan_decision"
+                ]
+              },
+              {
+                "enum": [
+                  "system_event"
+                ]
+              }
+            ],
+            "description": "Defaults to \"chat\" when omitted. Server may reject other kinds for human senders."
+          }
+        },
+        "required": [
+          "content"
+        ]
+      },
+      "ListThreadMessagesParams": {
+        "type": "object",
+        "properties": {
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "threadId"
+        ]
+      },
+      "ListThreadMessagesQuery": {
+        "type": "object",
+        "properties": {
+          "after": {
+            "type": "string",
+            "description": "Message id cursor — return messages created strictly after this one."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500
+          }
+        },
+        "required": []
+      },
+      "PlanParams": {
+        "type": "object",
+        "properties": {
+          "planId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "planId"
+        ]
+      },
+      "ListThreadsResponse": {
         "type": "object",
         "properties": {
           "ok": {
@@ -7132,7 +5512,7 @@
             ]
           },
           "data": {
-            "$ref": "#/components/schemas/ProposalData"
+            "$ref": "#/components/schemas/ListThreadsData"
           }
         },
         "required": [
@@ -7140,25 +5520,134 @@
           "data"
         ]
       },
-      "ProposalData": {
+      "ListThreadsData": {
         "type": "object",
         "properties": {
-          "proposal": {
-            "$ref": "#/components/schemas/CoordinatorProposal"
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Thread"
+            }
           }
         },
         "required": [
-          "proposal"
+          "items"
         ]
       },
-      "ListProposalsQuery": {
+      "ThreadResponse": {
         "type": "object",
         "properties": {
-          "parentTaskId": {
-            "type": "string"
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/ThreadData"
           }
         },
-        "required": []
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "ThreadData": {
+        "type": "object",
+        "properties": {
+          "thread": {
+            "$ref": "#/components/schemas/Thread"
+          }
+        },
+        "required": [
+          "thread"
+        ]
+      },
+      "ListThreadMessagesResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/ListThreadMessagesData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "ListThreadMessagesData": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "MessageResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/MessageData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "MessageData": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "$ref": "#/components/schemas/Message"
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
+      "PlanResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/PlanData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "PlanData": {
+        "type": "object",
+        "properties": {
+          "plan": {
+            "$ref": "#/components/schemas/Plan"
+          }
+        },
+        "required": [
+          "plan"
+        ]
       }
     }
   }

@@ -5,14 +5,48 @@ import { getRequestListener } from "@hono/node-server";
 import { DEFAULT_PORT, DATA_DIR, getGitReviewMonitorIntervalMs } from "./config.js";
 import { createApp } from "./app.js";
 import { createFrontendHandler } from "./frontend.js";
+import { createMcpHttpHandler } from "./mcp/mcp-http-handler.js";
+import { McpNonceRegistry } from "./mcp/nonce-registry.js";
 import { StateStore } from "./persistence/state-store.js";
+import { ClaudeCliCoordinatorRunner } from "./runners/claude-cli-coordinator-runner.js";
+import { CoordinatorRunnerRegistry } from "./runners/coordinator-runner-registry.js";
+import { NoopCoordinatorRunner } from "./runners/noop-coordinator-runner.js";
 import { BoardService } from "./services/board-service.js";
+import { Orchestrator } from "./services/orchestrator.js";
+import { PlanService } from "./services/plan-service.js";
+import { TaskService } from "./services/task-service.js";
+import { ThreadService } from "./services/thread-service.js";
+import { buildDefaultToolRegistry } from "./services/tool-registry.js";
 import { EventBus } from "./ws/event-bus.js";
 
 async function main(): Promise<void> {
   const store = new StateStore(DATA_DIR);
   const events = new EventBus();
   const service = new BoardService(store, events);
+  const threads = new ThreadService(store, events);
+  const plans = new PlanService(store, events);
+  const tasks = new TaskService(store, threads, events);
+  const tools = buildDefaultToolRegistry({ store, tasks, plans, threads });
+  const mcpNonces = new McpNonceRegistry();
+  const mcpHandler = createMcpHttpHandler(tools, mcpNonces);
+  const runners = new CoordinatorRunnerRegistry(new NoopCoordinatorRunner());
+  runners.register(
+    "claude",
+    new ClaudeCliCoordinatorRunner({
+      mcpNonces,
+      mcpUrl: `http://127.0.0.1:${DEFAULT_PORT}/mcp`
+    })
+  );
+  const orchestrator = new Orchestrator({
+    store,
+    events,
+    threads,
+    plans,
+    tasks,
+    tools,
+    runners
+  });
+  orchestrator.start();
   await service.initialize();
   await service.warmCodexAppServer().catch((error) => {
     console.error("Initial Codex app-server startup failed");
@@ -24,7 +58,7 @@ async function main(): Promise<void> {
   });
 
   const reviewMonitorIntervalMs = getGitReviewMonitorIntervalMs();
-  const app = createApp(service, { reviewMonitorIntervalMs });
+  const app = createApp(service, { reviewMonitorIntervalMs, threads, plans });
   const honoListener = getRequestListener(app.fetch);
   const server = createServer();
   const frontend = await createFrontendHandler(server);
@@ -41,6 +75,11 @@ async function main(): Promise<void> {
 
   server.on("request", async (req, res) => {
     try {
+      if (req.url && req.url.startsWith("/mcp")) {
+        await mcpHandler(req, res);
+        return;
+      }
+
       const handled = await frontend.handle(req, res);
       if (handled) {
         return;
