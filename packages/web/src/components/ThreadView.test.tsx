@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Message } from "@workhorse/contracts";
 
-import { ChatRow, ToolEventRow } from "./ThreadView";
+import { ChatRow, RequestUserInputCard, ToolEventRow } from "./ThreadView";
 
 function makeChatMessage(overrides: Partial<Message>): Message {
   return {
@@ -77,5 +77,29 @@ describe("ToolEventRow", () => {
 
     expect(html).toContain("Get Workspace State");
     expect(html).not.toContain("b93d17f1-5dca-438b-bf6b-2429708ba8b5");
+  });
+});
+
+describe("RequestUserInputCard", () => {
+  it("renders coordinator questions as choices instead of raw JSON", () => {
+    const html = renderToStaticMarkup(
+      <RequestUserInputCard
+        message={makeChatMessage({
+          kind: "status",
+          payload: {
+            kind: "request_user_input",
+            question: "How should I handle the review?",
+            options: ["Retry review", "Keep in review", "Approve"]
+          }
+        })}
+      />
+    );
+
+    expect(html).toContain("How should I handle the review?");
+    expect(html).toContain("Retry review");
+    expect(html).toContain("Keep in review");
+    expect(html).toContain("Approve");
+    expect(html).not.toContain("request_user_input");
+    expect(html).not.toContain("{");
   });
 });

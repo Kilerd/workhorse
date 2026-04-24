@@ -271,6 +271,9 @@ function MessageRow({ message, threadId }: { message: Message; threadId: string 
       if (isStatusDivider(message)) {
         return <SystemEventRow message={message} />;
       }
+      if (isRequestUserInputPayload(message.payload)) {
+        return <RequestUserInputRow message={message} threadId={threadId} />;
+      }
       return <StatusRow message={message} />;
     case "artifact":
       return <ArtifactRow message={message} />;
@@ -347,6 +350,29 @@ function readStringField(
 ): string | undefined {
   const value = payload[key];
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function readStringArrayField(
+  payload: Record<string, unknown>,
+  key: string
+): string[] {
+  const value = payload[key];
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+interface RequestUserInputPayload {
+  kind: "request_user_input";
+  question: string;
+  options: string[];
+}
+
+function isRequestUserInputPayload(payload: unknown): payload is RequestUserInputPayload {
+  const object = readObject(payload);
+  return (
+    readStringField(object, "kind") === "request_user_input" &&
+    Boolean(readStringField(object, "question"))
+  );
 }
 
 function humanizeToolName(value: string): string {
@@ -788,6 +814,89 @@ function StatusRow({ message }: { message: Message }) {
       <Meta message={message} />
       <div className="rounded-md border border-indigo-400/30 bg-indigo-400/5 px-3 py-1.5 text-xs text-muted-foreground">
         {text || <ArtifactPreview payload={message.payload} />}
+      </div>
+    </article>
+  );
+}
+
+function RequestUserInputRow({
+  message,
+  threadId
+}: {
+  message: Message;
+  threadId: string;
+}) {
+  const postMessage = usePostThreadMessage(threadId);
+  const [selectedOption, setSelectedOption] = useState<string | null>(null);
+
+  const handleSelect = async (option: string) => {
+    setSelectedOption(option);
+    try {
+      await postMessage.mutateAsync({ content: option, kind: "chat" });
+    } catch (error) {
+      setSelectedOption(null);
+      toast({
+        title: "Couldn't send response",
+        description: readErrorMessage(error, "Unable to send your response."),
+        variant: "destructive"
+      });
+    }
+  };
+
+  return (
+    <RequestUserInputCard
+      message={message}
+      selectedOption={selectedOption}
+      isPending={postMessage.isPending}
+      onSelect={(option) => {
+        void handleSelect(option);
+      }}
+    />
+  );
+}
+
+export function RequestUserInputCard({
+  message,
+  selectedOption,
+  isPending = false,
+  onSelect
+}: {
+  message: Message;
+  selectedOption?: string | null;
+  isPending?: boolean;
+  onSelect?: (option: string) => void;
+}) {
+  const payload = readObject(message.payload);
+  const question = readStringField(payload, "question") ?? "";
+  const options = readStringArrayField(payload, "options");
+  const hasSelection = Boolean(selectedOption);
+
+  return (
+    <article className="grid gap-1.5">
+      <Meta message={message} />
+      <div className="grid max-w-[min(42rem,96%)] gap-3 rounded-lg border border-amber-400/35 bg-amber-400/10 px-3 py-3 text-sm">
+        <p className="m-0 leading-[1.55] text-foreground">{question}</p>
+        {options.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {options.map((option) => {
+              const isSelected = option === selectedOption;
+              return (
+                <Button
+                  key={option}
+                  type="button"
+                  size="sm"
+                  variant={isSelected ? "default" : "secondary"}
+                  disabled={isPending || hasSelection}
+                  onClick={() => onSelect?.(option)}
+                  className="max-w-full justify-start whitespace-normal text-left leading-snug"
+                >
+                  <CheckCircle2 className="size-3.5" aria-hidden="true" />
+                  <span>{option}</span>
+                </Button>
+              );
+            })}
+          </div>
+        ) : null}
       </div>
     </article>
   );
