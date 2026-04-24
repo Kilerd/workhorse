@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { Message, Thread } from "@workhorse/contracts";
 import {
   CheckCircle2,
   ChevronDown,
+  ChevronUp,
   Folder,
   GitBranch,
   Loader2,
@@ -143,15 +144,6 @@ export function ThreadView({
         </div>
       )}
 
-      {sessionWorktree || sessionBranch ? (
-        <div className="shrink-0 flex flex-wrap gap-2">
-          {sessionWorktree ? (
-            <SessionMeta kind="worktree" value={sessionWorktree} />
-          ) : null}
-          {sessionBranch ? <SessionMeta kind="branch" value={sessionBranch} /> : null}
-        </div>
-      ) : null}
-
       <form
         className="shrink-0 grid gap-2 pb-2"
         onSubmit={(e) => {
@@ -174,17 +166,23 @@ export function ThreadView({
           disabled={postMessage.isPending}
           className="min-h-20 resize-y"
         />
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>
-            Cmd/Ctrl+Enter · {draft.length}/{MAX_CHAT_LENGTH}
-          </span>
-          <Button
-            type="submit"
-            size="sm"
-            disabled={postMessage.isPending || draft.trim().length === 0}
-          >
-            {postMessage.isPending ? "Sending…" : "Send"}
-          </Button>
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+          <div className="min-w-0 flex flex-wrap items-center gap-2">
+            {sessionWorktree ? (
+              <SessionMeta kind="worktree" value={sessionWorktree} />
+            ) : null}
+            {sessionBranch ? <SessionMeta kind="branch" value={sessionBranch} /> : null}
+          </div>
+          <div className="ml-auto flex items-center gap-3">
+            <span>{draft.length}/{MAX_CHAT_LENGTH}</span>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={postMessage.isPending || draft.trim().length === 0}
+            >
+              {postMessage.isPending ? "Sending…" : "Send"}
+            </Button>
+          </div>
         </div>
       </form>
     </section>
@@ -230,13 +228,13 @@ function SessionMeta({
 
   return (
     <div
-      className="flex min-w-0 items-center gap-2 rounded-md border border-border bg-[var(--panel)] px-2.5 py-2 text-xs"
+      className="flex min-w-0 max-w-full items-center gap-2 rounded-md border border-border bg-[var(--panel)] px-2 py-1.5 text-xs"
       title={label}
     >
       <span className="grid size-5 shrink-0 place-items-center text-muted-foreground">
-        <Icon className="size-4" aria-hidden="true" />
+        <Icon className="size-3.5" aria-hidden="true" />
       </span>
-      <code className="min-w-0 break-all font-mono text-[0.72rem] text-foreground">
+      <code className="max-w-[min(34rem,60vw)] truncate font-mono text-[0.72rem] text-foreground">
         {value}
       </code>
       <span className="sr-only">{label}</span>
@@ -253,6 +251,9 @@ function DisplayItemRow({
 }) {
   if (item.type === "tool") {
     return <ToolEventGroup messages={item.messages} />;
+  }
+  if (item.type === "tool_cluster") {
+    return <ToolEventCluster tools={item.tools} />;
   }
 
   return <MessageRow message={item.message} threadId={threadId} />;
@@ -443,7 +444,22 @@ export function ToolEventRow({ message }: { message: Message }) {
   return <ToolEventGroup messages={[message]} />;
 }
 
-function ToolEventGroup({ messages }: { messages: Message[] }) {
+interface ToolEventSummary {
+  name: string;
+  status: string;
+  input: unknown;
+  result: unknown;
+  error?: string;
+  callText?: string;
+  outputText?: string;
+  preview: string;
+  isFailure: boolean;
+  statusLabel: string;
+  toneClass: string;
+  showStatusBadge: boolean;
+}
+
+function readToolEventSummary(messages: Message[]): ToolEventSummary {
   const toolCalls = messages.filter((message) => message.kind === "tool_call");
   const toolOutputs = messages.filter((message) => message.kind === "tool_output");
   const firstCall = toolCalls.at(0) ?? messages.at(0);
@@ -483,10 +499,162 @@ function ToolEventGroup({ messages }: { messages: Message[] }) {
   const toneClass = toolStatusTone(status, isFailure);
   const showStatusBadge = !isCompletedToolStatus(status) || isFailure;
 
+  return {
+    name,
+    status,
+    input,
+    result,
+    error,
+    callText,
+    outputText,
+    preview,
+    isFailure,
+    statusLabel,
+    toneClass,
+    showStatusBadge
+  };
+}
+
+function ToolEventCluster({
+  tools
+}: {
+  tools: Extract<ThreadDisplayItem, { type: "tool" }>[];
+}) {
+  const summaries = tools.map((tool) => readToolEventSummary(tool.messages));
+  const hasFailure = summaries.some((summary) => summary.isFailure);
+  const [expanded, setExpanded] = useState(() => hasFailure);
+
+  if (!expanded) {
+    const firstSummary = summaries[0];
+    if (!firstSummary) {
+      return null;
+    }
+
+    return (
+      <article className="w-full max-w-[min(44rem,96%)] px-1 py-0.5">
+        <button
+          type="button"
+          className="grid w-full cursor-pointer gap-0 rounded-[var(--radius)] bg-transparent p-0 text-left focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--accent)]"
+          onClick={() => setExpanded(true)}
+          aria-expanded={false}
+        >
+          <span className="grid">
+            <ToolSummaryLine
+              summary={firstSummary}
+              badgeLabel={`${tools.length} tool uses`}
+              trailing={<ChevronDown className="size-3 text-[var(--muted)]" aria-hidden="true" />}
+              className="relative z-30 rounded-[var(--radius)] border border-border bg-[var(--surface-faint)] shadow-sm"
+            />
+            <span
+              aria-hidden="true"
+              className="relative z-20 mx-2 -mt-1 block h-2 translate-x-1 rounded-b-[var(--radius)] border border-t-0 border-border bg-[var(--surface-faint)] opacity-80 shadow-sm"
+            />
+            <span
+              aria-hidden="true"
+              className="relative z-10 mx-4 -mt-1 block h-2 translate-x-2 rounded-b-[var(--radius)] border border-t-0 border-border bg-[var(--surface-faint)] opacity-60 shadow-sm"
+            />
+          </span>
+        </button>
+      </article>
+    );
+  }
+
   return (
     <article className="w-full max-w-[min(44rem,96%)] px-1 py-0.5">
+      <div className="grid gap-1.5">
+        <div className="grid gap-1.5">
+          {tools.map((tool, index) => (
+            <ToolEventGroup
+              key={tool.id}
+              messages={tool.messages}
+              nested
+              forceOpen={index === 0 && hasFailure}
+            />
+          ))}
+        </div>
+        <div className="flex justify-start">
+          <button
+            type="button"
+            className="inline-flex min-h-6 justify-self-start items-center gap-1 rounded-[var(--radius)] px-2 text-[0.66rem] font-[510] text-[var(--muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-foreground focus-visible:border focus-visible:border-[var(--accent)] focus-visible:outline-none"
+            onClick={() => setExpanded(false)}
+          >
+            <ChevronUp className="size-3" aria-hidden="true" />
+            Collapse
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function ToolSummaryLine({
+  summary,
+  badgeLabel,
+  trailing,
+  className
+}: {
+  summary: ToolEventSummary;
+  badgeLabel?: string;
+  trailing?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-1.5 px-2 py-1 text-muted-foreground",
+        className
+      )}
+    >
+      <span
+        className={cn(
+          "grid size-5 shrink-0 place-items-center rounded-[var(--radius)] border",
+          summary.toneClass
+        )}
+      >
+        <ToolStatusIcon status={summary.status} isFailure={summary.isFailure} />
+      </span>
+      <span className="flex min-w-0 items-center gap-1.5">
+        <span className="inline-flex max-w-[10rem] shrink-0 items-center truncate rounded-full border border-border bg-[var(--surface-soft)] px-1.5 py-0.5 text-[0.6rem] font-[510] leading-none text-[var(--muted-strong)]">
+          {badgeLabel ?? humanizeToolName(summary.name)}
+        </span>
+        {summary.preview ? (
+          <span className="min-w-0 truncate font-mono text-[0.68rem] leading-[1.35] text-[var(--muted)]">
+            {summary.preview}
+          </span>
+        ) : null}
+        {summary.showStatusBadge ? (
+          <span
+            className={cn(
+              "inline-flex min-h-4 shrink-0 items-center rounded-full border px-1.5 text-[0.56rem] font-medium leading-none",
+              summary.toneClass
+            )}
+          >
+            {summary.statusLabel}
+          </span>
+        ) : null}
+      </span>
+      <span className="grid size-5 place-items-center rounded-[var(--radius)] text-[var(--muted)] transition-colors group-hover:bg-[var(--surface-hover)] group-hover:text-foreground">
+        {trailing}
+      </span>
+    </span>
+  );
+}
+
+function ToolEventGroup({
+  messages,
+  nested = false,
+  forceOpen = false
+}: {
+  messages: Message[];
+  nested?: boolean;
+  forceOpen?: boolean;
+}) {
+  const summary = readToolEventSummary(messages);
+  const { input, result, error, callText, outputText, isFailure } = summary;
+
+  const details = (
       <details
-        open={isFailure}
+        open={forceOpen || isFailure}
         className={cn(
           "group rounded-[var(--radius)] border bg-[var(--surface-faint)] transition-colors",
           isFailure
@@ -494,41 +662,16 @@ function ToolEventGroup({ messages }: { messages: Message[] }) {
             : "border-border hover:border-[var(--border-strong)] hover:bg-[var(--surface-soft)]"
         )}
       >
-        <summary className="grid min-w-0 cursor-pointer list-none grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-1.5 px-2 py-1 text-muted-foreground">
-          <span
-            className={cn(
-              "grid size-5 shrink-0 place-items-center rounded-[var(--radius)] border",
-              toneClass
-            )}
-          >
-            <ToolStatusIcon status={status} isFailure={isFailure} />
-          </span>
-          <span className="flex min-w-0 items-center gap-1.5">
-            <span className="inline-flex max-w-[8rem] shrink-0 items-center truncate rounded-full border border-border bg-[var(--surface-soft)] px-1.5 py-0.5 text-[0.6rem] font-[510] leading-none text-[var(--muted-strong)]">
-              {humanizeToolName(name)}
-            </span>
-            {preview ? (
-              <span className="min-w-0 truncate font-mono text-[0.68rem] leading-[1.35] text-[var(--muted)]">
-                {preview}
-              </span>
-            ) : null}
-            {showStatusBadge ? (
-              <span
-                className={cn(
-                  "inline-flex min-h-4 shrink-0 items-center rounded-full border px-1.5 text-[0.56rem] font-medium leading-none",
-                  toneClass
-                )}
-              >
-                {statusLabel}
-              </span>
-            ) : null}
-          </span>
-          <span className="grid size-5 place-items-center rounded-[var(--radius)] text-[var(--muted)] transition-colors group-hover:bg-[var(--surface-hover)] group-hover:text-foreground">
-            <ChevronDown
-              className="size-3 transition-transform group-open:rotate-180"
-              aria-hidden="true"
-            />
-          </span>
+        <summary className="cursor-pointer list-none">
+          <ToolSummaryLine
+            summary={summary}
+            trailing={
+              <ChevronDown
+                className="size-3 transition-transform group-open:rotate-180"
+                aria-hidden="true"
+              />
+            }
+          />
         </summary>
         <div className="grid gap-2 border-t border-border px-2 py-2">
           {callText ? <ToolJsonBlock label="Command" value={callText} /> : null}
@@ -538,8 +681,13 @@ function ToolEventGroup({ messages }: { messages: Message[] }) {
           {error ? <ToolJsonBlock label="Error" value={error} tone="danger" /> : null}
         </div>
       </details>
-    </article>
   );
+
+  if (nested) {
+    return <div className="w-full">{details}</div>;
+  }
+
+  return <article className="w-full max-w-[min(44rem,96%)] px-1 py-0.5">{details}</article>;
 }
 
 function ToolJsonBlock({

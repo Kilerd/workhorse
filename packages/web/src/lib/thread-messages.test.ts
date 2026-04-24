@@ -392,4 +392,48 @@ describe("buildThreadDisplayItems", () => {
       message: { payload: { text: "结果看起来是 tool 顺序的问题。" } }
     });
   });
+
+  it("collapses more than two tool uses between split agent text", () => {
+    const turnId = "turn-1";
+    const items = buildThreadDisplayItems([
+      makeMessage({
+        id: "chat-1",
+        sender: { type: "agent", agentId: "agent-a" },
+        payload: {
+          text: "我先跑几条命令。然后总结结果。",
+          outputId: `${turnId}:msg-1`
+        }
+      }),
+      ...[1, 2, 3].map((index) =>
+        makeMessage({
+          id: `tool-${index}`,
+          sender: { type: "agent", agentId: "agent-a" },
+          kind: "tool_call",
+          payload: {
+            text: `command ${index}`,
+            toolUseId: `item:${turnId}:call-${index}`,
+            metadata: {
+              turnId,
+              groupId: `item:${turnId}:call-${index}`,
+              phase: "completed"
+            }
+          }
+        })
+      )
+    ]);
+
+    expect(items.map((item) => item.type)).toEqual([
+      "message",
+      "tool_cluster",
+      "message"
+    ]);
+    expect(items[1]).toMatchObject({
+      type: "tool_cluster",
+      tools: [
+        { id: `item:${turnId}:call-1` },
+        { id: `item:${turnId}:call-2` },
+        { id: `item:${turnId}:call-3` }
+      ]
+    });
+  });
 });

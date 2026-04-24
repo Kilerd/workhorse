@@ -1,8 +1,18 @@
 import type { Message } from "@workhorse/contracts";
 
+type ThreadToolItem = { type: "tool"; id: string; messages: Message[]; turnId?: string };
+
 export type ThreadDisplayItem =
   | { type: "message"; id: string; message: Message; turnId?: string }
-  | { type: "tool"; id: string; messages: Message[]; turnId?: string };
+  | ThreadToolItem
+  | {
+      type: "tool_cluster";
+      id: string;
+      tools: ThreadToolItem[];
+      turnId?: string;
+    };
+
+const INLINE_TOOL_COLLAPSE_THRESHOLD = 2;
 
 function readText(payload: unknown): string {
   if (payload && typeof payload === "object" && "text" in payload) {
@@ -96,7 +106,7 @@ function readToolGroupKey(message: Message): string | undefined {
 
 export function buildThreadDisplayItems(messages: Message[]): ThreadDisplayItem[] {
   const items: ThreadDisplayItem[] = [];
-  const toolGroups = new Map<string, Extract<ThreadDisplayItem, { type: "tool" }>>();
+  const toolGroups = new Map<string, ThreadToolItem>();
 
   for (const message of messages) {
     if (isInternalStatus(message)) {
@@ -129,7 +139,7 @@ export function buildThreadDisplayItems(messages: Message[]): ThreadDisplayItem[
     group.messages.push(message);
   }
 
-  return interleaveFollowingTurnTools(items);
+  return collapseLongInlineToolRuns(interleaveFollowingTurnTools(items));
 }
 
 function canSplitAroundTools(
@@ -190,7 +200,7 @@ function interleaveFollowingTurnTools(items: ThreadDisplayItem[]): ThreadDisplay
       continue;
     }
 
-    const followingTools: Extract<ThreadDisplayItem, { type: "tool" }>[] = [];
+    const followingTools: ThreadToolItem[] = [];
     let scanIndex = index + 1;
     while (scanIndex < items.length) {
       const rawCandidate = items[scanIndex];
@@ -201,8 +211,7 @@ function interleaveFollowingTurnTools(items: ThreadDisplayItem[]): ThreadDisplay
         break;
       }
 
-      const candidate: Extract<ThreadDisplayItem, { type: "tool" }> = rawCandidate;
-      followingTools.push(candidate);
+      followingTools.push(rawCandidate);
       scanIndex += 1;
     }
 
@@ -229,6 +238,64 @@ function interleaveFollowingTurnTools(items: ThreadDisplayItem[]): ThreadDisplay
   }
 
   return interleaved;
+}
+
+function isAgentChatDisplayItem(
+  item: ThreadDisplayItem | undefined
+): item is Extract<ThreadDisplayItem, { type: "message" }> {
+  return (
+    item?.type === "message" &&
+    item.message.kind === "chat" &&
+    item.message.sender.type === "agent"
+  );
+}
+
+function collapseLongInlineToolRuns(items: ThreadDisplayItem[]): ThreadDisplayItem[] {
+  const collapsed: ThreadDisplayItem[] = [];
+
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    if (!item) {
+      continue;
+    }
+
+    if (item.type !== "tool") {
+      collapsed.push(item);
+      continue;
+    }
+
+    const tools: ThreadToolItem[] = [];
+    let scanIndex = index;
+    while (scanIndex < items.length) {
+      const candidate = items[scanIndex];
+      if (!candidate || candidate.type !== "tool") {
+        break;
+      }
+      tools.push(candidate);
+      scanIndex += 1;
+    }
+
+    const previous = collapsed.at(-1);
+    const next = items[scanIndex];
+    if (
+      tools.length > INLINE_TOOL_COLLAPSE_THRESHOLD &&
+      isAgentChatDisplayItem(previous) &&
+      isAgentChatDisplayItem(next)
+    ) {
+      collapsed.push({
+        type: "tool_cluster",
+        id: `tool-cluster:${tools[0]?.id ?? "start"}:${tools.at(-1)?.id ?? "end"}`,
+        tools,
+        turnId: tools[0]?.turnId
+      });
+    } else {
+      collapsed.push(...tools);
+    }
+
+    index = scanIndex - 1;
+  }
+
+  return collapsed;
 }
 
 function isCjkCharacter(value: string): boolean {
