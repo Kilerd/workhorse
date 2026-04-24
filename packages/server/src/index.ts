@@ -58,7 +58,12 @@ async function main(): Promise<void> {
   });
 
   const reviewMonitorIntervalMs = getGitReviewMonitorIntervalMs();
-  const app = createApp(service, { reviewMonitorIntervalMs, threads, plans });
+  const app = createApp(service, {
+    reviewMonitorIntervalMs,
+    threads,
+    plans,
+    orchestrator
+  });
   const honoListener = getRequestListener(app.fetch);
   const server = createServer();
   const frontend = await createFrontendHandler(server);

@@ -812,6 +812,19 @@ export class StateStore {
     return this.getThread(id);
   }
 
+  public updateThreadCoordinatorAgent(
+    id: string,
+    coordinatorAgentId: string
+  ): Thread | null {
+    const result = this.sqlite
+      .prepare(`UPDATE threads SET coordinator_agent_id = ? WHERE id = ?`)
+      .run(coordinatorAgentId, id);
+    if (result.changes === 0) {
+      return null;
+    }
+    return this.getThread(id);
+  }
+
   /**
    * Transitions a thread's coordinator_state via CAS (expected_prev → next).
    * Returns the updated thread, or null when the expected state did not match.
@@ -975,6 +988,13 @@ export class StateStore {
         runnerSessionKey: session.runnerSessionKey ?? null,
         createdAt: session.createdAt
       })
+      .run();
+  }
+
+  public deleteAgentSessionByThread(threadId: string): void {
+    this.db
+      .delete(schema.agentSessions)
+      .where(eq(schema.agentSessions.threadId, threadId))
       .run();
   }
 

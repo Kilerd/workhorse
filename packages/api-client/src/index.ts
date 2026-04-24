@@ -35,6 +35,7 @@ import type {
   TaskDiffData,
   TaskInputBody,
   TaskInputData,
+  ThreadData,
   UpdateAgentBody,
   UpdateAgentRoleBody,
   UpdateSettingsBody,
@@ -393,6 +394,13 @@ export function createApiClient(baseUrl: string) {
         await requestJson(
           `/api/threads/${encodeURIComponent(threadId)}/messages`,
           { method: "POST", body: JSON.stringify(body) }
+        )
+      ),
+    restartCoordinatorThread: async (threadId: string): Promise<ThreadData> =>
+      unwrap(
+        await requestJson(
+          `/api/threads/${encodeURIComponent(threadId)}/restart`,
+          { method: "POST", body: "{}" }
         )
       ),
     // ── Agent-driven board: Plans (Spec 05 + Spec 08) ────────────────────────

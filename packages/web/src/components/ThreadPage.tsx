@@ -1,7 +1,13 @@
 import { Navigate, useNavigate, useParams } from "react-router-dom";
+import { RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { useWorkspaceThreads } from "@/hooks/useThreads";
+import { toast } from "@/hooks/use-toast";
+import {
+  useRestartCoordinatorThread,
+  useWorkspaceThreads
+} from "@/hooks/useThreads";
+import { readErrorMessage } from "@/lib/error-message";
 
 import { ThreadView } from "./ThreadView";
 
@@ -19,6 +25,23 @@ export function ThreadPage() {
   }
 
   const thread = threadsQuery.data?.find((t) => t.id === threadId) ?? null;
+  const restartCoordinator = useRestartCoordinatorThread(threadId);
+
+  async function handleRestartCoordinator() {
+    try {
+      await restartCoordinator.mutateAsync();
+      toast({
+        title: "Coordinator restarted",
+        description: "The thread was rebound to the workspace coordinator."
+      });
+    } catch (error) {
+      toast({
+        title: "Couldn't restart coordinator",
+        description: readErrorMessage(error, "Unable to restart coordinator."),
+        variant: "destructive"
+      });
+    }
+  }
 
   return (
     <section className="flex h-full min-h-0 w-full flex-col gap-3 overflow-hidden p-4">
@@ -33,13 +56,26 @@ export function ThreadPage() {
                 : "Thread not found"}
           </p>
         </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => navigate(`/workspaces/${workspaceId}/board`)}
-        >
-          Back to board
-        </Button>
+        <div className="flex items-center gap-2">
+          {thread?.kind === "coordinator" ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void handleRestartCoordinator()}
+              disabled={restartCoordinator.isPending}
+            >
+              <RefreshCw className="size-3.5" />
+              {restartCoordinator.isPending ? "Restarting" : "Restart"}
+            </Button>
+          ) : null}
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => navigate(`/workspaces/${workspaceId}/board`)}
+          >
+            Back to board
+          </Button>
+        </div>
       </header>
 
       <ThreadView

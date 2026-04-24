@@ -111,6 +111,45 @@ export class Orchestrator {
     await active.handle.cancel();
   }
 
+  public async restartCoordinatorThread(
+    threadId: string,
+    agentId: string
+  ): Promise<Thread> {
+    await this.serialize(threadId, async () => {
+      const active = this.activeRuns.get(threadId);
+      if (active) {
+        await active.handle.cancel();
+        this.activeRuns.delete(threadId);
+      }
+
+      let thread = this.threads.requireThread(threadId);
+      if (thread.kind !== "coordinator") {
+        return;
+      }
+
+      thread = this.threads.setCoordinatorAgent(threadId, agentId);
+      this.threads.resetSession(threadId);
+
+      if (thread.coordinatorState !== "idle") {
+        thread = this.threads.setCoordinatorState(threadId, "idle");
+      }
+
+      this.threads.appendMessage({
+        threadId,
+        sender: { type: "system" },
+        kind: "system_event",
+        payload: {
+          kind: "coordinator.restart",
+          agentId,
+          text: "Coordinator restarted."
+        }
+      });
+
+      await this.tryStartRun(threadId);
+    });
+    return this.threads.requireThread(threadId);
+  }
+
   // ── Serialization helper ─────────────────────────────────────────────────
 
   private serialize(threadId: string, work: () => Promise<void>): Promise<void> {

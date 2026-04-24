@@ -58,6 +58,7 @@ import { getGitReviewMonitorIntervalMs } from "./config.js";
 import { AppError } from "./lib/errors.js";
 import { errorStatus, ok, toApiError, validateOrThrow } from "./lib/http.js";
 import type { BoardService } from "./services/board-service.js";
+import type { Orchestrator } from "./services/orchestrator.js";
 import type { PlanService } from "./services/plan-service.js";
 import type { ThreadService } from "./services/thread-service.js";
 
@@ -86,6 +87,7 @@ interface CreateAppOptions {
   reviewMonitorIntervalMs?: number;
   threads?: ThreadService;
   plans?: PlanService;
+  orchestrator?: Pick<Orchestrator, "restartCoordinatorThread">;
 }
 
 export function createApp(
@@ -94,6 +96,7 @@ export function createApp(
 ): Hono {
   const threads = options.threads;
   const plans = options.plans;
+  const orchestrator = options.orchestrator;
   const app = new Hono();
   const openApiDocument = buildOpenApiDocument();
   const reviewMonitorIntervalMs =
@@ -627,6 +630,44 @@ export function createApp(
         payload: { text: body.content }
       });
       return c.json(ok({ message }), 201);
+    });
+
+    app.post("/api/threads/:threadId/restart", async (c) => {
+      const params = validateOrThrow(
+        c.req.param(),
+        validatePostThreadMessageParams,
+        "Invalid restart thread params"
+      );
+      if (!orchestrator) {
+        throw new AppError(
+          503,
+          "ORCHESTRATOR_UNAVAILABLE",
+          "Coordinator orchestrator is not available"
+        );
+      }
+      const thread = threads.requireThread(params.threadId);
+      if (thread.kind !== "coordinator") {
+        throw new AppError(
+          409,
+          "THREAD_NOT_COORDINATOR",
+          `Thread ${params.threadId} is not a coordinator thread`
+        );
+      }
+      const coordinator = service
+        .listWorkspaceAgentsByWorkspace(thread.workspaceId)
+        .find((agent) => agent.role === "coordinator");
+      if (!coordinator) {
+        throw new AppError(
+          409,
+          "COORDINATOR_AGENT_NOT_MOUNTED",
+          `Workspace ${thread.workspaceId} has no mounted coordinator agent`
+        );
+      }
+      const restarted = await orchestrator.restartCoordinatorThread(
+        params.threadId,
+        coordinator.id
+      );
+      return c.json(ok({ thread: restarted }));
     });
   }
 

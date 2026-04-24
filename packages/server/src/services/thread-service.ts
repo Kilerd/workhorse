@@ -112,6 +112,34 @@ export class ThreadService {
     return result;
   }
 
+  public setCoordinatorAgent(threadId: string, agentId: string): Thread {
+    const thread = this.requireThread(threadId);
+    if (thread.kind !== "coordinator") {
+      throw new AppError(
+        409,
+        "THREAD_NOT_COORDINATOR",
+        `Thread ${threadId} is not a coordinator thread`
+      );
+    }
+    if (thread.coordinatorAgentId === agentId) {
+      return thread;
+    }
+    const updated = this.store.updateThreadCoordinatorAgent(threadId, agentId);
+    const result = ensure(
+      updated ?? undefined,
+      404,
+      "THREAD_NOT_FOUND",
+      `Thread ${threadId} not found`
+    );
+    this.events.publish({
+      type: "thread.updated",
+      action: "updated",
+      threadId: result.id,
+      thread: result
+    });
+    return result;
+  }
+
   // ── Messages ──────────────────────────────────────────────────────────────
 
   public appendMessage(input: AppendMessageInput): Message {
@@ -232,6 +260,10 @@ export class ThreadService {
     };
     this.store.insertAgentSession(session);
     return session;
+  }
+
+  public resetSession(threadId: string): void {
+    this.store.deleteAgentSessionByThread(threadId);
   }
 
   public updateSessionRunnerKey(

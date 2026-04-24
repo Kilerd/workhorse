@@ -1611,6 +1611,31 @@ export const endpointRegistry: EndpointSpec[] = [
     ]
   },
   {
+    operationId: "restartCoordinatorThread",
+    method: "post",
+    path: "/api/threads/{threadId}/restart",
+    summary: "Restart a coordinator thread using the workspace coordinator",
+    tag: "Threads",
+    paramsSchema: "PostThreadMessageParams",
+    responses: [
+      {
+        status: 200,
+        description: "Restarted coordinator thread",
+        schema: "ThreadResponse"
+      },
+      {
+        status: 404,
+        description: "Thread not found",
+        schema: "ApiError"
+      },
+      {
+        status: 409,
+        description: "Coordinator is not configured for the workspace",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
     operationId: "approvePlan",
     method: "post",
     path: "/api/plans/{planId}/approve",

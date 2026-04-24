@@ -2093,6 +2093,57 @@
         }
       }
     },
+    "/api/threads/{threadId}/restart": {
+      "post": {
+        "operationId": "restartCoordinatorThread",
+        "summary": "Restart a coordinator thread using the workspace coordinator",
+        "tags": [
+          "Threads"
+        ],
+        "responses": {
+          "200": {
+            "description": "Restarted coordinator thread",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Thread not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Coordinator is not configured for the workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "threadId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
     "/api/plans/{planId}/approve": {
       "post": {
         "operationId": "approvePlan",

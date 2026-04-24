@@ -17,6 +17,7 @@ import type { RunnerAdapter, RunnerControl, RunnerLifecycleHooks, RunnerStartCon
 import { ShellRunner } from "./runners/shell-runner.js";
 import type { TaskIdentityGenerator } from "./services/openrouter-task-naming-service.js";
 import { BoardService } from "./services/board-service.js";
+import { ThreadService } from "./services/thread-service.js";
 import type { WorkspaceRootPicker } from "./services/workspace-root-picker.js";
 import { EventBus } from "./ws/event-bus.js";
 
@@ -2550,5 +2551,53 @@ describe("agent API", () => {
         reasoningEffort: "xhigh"
       }
     });
+  });
+});
+
+describe("thread API", () => {
+  it("restarts a coordinator thread with the mounted workspace coordinator", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "workhorse-test-"));
+    const workspaceDir = join(dataDir, "workspace");
+    await mkdir(workspaceDir, { recursive: true });
+
+    const events = new EventBus();
+    const service = new BoardService(new StateStore(dataDir), events);
+    const threads = new ThreadService((service as any).store as StateStore, events);
+    await service.initialize();
+
+    const workspace = await createWorkspace(service, workspaceDir);
+    const coordinator = service.createAgent({
+      name: "Coordinator",
+      description: "Coordinates work",
+      runnerConfig: { type: "shell", command: "true" }
+    });
+    service.mountAgent(workspace.id, {
+      agentId: coordinator.id,
+      role: "coordinator"
+    });
+    const thread = threads.createThread({
+      workspaceId: workspace.id,
+      kind: "coordinator"
+    });
+
+    const app = createApp(service, {
+      threads,
+      orchestrator: {
+        async restartCoordinatorThread(threadId, agentId) {
+          return threads.setCoordinatorAgent(threadId, agentId);
+        }
+      }
+    });
+
+    const res = await app.request(`/api/threads/${thread.id}/restart`, {
+      method: "POST"
+    });
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as {
+      ok: boolean;
+      data: { thread: { coordinatorAgentId?: string } };
+    };
+    expect(data.ok).toBe(true);
+    expect(data.data.thread.coordinatorAgentId).toBe(coordinator.id);
   });
 });

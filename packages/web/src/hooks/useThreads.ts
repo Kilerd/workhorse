@@ -62,3 +62,27 @@ export function usePostThreadMessage(threadId: string | null) {
     }
   });
 }
+
+export function useRestartCoordinatorThread(threadId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      if (!threadId) {
+        throw new Error("No thread selected");
+      }
+      const response = await api.restartCoordinatorThread(threadId);
+      return response.thread;
+    },
+    onSuccess: async (thread) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: threadQueryKeys.lists() }),
+        queryClient.invalidateQueries({
+          queryKey: threadQueryKeys.list(thread.workspaceId)
+        }),
+        queryClient.invalidateQueries({
+          queryKey: threadQueryKeys.messages(thread.id)
+        })
+      ]);
+    }
+  });
+}
