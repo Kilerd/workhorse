@@ -286,6 +286,26 @@ describe("Orchestrator — tool routing", () => {
     harness.orchestrator.stop();
   });
 
+  it("restarts a coordinator thread without appending a synthetic turn", async () => {
+    const { threads, runner, orchestrator, threadId } = harness;
+
+    const restarted = await orchestrator.restartCoordinatorThread(threadId, "wa-1");
+    const messages = threads.listMessages(threadId);
+
+    expect(restarted.coordinatorAgentId).toBe("wa-1");
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({
+      sender: { type: "system" },
+      kind: "status",
+      payload: {
+        kind: "coordinator_restart",
+        event: "Restart"
+      }
+    });
+    expect(threads.listPendingMessages(threadId)).toHaveLength(0);
+    expect(runner.handles).toHaveLength(0);
+  });
+
   it("routes tool_use chunks into the ToolRegistry and replies with results", async () => {
     const { threads, runner, orchestrator, plans, threadId } = harness;
 

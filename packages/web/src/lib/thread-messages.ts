@@ -12,7 +12,8 @@ export type ThreadDisplayItem =
       turnId?: string;
     };
 
-const INLINE_TOOL_COLLAPSE_THRESHOLD = 2;
+const INLINE_TOOL_SUMMARY_THRESHOLD = 2;
+const MAX_DELTA_MERGE_GAP_MS = 2_000;
 
 function readText(payload: unknown): string {
   if (payload && typeof payload === "object" && "text" in payload) {
@@ -139,7 +140,7 @@ export function buildThreadDisplayItems(messages: Message[]): ThreadDisplayItem[
     group.messages.push(message);
   }
 
-  return collapseLongInlineToolRuns(interleaveFollowingTurnTools(items));
+  return summarizeInlineToolRuns(interleaveFollowingTurnTools(items));
 }
 
 function canSplitAroundTools(
@@ -250,7 +251,7 @@ function isAgentChatDisplayItem(
   );
 }
 
-function collapseLongInlineToolRuns(items: ThreadDisplayItem[]): ThreadDisplayItem[] {
+function summarizeInlineToolRuns(items: ThreadDisplayItem[]): ThreadDisplayItem[] {
   const collapsed: ThreadDisplayItem[] = [];
 
   for (let index = 0; index < items.length; index += 1) {
@@ -277,10 +278,12 @@ function collapseLongInlineToolRuns(items: ThreadDisplayItem[]): ThreadDisplayIt
 
     const previous = collapsed.at(-1);
     const next = items[scanIndex];
+    const isInlineRun =
+      tools.length > INLINE_TOOL_SUMMARY_THRESHOLD ||
+      (isAgentChatDisplayItem(previous) && isAgentChatDisplayItem(next));
     if (
-      tools.length > INLINE_TOOL_COLLAPSE_THRESHOLD &&
-      isAgentChatDisplayItem(previous) &&
-      isAgentChatDisplayItem(next)
+      isInlineRun &&
+      (isAgentChatDisplayItem(previous) || isAgentChatDisplayItem(next))
     ) {
       collapsed.push({
         type: "tool_cluster",
@@ -378,6 +381,17 @@ function canMergeAgentChat(previous: Message | undefined, next: Message): boolea
   const nextOutputId = readOutputId(next.payload);
   if (previousOutputId || nextOutputId) {
     return previousOutputId === nextOutputId;
+  }
+
+  const previousTime = Date.parse(previous.createdAt);
+  const nextTime = Date.parse(next.createdAt);
+  if (
+    Number.isFinite(previousTime) &&
+    Number.isFinite(nextTime) &&
+    endsSentence(readText(previous.payload)) &&
+    nextTime - previousTime > MAX_DELTA_MERGE_GAP_MS
+  ) {
+    return false;
   }
 
   return true;

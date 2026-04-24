@@ -2,6 +2,8 @@ import WebSocket from "ws";
 
 import type { CodexRunnerConfig, RunStatus } from "@workhorse/contracts";
 
+import { MCP_NONCE_HEADER } from "../mcp/mcp-http-handler.js";
+import type { McpNonceRegistry } from "../mcp/nonce-registry.js";
 import { resolveWorkspaceCodexSettings } from "../lib/codex-settings.js";
 import { classifyItemLifecycle } from "./codex-acp-runner.js";
 import {
@@ -89,6 +91,23 @@ interface ActiveCommandOutputContext {
   threadId?: string;
 }
 
+interface CodexAcpCoordinatorRunnerOptions {
+  appServer?: CodexAppServer;
+  mcpNonces?: McpNonceRegistry;
+  mcpUrl?: string;
+  mcpServerName?: string;
+}
+
+interface McpBinding {
+  nonce: string;
+  servers: Array<{
+    name: string;
+    type: "http";
+    url: string;
+    headers: Array<{ name: string; value: string }>;
+  }>;
+}
+
 function resolveCodexEffortConfig(
   config: CodexRunnerConfig
 ): Record<string, unknown> | undefined {
@@ -141,7 +160,11 @@ function isCommandLikeItemType(type: string | undefined): boolean {
   return Boolean(type?.toLowerCase().includes("command"));
 }
 
-function buildThreadStartParams(input: CoordinatorRunInput, config: CodexRunnerConfig) {
+function buildThreadStartParams(
+  input: CoordinatorRunInput,
+  config: CodexRunnerConfig,
+  mcpBinding?: McpBinding
+) {
   const settings = resolveWorkspaceCodexSettings(input.workspace);
   const effortConfig = resolveCodexEffortConfig(config);
   return {
@@ -152,6 +175,7 @@ function buildThreadStartParams(input: CoordinatorRunInput, config: CodexRunnerC
     ephemeral: false,
     experimentalRawEvents: false,
     persistExtendedHistory: true,
+    ...(mcpBinding ? { mcpServers: mcpBinding.servers } : {}),
     ...(effortConfig ? { config: effortConfig } : {})
   };
 }
@@ -159,7 +183,8 @@ function buildThreadStartParams(input: CoordinatorRunInput, config: CodexRunnerC
 function buildThreadResumeParams(
   input: CoordinatorRunInput,
   config: CodexRunnerConfig,
-  threadId: string
+  threadId: string,
+  mcpBinding?: McpBinding
 ) {
   const settings = resolveWorkspaceCodexSettings(input.workspace);
   const effortConfig = resolveCodexEffortConfig(config);
@@ -170,14 +195,23 @@ function buildThreadResumeParams(
     approvalPolicy: settings.approvalPolicy,
     sandbox: settings.sandboxMode,
     persistExtendedHistory: true,
+    ...(mcpBinding ? { mcpServers: mcpBinding.servers } : {}),
     ...(effortConfig ? { config: effortConfig } : {})
   };
 }
 
 export class CodexAcpCoordinatorRunner implements CoordinatorRunner {
-  public constructor(
-    private readonly appServerManager: CodexAppServer = new CodexAppServerManager()
-  ) {}
+  private readonly appServerManager: CodexAppServer;
+  private readonly mcpNonces?: McpNonceRegistry;
+  private readonly mcpUrl?: string;
+  private readonly mcpServerName: string;
+
+  public constructor(options: CodexAcpCoordinatorRunnerOptions = {}) {
+    this.appServerManager = options.appServer ?? new CodexAppServerManager();
+    this.mcpNonces = options.mcpNonces;
+    this.mcpUrl = options.mcpUrl;
+    this.mcpServerName = options.mcpServerName ?? "workhorse";
+  }
 
   public async resumeOrStart(
     input: CoordinatorRunInput
@@ -187,6 +221,7 @@ export class CodexAcpCoordinatorRunner implements CoordinatorRunner {
       throw new Error("Coordinator agent is not configured for Codex ACP");
     }
 
+    const mcpBinding = this.prepareMcpBinding(input);
     const connection = await this.appServerManager.createConnection();
     const ws = connection.ws;
     const pending = new Map<JsonRpcId, PendingRequest>();
@@ -239,6 +274,7 @@ export class CodexAcpCoordinatorRunner implements CoordinatorRunner {
       } catch {
         // The socket may already be closed by the ACP server.
       }
+      this.cleanupMcpBinding(mcpBinding);
       for (const handler of finishHandlers) {
         try {
           handler(outcome);
@@ -499,7 +535,7 @@ export class CodexAcpCoordinatorRunner implements CoordinatorRunner {
       try {
         const thread = await request<ThreadSessionResult>(
           "thread/resume",
-          buildThreadResumeParams(input, config, input.sessionKey)
+          buildThreadResumeParams(input, config, input.sessionKey, mcpBinding)
         );
         acpThreadId = thread.thread.id;
         resumed = true;
@@ -517,7 +553,7 @@ export class CodexAcpCoordinatorRunner implements CoordinatorRunner {
     if (!acpThreadId) {
       const thread = await request<ThreadSessionResult>(
         "thread/start",
-        buildThreadStartParams(input, config)
+        buildThreadStartParams(input, config, mcpBinding)
       );
       acpThreadId = thread.thread.id;
     }
@@ -527,7 +563,7 @@ export class CodexAcpCoordinatorRunner implements CoordinatorRunner {
     }
 
     console.log(
-      `[codex-coord] turn thread=${input.threadId} acp=${acpThreadId} resume=${resumed ? "yes" : "no"} msgs=${input.appendMessages.length} tools=${input.tools.length}`
+      `[codex-coord] turn thread=${input.threadId} acp=${acpThreadId} resume=${resumed ? "yes" : "no"} msgs=${input.appendMessages.length} tools=${input.tools.length} mcp=${mcpBinding ? "on" : "off"}`
     );
 
     const turn = await request<TurnStartResult>("turn/start", {
@@ -557,7 +593,7 @@ export class CodexAcpCoordinatorRunner implements CoordinatorRunner {
         };
       },
       async submitToolResult() {
-        // Codex ACP coordinator tool-use bridging is not wired yet.
+        // Workhorse tools are exposed to Codex via the per-turn MCP binding.
       },
       async cancel() {
         stopRequested = true;
@@ -573,6 +609,31 @@ export class CodexAcpCoordinatorRunner implements CoordinatorRunner {
         }
       }
     };
+  }
+
+  private prepareMcpBinding(input: CoordinatorRunInput): McpBinding | undefined {
+    if (!this.mcpNonces || !this.mcpUrl) return undefined;
+    const nonce = this.mcpNonces.mint({
+      workspaceId: input.workspaceId,
+      threadId: input.threadId,
+      agentId: input.agentId
+    });
+    return {
+      nonce,
+      servers: [
+        {
+          name: this.mcpServerName,
+          type: "http",
+          url: this.mcpUrl,
+          headers: [{ name: MCP_NONCE_HEADER, value: nonce }]
+        }
+      ]
+    };
+  }
+
+  private cleanupMcpBinding(binding?: McpBinding): void {
+    if (!binding) return;
+    this.mcpNonces?.revoke(binding.nonce);
   }
 
   private respondToServerRequest(

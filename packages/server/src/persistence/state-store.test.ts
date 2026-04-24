@@ -332,14 +332,24 @@ describe("StateStore — Workspace Agent Mounting (Phase 4)", () => {
     const store = await storeWithWorkspace();
 
     store.createAgent(makeAgent());
-    const wa = store.mountAgentToWorkspace(WS, "agent-a", "worker");
+    const wa = store.mountAgentToWorkspace(
+      WS,
+      "agent-a",
+      "worker",
+      "Owns the docs surface in this workspace."
+    );
 
     expect(wa.role).toBe("worker");
     expect(wa.name).toBe("Test Agent");
+    expect(wa.workspaceDescription).toBe("Owns the docs surface in this workspace.");
 
     const list = store.listWorkspaceAgents(WS);
     expect(list).toHaveLength(1);
     expect(list[0]?.role).toBe("worker");
+    expect(list[0]?.description).toBe("desc");
+    expect(list[0]?.workspaceDescription).toBe(
+      "Owns the docs surface in this workspace."
+    );
   });
 
   it("retrieves a single workspace agent", async () => {
@@ -372,6 +382,25 @@ describe("StateStore — Workspace Agent Mounting (Phase 4)", () => {
 
     const updated = store.updateWorkspaceAgentRole(WS, "agent-a", "coordinator");
     expect(updated?.role).toBe("coordinator");
+  });
+
+  it("updates workspace agent description without changing account description", async () => {
+    const store = await storeWithWorkspace();
+
+    store.createAgent(makeAgent());
+    store.mountAgentToWorkspace(WS, "agent-a", "worker");
+
+    const updated = store.updateWorkspaceAgent(WS, "agent-a", {
+      workspaceDescription: "Handle release checklists for this repo."
+    });
+
+    expect(updated?.description).toBe("desc");
+    expect(updated?.workspaceDescription).toBe(
+      "Handle release checklists for this repo."
+    );
+    expect(store.getWorkspaceAgent(WS, "agent-a")?.workspaceDescription).toBe(
+      "Handle release checklists for this repo."
+    );
   });
 
   it("returns null when updating role for unmounted agent", async () => {
@@ -697,4 +726,3 @@ describe("StateStore — Agent-driven board schema (Spec 01)", () => {
     ).toThrow(/UNIQUE/i);
   });
 });
-

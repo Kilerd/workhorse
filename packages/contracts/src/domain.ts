@@ -316,6 +316,8 @@ export interface AccountAgent {
  */
 export interface WorkspaceAgent extends AccountAgent {
   role: AgentRole;
+  /** Workspace-specific instructions layered on top of the account description. */
+  workspaceDescription?: string;
 }
 
 // === Agent-driven board (Spec 02) ===

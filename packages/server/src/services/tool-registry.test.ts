@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { Workspace } from "@workhorse/contracts";
+import type { AccountAgent, Workspace } from "@workhorse/contracts";
 
 import { StateStore } from "../persistence/state-store.js";
 import { EventBus } from "../ws/event-bus.js";
@@ -26,6 +26,19 @@ function makeWorkspace(id = "ws-1"): Workspace {
     },
     createdAt: now,
     updatedAt: now
+  };
+}
+
+function makeAgent(overrides: Partial<AccountAgent> = {}): AccountAgent {
+  const now = new Date().toISOString();
+  return {
+    id: "agent-a",
+    name: "Frontend worker",
+    description: "Builds user-facing UI",
+    runnerConfig: { type: "shell", command: "true" },
+    createdAt: now,
+    updatedAt: now,
+    ...overrides
   };
 }
 
@@ -106,6 +119,33 @@ describe("ToolRegistry — basics", () => {
     expect(names).toContain("list_agents");
     expect(names).toContain("get_workspace_state");
     expect(names).toContain("decide_task");
+  });
+
+  it("returns account and workspace descriptions from list_agents", async () => {
+    const { store, tools, ctx, workspaceId } = await setup();
+    store.createAgent(makeAgent());
+    store.mountAgentToWorkspace(
+      workspaceId,
+      "agent-a",
+      "worker",
+      "Only handle React settings screens in this workspace."
+    );
+
+    const out = (await tools.invoke("list_agents", {}, ctx)) as {
+      agents: Array<{
+        workspaceAgentId: string;
+        accountDescription: string;
+        workspaceDescription?: string;
+      }>;
+    };
+
+    expect(out.agents).toEqual([
+      expect.objectContaining({
+        workspaceAgentId: "agent-a",
+        accountDescription: "Builds user-facing UI",
+        workspaceDescription: "Only handle React settings screens in this workspace."
+      })
+    ]);
   });
 });
 

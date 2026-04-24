@@ -198,7 +198,8 @@ function agentToRow(agent: AccountAgent): typeof schema.agents.$inferInsert {
 function rowToWorkspaceAgent(agentRow: AgentRow, waRow: WorkspaceAgentRow): WorkspaceAgent {
   return {
     ...rowToAgent(agentRow),
-    role: waRow.role as AgentRole
+    role: waRow.role as AgentRole,
+    workspaceDescription: waRow.description ?? undefined
   };
 }
 
@@ -668,7 +669,8 @@ export class StateStore {
   public mountAgentToWorkspace(
     workspaceId: string,
     agentId: string,
-    role: AgentRole
+    role: AgentRole,
+    workspaceDescription?: string
   ): WorkspaceAgent {
     return this.sqlite.transaction(() => {
       if (role === "coordinator") {
@@ -679,11 +681,16 @@ export class StateStore {
         throw new AppError(404, "AGENT_NOT_FOUND", `Agent not found: ${agentId}`);
       }
       const now = new Date().toISOString();
+      const description = workspaceDescription?.trim() || null;
       this.db
         .insert(schema.workspaceAgents)
-        .values({ workspaceId, agentId, role, createdAt: now })
+        .values({ workspaceId, agentId, role, description, createdAt: now })
         .run();
-      return { ...agent, role };
+      return {
+        ...agent,
+        role,
+        workspaceDescription: description ?? undefined
+      };
     })();
   }
 
@@ -705,13 +712,32 @@ export class StateStore {
     agentId: string,
     role: AgentRole
   ): WorkspaceAgent | null {
+    return this.updateWorkspaceAgent(workspaceId, agentId, { role });
+  }
+
+  public updateWorkspaceAgent(
+    workspaceId: string,
+    agentId: string,
+    updates: { role?: AgentRole; workspaceDescription?: string }
+  ): WorkspaceAgent | null {
     return this.sqlite.transaction(() => {
+      const role = updates.role;
       if (role === "coordinator") {
         this.ensureSingleCoordinator(workspaceId, agentId);
       }
+      const set: Partial<typeof schema.workspaceAgents.$inferInsert> = {};
+      if (role) {
+        set.role = role;
+      }
+      if (updates.workspaceDescription !== undefined) {
+        set.description = updates.workspaceDescription.trim() || null;
+      }
+      if (Object.keys(set).length === 0) {
+        return this.getWorkspaceAgent(workspaceId, agentId);
+      }
       const result = this.db
         .update(schema.workspaceAgents)
-        .set({ role })
+        .set(set)
         .where(
           and(
             eq(schema.workspaceAgents.workspaceId, workspaceId),
@@ -1386,6 +1412,7 @@ export class StateStore {
         workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
         agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
         role TEXT NOT NULL DEFAULT 'worker',
+        description TEXT,
         created_at TEXT NOT NULL,
         PRIMARY KEY (workspace_id, agent_id)
       );
@@ -1465,7 +1492,8 @@ export class StateStore {
       "ALTER TABLE tasks ADD COLUMN plan_id TEXT",
       "ALTER TABLE tasks ADD COLUMN assignee_agent_id TEXT",
       "ALTER TABLE workspaces ADD COLUMN pr_strategy TEXT NOT NULL DEFAULT 'independent'",
-      "ALTER TABLE workspaces ADD COLUMN auto_approve_subtasks INTEGER NOT NULL DEFAULT 0"
+      "ALTER TABLE workspaces ADD COLUMN auto_approve_subtasks INTEGER NOT NULL DEFAULT 0",
+      "ALTER TABLE workspace_agents ADD COLUMN description TEXT"
     ]) {
       try {
         this.sqlite.exec(col);

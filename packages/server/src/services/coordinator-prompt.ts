@@ -68,12 +68,11 @@ export function buildCoordinatorSystemPrompt(
     for (const agent of agents) {
       lines.push(`- ${agent.name} (workspaceAgentId: ${agent.id})`);
       lines.push(
-        `  · Capability: ${agent.description ?? "no description provided"}`
+        `  · Account capability: ${agent.description ?? "no description provided"}`
       );
-      // WorkspaceAgent currently only carries `role` as the workspace-layer
-      // differentiator. Expose it so the coordinator can still distinguish
-      // planning vs worker agents; a dedicated `workspaceDescription` lands
-      // with Spec 09's contract cleanup.
+      lines.push(
+        `  · Workspace instructions: ${agent.workspaceDescription ?? "no workspace-specific instructions"}`
+      );
       lines.push(`  · Role in this workspace: ${agent.role}`);
     }
   }
@@ -84,7 +83,7 @@ export function buildCoordinatorSystemPrompt(
     "Each tool is atomic and has a strict JSON schema. Call them via the runner's tool-use protocol; never freehand SQL or shell."
   );
   lines.push(
-    "Tools are exposed through the `workhorse` MCP server; your runtime surfaces them as `mcp__workhorse__<name>`. Use whichever form your runner accepts."
+    "Workhorse exposes these through its MCP server; when the runner prefixes MCP tools, call them as `mcp__workhorse__<name>`."
   );
   for (const tool of tools) {
     lines.push(`- \`${tool.name}\`: ${tool.description}`);

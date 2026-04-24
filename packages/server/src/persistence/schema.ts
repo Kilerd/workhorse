@@ -113,6 +113,7 @@ export const workspaceAgents = sqliteTable(
       .notNull()
       .references(() => agents.id, { onDelete: "cascade" }),
     role: text("role").notNull().default("worker"),
+    description: text("description"),
     createdAt: text("created_at").notNull()
   },
   (table) => [primaryKey({ columns: [table.workspaceId, table.agentId] })]

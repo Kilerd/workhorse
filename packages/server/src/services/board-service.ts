@@ -1524,7 +1524,12 @@ export class BoardService {
 
   public mountAgent(workspaceId: string, body: MountAgentBody): WorkspaceAgent {
     this.requireWorkspace(workspaceId);
-    const agent = this.store.mountAgentToWorkspace(workspaceId, body.agentId, body.role as AgentRole);
+    const agent = this.store.mountAgentToWorkspace(
+      workspaceId,
+      body.agentId,
+      body.role as AgentRole,
+      body.workspaceDescription
+    );
     this.events.publish({
       type: "workspace.agent.updated",
       action: "mounted",
@@ -1557,7 +1562,10 @@ export class BoardService {
     body: UpdateAgentRoleBody
   ): WorkspaceAgent {
     this.requireWorkspace(workspaceId);
-    const updated = this.store.updateWorkspaceAgentRole(workspaceId, agentId, body.role as AgentRole);
+    const updated = this.store.updateWorkspaceAgent(workspaceId, agentId, {
+      role: body.role as AgentRole | undefined,
+      workspaceDescription: body.workspaceDescription
+    });
     if (!updated) {
       throw new AppError(404, "WORKSPACE_AGENT_NOT_FOUND", `Agent ${agentId} not mounted in workspace ${workspaceId}`);
     }

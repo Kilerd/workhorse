@@ -1787,7 +1787,7 @@
       },
       "patch": {
         "operationId": "updateAgentRole",
-        "summary": "Update the role of a workspace-mounted agent",
+        "summary": "Update a workspace-mounted agent",
         "tags": [
           "Agents"
         ],
@@ -4823,6 +4823,10 @@
           "role": {
             "$ref": "#/components/schemas/AgentRole"
           },
+          "workspaceDescription": {
+            "type": "string",
+            "description": "Workspace-specific instructions layered on top of the account description."
+          },
           "id": {
             "type": "string"
           },
@@ -4947,6 +4951,9 @@
           },
           "role": {
             "$ref": "#/components/schemas/AgentRole"
+          },
+          "workspaceDescription": {
+            "type": "string"
           }
         },
         "required": [
@@ -4973,12 +4980,24 @@
         "type": "object",
         "properties": {
           "role": {
-            "$ref": "#/components/schemas/AgentRole"
+            "oneOf": [
+              {
+                "enum": [
+                  "coordinator"
+                ]
+              },
+              {
+                "enum": [
+                  "worker"
+                ]
+              }
+            ]
+          },
+          "workspaceDescription": {
+            "type": "string"
           }
         },
-        "required": [
-          "role"
-        ]
+        "required": []
       },
       "UpdateWorkspaceConfigBody": {
         "type": "object",
@@ -5316,6 +5335,16 @@
         "oneOf": [
           {
             "enum": [
+              "tool_call"
+            ]
+          },
+          {
+            "enum": [
+              "tool_output"
+            ]
+          },
+          {
+            "enum": [
               "status"
             ]
           },
@@ -5479,6 +5508,16 @@
           },
           "kind": {
             "oneOf": [
+              {
+                "enum": [
+                  "tool_call"
+                ]
+              },
+              {
+                "enum": [
+                  "tool_output"
+                ]
+              },
               {
                 "enum": [
                   "status"

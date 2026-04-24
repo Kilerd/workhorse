@@ -18,6 +18,7 @@ import {
   useThreadMessages,
   usePostThreadMessage
 } from "@/hooks/useThreads";
+import { getCommandIntent, type CommandIntent } from "@/lib/command-intent";
 import { readErrorMessage } from "@/lib/error-message";
 import { formatRelativeTime } from "@/lib/format";
 import { renderMarkdownBlock } from "@/lib/markdown";
@@ -267,6 +268,9 @@ function MessageRow({ message, threadId }: { message: Message; threadId: string 
     case "tool_output":
       return <ToolEventRow message={message} />;
     case "status":
+      if (isStatusDivider(message)) {
+        return <SystemEventRow message={message} />;
+      }
       return <StatusRow message={message} />;
     case "artifact":
       return <ArtifactRow message={message} />;
@@ -457,6 +461,7 @@ interface ToolEventSummary {
   statusLabel: string;
   toneClass: string;
   showStatusBadge: boolean;
+  itemType?: string;
 }
 
 function readToolEventSummary(messages: Message[]): ToolEventSummary {
@@ -472,9 +477,10 @@ function readToolEventSummary(messages: Message[]): ToolEventSummary {
   const lastPayload = readObject(lastMessage?.payload);
   const metadata = readObject(lastPayload.metadata);
   const callMetadata = readObject(lastCallPayload.metadata);
+  const itemType =
+    readStringField(callMetadata, "itemType") ?? readStringField(metadata, "itemType");
   const name =
-    readStringField(callMetadata, "itemType") ??
-    readStringField(metadata, "itemType") ??
+    itemType ??
     readStringField(firstCallPayload, "name") ??
     readStringField(firstCallPayload, "title") ??
     readStringField(lastPayload, "name") ??
@@ -511,8 +517,83 @@ function readToolEventSummary(messages: Message[]): ToolEventSummary {
     isFailure,
     statusLabel,
     toneClass,
-    showStatusBadge
+    showStatusBadge,
+    itemType
   };
+}
+
+function plural(count: number, singular: string, pluralValue = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : pluralValue}`;
+}
+
+function normalizeShellCommand(text: string): string {
+  const trimmed = text.trim();
+  const match = trimmed.match(/^(?:\/bin\/)?(?:zsh|bash|sh)\s+-lc\s+(['"])([\s\S]*)\1$/);
+  return (match?.[2] ?? trimmed).trim();
+}
+
+function commandPreview(text: string): string {
+  const command = normalizeShellCommand(text).replace(/\s+/g, " ");
+  return command.length > 120 ? `${command.slice(0, 117)}...` : command;
+}
+
+type ToolActivityKind = CommandIntent | "edit" | "other";
+
+function toolActivityKind(summary: ToolEventSummary): ToolActivityKind {
+  const itemType = summary.itemType?.toLowerCase() ?? "";
+  if (itemType.includes("filesearch")) {
+    return "search";
+  }
+  if (itemType.includes("filechange")) {
+    return "edit";
+  }
+  if (itemType.includes("command")) {
+    return getCommandIntent(normalizeShellCommand(summary.callText ?? summary.preview));
+  }
+  return "other";
+}
+
+function formatToolActivityPart(kind: ToolActivityKind, count: number): string {
+  switch (kind) {
+    case "search":
+      return `explored ${plural(count, "search", "searches")}`;
+    case "read":
+      return `explored ${plural(count, "file")}`;
+    case "test":
+      return count === 1 ? "ran tests" : `ran ${count} test commands`;
+    case "build":
+      return count === 1 ? "ran a build" : `ran ${count} build commands`;
+    case "git":
+      return count === 1 ? "checked git state" : `checked git state ${count} times`;
+    case "edit":
+      return `edited ${plural(count, "file")}`;
+    case "command":
+      return `ran ${plural(count, "command")}`;
+    default:
+      return `used ${plural(count, "tool")}`;
+  }
+}
+
+function formatToolClusterSummary(summaries: ToolEventSummary[]): string {
+  if (summaries.length === 1) {
+    const [summary] = summaries;
+    if (summary?.callText && toolActivityKind(summary) === "command") {
+      return `Ran ${commandPreview(summary.callText)}`;
+    }
+  }
+
+  const counts = new Map<ToolActivityKind, number>();
+  for (const summary of summaries) {
+    const kind = toolActivityKind(summary);
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .map(([kind, count], index) => {
+      const part = formatToolActivityPart(kind, count);
+      return index === 0 ? part.replace(/^\w/, (char) => char.toUpperCase()) : part;
+    })
+    .join(", ");
 }
 
 function ToolEventCluster({
@@ -522,37 +603,21 @@ function ToolEventCluster({
 }) {
   const summaries = tools.map((tool) => readToolEventSummary(tool.messages));
   const hasFailure = summaries.some((summary) => summary.isFailure);
+  const summaryLabel = formatToolClusterSummary(summaries);
   const [expanded, setExpanded] = useState(() => hasFailure);
 
   if (!expanded) {
-    const firstSummary = summaries[0];
-    if (!firstSummary) {
-      return null;
-    }
-
     return (
       <article className="w-full max-w-[min(44rem,96%)] px-1 py-0.5">
         <button
           type="button"
-          className="grid w-full cursor-pointer gap-0 rounded-[var(--radius)] bg-transparent p-0 text-left focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--accent)]"
+          className="inline-flex max-w-full items-center gap-1.5 rounded-[var(--radius)] px-1 py-0.5 text-left text-[0.78rem] font-[510] text-[var(--muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--muted-strong)] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--accent)]"
           onClick={() => setExpanded(true)}
           aria-expanded={false}
         >
-          <span className="grid">
-            <ToolSummaryLine
-              summary={firstSummary}
-              badgeLabel={`${tools.length} tool uses`}
-              trailing={<ChevronDown className="size-3 text-[var(--muted)]" aria-hidden="true" />}
-              className="relative z-30 rounded-[var(--radius)] border border-border bg-[var(--surface-faint)] shadow-sm"
-            />
-            <span
-              aria-hidden="true"
-              className="relative z-20 mx-2 -mt-1 block h-2 translate-x-1 rounded-b-[var(--radius)] border border-t-0 border-border bg-[var(--surface-faint)] opacity-80 shadow-sm"
-            />
-            <span
-              aria-hidden="true"
-              className="relative z-10 mx-4 -mt-1 block h-2 translate-x-2 rounded-b-[var(--radius)] border border-t-0 border-border bg-[var(--surface-faint)] opacity-60 shadow-sm"
-            />
+          <span className="min-w-0 truncate">{summaryLabel}</span>
+          <span className="grid size-4 shrink-0 place-items-center">
+            <ChevronDown className="size-3" aria-hidden="true" />
           </span>
         </button>
       </article>
@@ -812,8 +877,9 @@ function PlanDecisionRow({ message }: { message: Message }) {
 }
 
 function SystemEventRow({ message }: { message: Message }) {
-  const payload = (message.payload ?? {}) as { event?: string };
-  const eventName = payload.event ?? "event";
+  const payload = readObject(message.payload);
+  const eventName =
+    readStringField(payload, "event") ?? readStringField(payload, "text") ?? "event";
   return (
     <article className="flex items-center gap-2 px-1 text-[0.68rem] text-muted-foreground">
       <span className="h-px flex-1 bg-border" />
@@ -824,6 +890,15 @@ function SystemEventRow({ message }: { message: Message }) {
       <span className="h-px flex-1 bg-border" />
     </article>
   );
+}
+
+function isStatusDivider(message: Message): boolean {
+  if (message.kind !== "status") {
+    return false;
+  }
+
+  const payload = readObject(message.payload);
+  return readStringField(payload, "kind") === "coordinator_restart";
 }
 
 function isUserFacing(message: Message): boolean {

@@ -40,7 +40,14 @@ async function main(): Promise<void> {
       mcpUrl: `http://127.0.0.1:${DEFAULT_PORT}/mcp`
     })
   );
-  runners.register("codex", new CodexAcpCoordinatorRunner(codexAppServer));
+  runners.register(
+    "codex",
+    new CodexAcpCoordinatorRunner({
+      appServer: codexAppServer,
+      mcpNonces,
+      mcpUrl: `http://127.0.0.1:${DEFAULT_PORT}/mcp`
+    })
+  );
   const orchestrator = new Orchestrator({
     store,
     events,

@@ -513,7 +513,8 @@ export function buildDefaultToolRegistry(
       const agents: ListAgentsEntry[] = mounted.map((agent) => ({
         workspaceAgentId: agent.id,
         name: agent.name,
-        accountDescription: agent.description ?? ""
+        accountDescription: agent.description ?? "",
+        workspaceDescription: agent.workspaceDescription
       }));
       return { agents };
     }

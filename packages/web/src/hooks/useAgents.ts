@@ -124,18 +124,18 @@ export function useWorkspaceAgentMutations(workspaceId: string | null) {
     onSuccess: invalidateWorkspace
   });
 
-  const updateRoleMutation = useMutation({
+  const updateWorkspaceAgentMutation = useMutation({
     mutationFn: async ({
       agentId,
-      role
+      body
     }: {
       agentId: string;
-      role: WorkspaceAgent["role"];
+      body: Parameters<typeof api.updateAgentRole>[2];
     }) => {
       if (!workspaceId) {
         throw new Error("Workspace agent context is unavailable.");
       }
-      const response = await api.updateAgentRole(workspaceId, agentId, { role });
+      const response = await api.updateAgentRole(workspaceId, agentId, body);
       return response.agent;
     },
     onSuccess: invalidateWorkspace
@@ -166,12 +166,14 @@ export function useWorkspaceAgentMutations(workspaceId: string | null) {
 
   return {
     mount: mountMutation.mutateAsync,
-    updateRole: updateRoleMutation.mutateAsync,
+    update: updateWorkspaceAgentMutation.mutateAsync,
+    updateRole: ({ agentId, role }: { agentId: string; role: WorkspaceAgent["role"] }) =>
+      updateWorkspaceAgentMutation.mutateAsync({ agentId, body: { role } }),
     unmount: unmountMutation.mutateAsync,
     updateConfig: updateConfigMutation.mutateAsync,
     isPending:
       mountMutation.isPending ||
-      updateRoleMutation.isPending ||
+      updateWorkspaceAgentMutation.isPending ||
       unmountMutation.isPending ||
       updateConfigMutation.isPending
   };

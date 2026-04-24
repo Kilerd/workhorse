@@ -405,6 +405,7 @@ export interface ListWorkspaceAgentsParams {
 export interface MountAgentBody {
   agentId: string;
   role: AgentRole;
+  workspaceDescription?: string;
 }
 
 export interface WorkspaceAgentParams {
@@ -413,7 +414,8 @@ export interface WorkspaceAgentParams {
 }
 
 export interface UpdateAgentRoleBody {
-  role: AgentRole;
+  role?: AgentRole;
+  workspaceDescription?: string;
 }
 
 export interface UpdateWorkspaceConfigBody {
@@ -1489,7 +1491,7 @@ export const endpointRegistry: EndpointSpec[] = [
     operationId: "updateAgentRole",
     method: "patch",
     path: "/api/workspaces/{workspaceId}/agents/{agentId}",
-    summary: "Update the role of a workspace-mounted agent",
+    summary: "Update a workspace-mounted agent",
     tag: "Agents",
     paramsSchema: "WorkspaceAgentParams",
     bodySchema: "UpdateAgentRoleBody",

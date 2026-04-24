@@ -102,7 +102,7 @@ describe("mergeAdjacentAgentChatMessages", () => {
     });
   });
 
-  it("separates complete adjacent agent updates as paragraphs in one display block", () => {
+  it("keeps delayed complete agent updates as separate display messages", () => {
     const merged = mergeAdjacentAgentChatMessages([
       makeMessage({
         id: "agent-1",
@@ -118,10 +118,11 @@ describe("mergeAdjacentAgentChatMessages", () => {
       })
     ]);
 
-    expect(merged).toHaveLength(1);
-    expect(merged[0]?.payload).toEqual({
-      text: "已验证 `npm run test`。\n\n我先查一下渲染链路。"
-    });
+    expect(merged).toHaveLength(2);
+    expect(merged.map((message) => message.payload)).toEqual([
+      { text: "已验证 `npm run test`。" },
+      { text: "我先查一下渲染链路。" }
+    ]);
   });
 
   it("attaches punctuation-only chunks to their surrounding sentence", () => {
@@ -376,15 +377,19 @@ describe("buildThreadDisplayItems", () => {
       })
     ]);
 
-    expect(items.map((item) => item.type)).toEqual(["message", "tool", "message"]);
+    expect(items.map((item) => item.type)).toEqual([
+      "message",
+      "tool_cluster",
+      "message"
+    ]);
     expect(items[0]).toMatchObject({
       type: "message",
       id: "chat-1:lead",
       message: { payload: { text: "我先看一下当前状态。" } }
     });
     expect(items[1]).toMatchObject({
-      type: "tool",
-      id: groupId
+      type: "tool_cluster",
+      tools: [{ id: groupId }]
     });
     expect(items[2]).toMatchObject({
       type: "message",

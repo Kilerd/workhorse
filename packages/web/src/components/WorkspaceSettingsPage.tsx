@@ -589,6 +589,10 @@ function AgentsTab({
   const mutations = useWorkspaceAgentMutations(workspace.id);
   const [selectedAgentId, setSelectedAgentId] = useState("");
   const [selectedRole, setSelectedRole] = useState<"coordinator" | "worker">("worker");
+  const [selectedWorkspaceDescription, setSelectedWorkspaceDescription] = useState("");
+  const [workspaceDescriptionDrafts, setWorkspaceDescriptionDrafts] = useState<
+    Record<string, string>
+  >({});
 
   const agents = agentsQuery.data ?? [];
   const mountedAgents = workspaceAgentsQuery.data ?? [];
@@ -621,6 +625,15 @@ function AgentsTab({
       setSelectedRole("worker");
     }
   }, [coordinator, selectedRole]);
+
+  useEffect(() => {
+    const nextMountedAgents = workspaceAgentsQuery.data ?? [];
+    setWorkspaceDescriptionDrafts(
+      Object.fromEntries(
+        nextMountedAgents.map((agent) => [agent.id, agent.workspaceDescription ?? ""])
+      )
+    );
+  }, [workspaceAgentsQuery.data]);
 
   const mountedWorkerCount = countWorkspaceWorkers(mountedAgents);
   const summaryText = coordinator
@@ -730,7 +743,7 @@ function AgentsTab({
           </div>
         ) : (
           <div className="mt-4 overflow-hidden rounded-[var(--radius-lg)] border border-border bg-[var(--panel)]">
-            <div className="hidden xl:grid xl:grid-cols-[minmax(0,1.8fr)_minmax(0,1.1fr)_220px_auto] xl:items-center xl:gap-4 xl:border-b xl:border-border xl:bg-[var(--surface-faint)] xl:px-5 xl:py-3">
+            <div className="hidden xl:grid xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_180px_auto] xl:items-center xl:gap-4 xl:border-b xl:border-border xl:bg-[var(--surface-faint)] xl:px-5 xl:py-3">
               <span className="text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">
                 Agent
               </span>
@@ -754,7 +767,7 @@ function AgentsTab({
                   <li
                     key={agent.id}
                     className={cn(
-                      "grid gap-4 px-4 py-4 xl:grid-cols-[minmax(0,1.8fr)_minmax(0,1.1fr)_220px_auto] xl:items-start xl:gap-4 xl:px-5",
+                      "grid gap-4 px-4 py-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_180px_auto] xl:items-start xl:gap-4 xl:px-5",
                       index > 0 && "border-t border-border",
                       agent.role === "coordinator" && "bg-[rgba(113,112,255,0.06)]"
                     )}
@@ -769,11 +782,12 @@ function AgentsTab({
                       <h4 className="m-0 mt-3 text-[1rem] font-semibold leading-[1.3]">
                         {agent.name}
                       </h4>
-                      {agent.description?.trim() ? (
-                        <p className="m-0 mt-1 text-[0.82rem] leading-[1.6] text-[var(--muted)]">
-                          {agent.description.trim()}
-                        </p>
-                      ) : null}
+                      <p className="m-0 mt-1 text-[0.74rem] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">
+                        Account capability
+                      </p>
+                      <p className="m-0 mt-1 text-[0.82rem] leading-[1.6] text-[var(--muted)]">
+                        {agent.description?.trim() || "No account description yet."}
+                      </p>
                     </div>
 
                     <div className="min-w-0">
@@ -852,6 +866,66 @@ function AgentsTab({
                       >
                         Remove
                       </Button>
+                    </div>
+
+                    <div className="min-w-0 xl:col-span-full xl:border-t xl:border-border xl:pt-4">
+                      <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
+                        <div className="grid gap-1">
+                          <span className="text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">
+                            Workspace instructions
+                          </span>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          disabled={
+                            mutations.isPending ||
+                            (workspaceDescriptionDrafts[agent.id] ?? "").trim() ===
+                              (agent.workspaceDescription ?? "").trim()
+                          }
+                          onClick={() => {
+                            const workspaceDescription =
+                              workspaceDescriptionDrafts[agent.id] ?? "";
+                            void mutations
+                              .update({
+                                agentId: agent.id,
+                                body: { workspaceDescription }
+                              })
+                              .then(() => {
+                                toast({
+                                  title: "Instructions saved",
+                                  description: `${agent.name} has workspace-specific instructions for ${workspace.name}.`
+                                });
+                              })
+                              .catch((nextError) => {
+                                toast({
+                                  variant: "destructive",
+                                  title: "Couldn't save instructions",
+                                  description: readErrorMessage(
+                                    nextError,
+                                    "Failed to update workspace instructions."
+                                  )
+                                });
+                              });
+                          }}
+                        >
+                          Save
+                        </Button>
+                      </div>
+                      <Textarea
+                        aria-label={`Workspace instructions for ${agent.name}`}
+                        className="min-h-[14rem] resize-y text-[0.86rem] leading-[1.55]"
+                        disabled={mutations.isPending}
+                        placeholder="How should this agent behave in this workspace?"
+                        value={workspaceDescriptionDrafts[agent.id] ?? ""}
+                        onChange={(event) =>
+                          setWorkspaceDescriptionDrafts((current) => ({
+                            ...current,
+                            [agent.id]: event.target.value
+                          }))
+                        }
+                      />
                     </div>
                   </li>
                 );
@@ -984,6 +1058,19 @@ function AgentsTab({
                 </NativeSelect>
               </Field>
 
+              <Field
+                label="Workspace instructions"
+                hint="Optional instructions that only apply when this agent works in this workspace."
+              >
+                <Textarea
+                  className="min-h-28 resize-y text-[0.82rem] leading-[1.5]"
+                  disabled={mutations.isPending}
+                  placeholder="Describe this agent's workspace-specific responsibilities."
+                  value={selectedWorkspaceDescription}
+                  onChange={(event) => setSelectedWorkspaceDescription(event.target.value)}
+                />
+              </Field>
+
               <div className="rounded-[var(--radius)] border border-border bg-[var(--panel)] px-4 py-3 text-[0.78rem] leading-[1.6] text-[var(--muted)]">
                 {selectedRole === "coordinator"
                   ? "A workspace can only have one coordinator at a time."
@@ -999,8 +1086,13 @@ function AgentsTab({
                   }
 
                   void mutations
-                    .mount({ agentId: selectedAgentId, role: selectedRole })
+                    .mount({
+                      agentId: selectedAgentId,
+                      role: selectedRole,
+                      workspaceDescription: selectedWorkspaceDescription
+                    })
                     .then(() => {
+                      setSelectedWorkspaceDescription("");
                       toast({
                         title: "Agent mounted",
                         description: `${selectedAgent?.name ?? "Selected agent"} is now available in ${workspace.name}.`

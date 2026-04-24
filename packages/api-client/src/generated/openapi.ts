@@ -521,7 +521,7 @@ export interface paths {
         delete: operations["unmountAgent"];
         options?: never;
         head?: never;
-        /** Update the role of a workspace-mounted agent */
+        /** Update a workspace-mounted agent */
         patch: operations["updateAgentRole"];
         trace?: never;
     };
@@ -1252,6 +1252,8 @@ export interface components {
          */
         WorkspaceAgent: {
             role: components["schemas"]["AgentRole"];
+            /** @description Workspace-specific instructions layered on top of the account description. */
+            workspaceDescription?: string;
             id: string;
             name: string;
             description?: string;
@@ -1279,13 +1281,15 @@ export interface components {
         MountAgentBody: {
             agentId: string;
             role: components["schemas"]["AgentRole"];
+            workspaceDescription?: string;
         };
         WorkspaceAgentParams: {
             workspaceId: string;
             agentId: string;
         };
         UpdateAgentRoleBody: {
-            role: components["schemas"]["AgentRole"];
+            role?: "coordinator" | "worker";
+            workspaceDescription?: string;
         };
         UpdateWorkspaceConfigBody: {
             prStrategy?: "independent" | "stacked" | "single";
@@ -1367,7 +1371,7 @@ export interface components {
             /** @enum {unknown} */
             type: "system";
         };
-        MessageKind: "status" | "chat" | "artifact" | "plan_draft" | "plan_decision" | "system_event";
+        MessageKind: "tool_call" | "tool_output" | "status" | "chat" | "artifact" | "plan_draft" | "plan_decision" | "system_event";
         Plan: {
             id: string;
             threadId: string;
@@ -1399,7 +1403,7 @@ export interface components {
         PostThreadMessageBody: {
             content: string;
             /** @description Defaults to "chat" when omitted. Server may reject other kinds for human senders. */
-            kind?: "status" | "chat" | "artifact" | "plan_draft" | "plan_decision" | "system_event";
+            kind?: "tool_call" | "tool_output" | "status" | "chat" | "artifact" | "plan_draft" | "plan_decision" | "system_event";
         };
         ListThreadMessagesParams: {
             threadId: string;

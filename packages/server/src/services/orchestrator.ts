@@ -130,23 +130,19 @@ export class Orchestrator {
 
       thread = this.threads.setCoordinatorAgent(threadId, agentId);
       this.threads.resetSession(threadId);
+      this.threads.appendMessage({
+        threadId,
+        sender: { type: "system" },
+        kind: "status",
+        payload: {
+          kind: "coordinator_restart",
+          event: "Restart"
+        }
+      });
 
       if (thread.coordinatorState !== "idle") {
         thread = this.threads.setCoordinatorState(threadId, "idle");
       }
-
-      this.threads.appendMessage({
-        threadId,
-        sender: { type: "system" },
-        kind: "system_event",
-        payload: {
-          kind: "coordinator.restart",
-          agentId,
-          text: "Coordinator restarted."
-        }
-      });
-
-      await this.tryStartRun(threadId);
     });
     return this.threads.requireThread(threadId);
   }
