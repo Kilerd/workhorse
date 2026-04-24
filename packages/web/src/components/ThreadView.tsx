@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Message, Thread } from "@workhorse/contracts";
 
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import {
 import { readErrorMessage } from "@/lib/error-message";
 import { formatRelativeTime } from "@/lib/format";
 import { renderMarkdownBlock } from "@/lib/markdown";
+import { isScrolledNearBottom } from "@/lib/scroll-position";
 import { mergeAdjacentAgentChatMessages } from "@/lib/thread-messages";
 import { cn } from "@/lib/utils";
 
@@ -30,6 +31,8 @@ export function ThreadView({ threadId, thread, className }: Props) {
   const messagesQuery = useThreadMessages(threadId);
   const postMessage = usePostThreadMessage(threadId);
 
+  const messageListRef = useRef<HTMLDivElement>(null);
+  const [isPinnedToBottom, setIsPinnedToBottom] = useState(true);
   const [draft, setDraft] = useState("");
 
   const ordered = useMemo(() => {
@@ -42,11 +45,38 @@ export function ThreadView({ threadId, thread, className }: Props) {
     () => mergeAdjacentAgentChatMessages(ordered),
     [ordered]
   );
+  const messageTailKey = useMemo(() => {
+    const lastMessage = displayMessages.at(-1);
+    if (!lastMessage) return "empty";
+    return `${displayMessages.length}:${lastMessage.id}:${lastMessage.createdAt}:${readText(lastMessage.payload).length}`;
+  }, [displayMessages]);
 
   const pendingCount = useMemo(
     () => ordered.filter((m) => isUserFacing(m) && !m.consumedByRunId).length,
     [ordered]
   );
+
+  useEffect(() => {
+    setIsPinnedToBottom(true);
+  }, [threadId]);
+
+  useEffect(() => {
+    const node = messageListRef.current;
+    if (!node || !isPinnedToBottom) {
+      return;
+    }
+
+    node.scrollTop = node.scrollHeight;
+  }, [isPinnedToBottom, messageTailKey]);
+
+  function handleMessageListScroll() {
+    const node = messageListRef.current;
+    if (!node) {
+      return;
+    }
+
+    setIsPinnedToBottom(isScrolledNearBottom(node));
+  }
 
   async function handleSend() {
     const content = draft.trim();
@@ -78,7 +108,11 @@ export function ThreadView({ threadId, thread, className }: Props) {
           No messages yet. Start the conversation below.
         </div>
       ) : (
-        <div className="grid min-h-0 flex-1 auto-rows-max content-start gap-2 overflow-y-auto pr-1">
+        <div
+          ref={messageListRef}
+          onScroll={handleMessageListScroll}
+          className="grid min-h-0 flex-1 auto-rows-max content-start gap-2 overflow-y-auto pr-1"
+        >
           {displayMessages.map((msg) => (
             <MessageRow key={msg.id} message={msg} threadId={threadId} />
           ))}

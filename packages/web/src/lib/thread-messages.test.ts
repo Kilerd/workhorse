@@ -171,7 +171,7 @@ describe("mergeAdjacentAgentChatMessages", () => {
     });
   });
 
-  it("uses output ids as the primary assistant text boundary", () => {
+  it("uses output ids as the primary assistant text grouping key", () => {
     const merged = mergeAdjacentAgentChatMessages([
       makeMessage({
         id: "agent-1",
@@ -195,9 +195,13 @@ describe("mergeAdjacentAgentChatMessages", () => {
       })
     ]);
 
-    expect(merged).toHaveLength(1);
+    expect(merged).toHaveLength(2);
     expect(merged[0]?.payload).toEqual({
-      text: "产品改动：\n\n先看 workspace，再定位代码",
+      text: "产品改动：",
+      outputId: "turn-1:item-1"
+    });
+    expect(merged[1]?.payload).toEqual({
+      text: "先看 workspace，再定位代码",
       outputId: "turn-1:item-2"
     });
   });

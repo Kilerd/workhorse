@@ -88,14 +88,24 @@ function joinAgentChatText(
 }
 
 function canMergeAgentChat(previous: Message | undefined, next: Message): boolean {
-  return Boolean(
-    previous &&
-      previous.kind === "chat" &&
-      previous.sender.type === "agent" &&
-      next.kind === "chat" &&
-      next.sender.type === "agent" &&
-      previous.sender.agentId === next.sender.agentId
-  );
+  if (
+    !previous ||
+    previous.kind !== "chat" ||
+    previous.sender.type !== "agent" ||
+    next.kind !== "chat" ||
+    next.sender.type !== "agent" ||
+    previous.sender.agentId !== next.sender.agentId
+  ) {
+    return false;
+  }
+
+  const previousOutputId = readOutputId(previous.payload);
+  const nextOutputId = readOutputId(next.payload);
+  if (previousOutputId || nextOutputId) {
+    return previousOutputId === nextOutputId;
+  }
+
+  return true;
 }
 
 export function mergeAdjacentAgentChatMessages(messages: Message[]): Message[] {
