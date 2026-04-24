@@ -3,8 +3,7 @@ import WebSocket, { WebSocketServer } from "ws";
 
 import type { CodexAppServer } from "./codex-app-server-manager.js";
 import { CodexAcpCoordinatorRunner } from "./codex-acp-coordinator-runner.js";
-import { McpNonceRegistry } from "../mcp/nonce-registry.js";
-import type { CoordinatorRunInput } from "./session-bridge.js";
+import type { CoordinatorOutputChunk, CoordinatorRunInput } from "./session-bridge.js";
 
 class FakeCodexAppServer implements CodexAppServer {
   public constructor(private readonly url: string) {}
@@ -27,7 +26,9 @@ class FakeCodexAppServer implements CodexAppServer {
   public async archiveThread(): Promise<void> {}
 }
 
-function makeInput(): CoordinatorRunInput {
+function makeInput(
+  overrides: Partial<Pick<CoordinatorRunInput, "tools">> = {}
+): CoordinatorRunInput {
   const now = new Date().toISOString();
   return {
     runId: "run-1",
@@ -54,7 +55,7 @@ function makeInput(): CoordinatorRunInput {
     workspaceDir: "/tmp/workhorse",
     systemPrompt: "system",
     appendMessages: [{ role: "user", content: "hello" }],
-    tools: []
+    tools: overrides.tools ?? []
   };
 }
 
@@ -66,18 +67,28 @@ describe("CodexAcpCoordinatorRunner", () => {
     server = undefined;
   });
 
-  it("passes the Workhorse MCP server to Codex ACP sessions with a run-bound nonce", async () => {
+  it("exposes Workhorse tools through Codex ACP dynamic tools and resolves calls", async () => {
     let threadStartParams: Record<string, any> | undefined;
     let completeTurn: (() => void) | undefined;
+    let requestToolCall: (() => void) | undefined;
+    let resolveToolResponse: (message: Record<string, any>) => void = () => {};
+    const toolResponse = new Promise<Record<string, any>>((resolve) => {
+      resolveToolResponse = resolve;
+    });
 
     server = new WebSocketServer({ port: 0 });
     server.on("connection", (socket) => {
       socket.on("message", (raw) => {
         const message = JSON.parse(raw.toString()) as {
-          id?: number;
+          id?: number | string;
           method?: string;
           params?: unknown;
+          result?: unknown;
         };
+        if (message.id === "tool-request-1" && "result" in message) {
+          resolveToolResponse(message as Record<string, any>);
+          return;
+        }
         if (!message.id) {
           return;
         }
@@ -110,6 +121,22 @@ describe("CodexAcpCoordinatorRunner", () => {
               result: { turn: { id: "turn-1" } }
             })
           );
+          requestToolCall = () => {
+            socket.send(
+              JSON.stringify({
+                jsonrpc: "2.0",
+                id: "tool-request-1",
+                method: "item/tool/call",
+                params: {
+                  threadId: "acp-thread-1",
+                  turnId: "turn-1",
+                  callId: "call-1",
+                  tool: "get_workspace_state",
+                  arguments: { includeArchived: false }
+                }
+              })
+            );
+          };
           completeTurn = () => {
             socket.send(
               JSON.stringify({
@@ -131,35 +158,74 @@ describe("CodexAcpCoordinatorRunner", () => {
       throw new Error("Expected test websocket server to bind a TCP port");
     }
 
-    const nonces = new McpNonceRegistry();
     const runner = new CodexAcpCoordinatorRunner({
-      appServer: new FakeCodexAppServer(`ws://127.0.0.1:${address.port}`),
-      mcpNonces: nonces,
-      mcpUrl: "http://127.0.0.1:3999/mcp"
+      appServer: new FakeCodexAppServer(`ws://127.0.0.1:${address.port}`)
     });
 
-    const handle = await runner.resumeOrStart(makeInput());
+    const handle = await runner.resumeOrStart(
+      makeInput({
+        tools: [
+          {
+            name: "get_workspace_state",
+            description: "Read the current workspace state.",
+            inputSchema: {
+              type: "object",
+              properties: {
+                includeArchived: { type: "boolean" }
+              }
+            }
+          }
+        ]
+      })
+    );
     const finish = new Promise((resolve) => handle.onFinish(resolve));
-
-    expect(threadStartParams?.mcpServers).toHaveLength(1);
-    const mcpServer = threadStartParams?.mcpServers[0];
-    expect(mcpServer).toMatchObject({
-      name: "workhorse",
-      type: "http",
-      url: "http://127.0.0.1:3999/mcp"
+    const toolUse = new Promise<CoordinatorOutputChunk>((resolve) => {
+      handle.onChunk((chunk) => {
+        if (chunk.type === "tool_use") {
+          resolve(chunk);
+        }
+      });
     });
-    expect(mcpServer.headers).toEqual([
-      expect.objectContaining({ name: "x-workhorse-nonce" })
+
+    expect(threadStartParams?.dynamicTools).toEqual([
+      {
+        name: "get_workspace_state",
+        description: "Read the current workspace state.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            includeArchived: { type: "boolean" }
+          }
+        }
+      }
     ]);
-    const nonce = mcpServer.headers[0].value as string;
-    expect(nonces.verify(nonce)).toMatchObject({
-      workspaceId: "workspace-1",
-      threadId: "thread-1",
-      agentId: "agent-1"
+    expect(threadStartParams?.mcpServers).toBeUndefined();
+
+    requestToolCall?.();
+    await expect(toolUse).resolves.toMatchObject({
+      type: "tool_use",
+      toolUseId: "call-1",
+      name: "get_workspace_state",
+      input: { includeArchived: false }
+    });
+
+    await handle.submitToolResult({
+      toolUseId: "call-1",
+      result: { ok: true, workspaceId: "workspace-1" }
+    });
+    await expect(toolResponse).resolves.toMatchObject({
+      result: {
+        success: true,
+        contentItems: [
+          {
+            type: "inputText",
+            text: JSON.stringify({ ok: true, workspaceId: "workspace-1" }, null, 2)
+          }
+        ]
+      }
     });
 
     completeTurn?.();
     await finish;
-    expect(nonces.verify(nonce)).toBeUndefined();
   });
 });

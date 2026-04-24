@@ -2,8 +2,6 @@ import WebSocket from "ws";
 
 import type { CodexRunnerConfig, RunStatus } from "@workhorse/contracts";
 
-import { MCP_NONCE_HEADER } from "../mcp/mcp-http-handler.js";
-import type { McpNonceRegistry } from "../mcp/nonce-registry.js";
 import { resolveWorkspaceCodexSettings } from "../lib/codex-settings.js";
 import { classifyItemLifecycle } from "./codex-acp-runner.js";
 import {
@@ -84,6 +82,19 @@ interface PendingRequest {
   reject: (reason?: unknown) => void;
 }
 
+interface PendingDynamicToolCall {
+  requestId: JsonRpcId;
+  params: DynamicToolCallParams;
+}
+
+interface DynamicToolCallParams {
+  threadId: string;
+  turnId: string;
+  callId: string;
+  tool: string;
+  arguments?: unknown;
+}
+
 interface ActiveCommandOutputContext {
   groupId: string;
   itemId?: string;
@@ -93,19 +104,6 @@ interface ActiveCommandOutputContext {
 
 interface CodexAcpCoordinatorRunnerOptions {
   appServer?: CodexAppServer;
-  mcpNonces?: McpNonceRegistry;
-  mcpUrl?: string;
-  mcpServerName?: string;
-}
-
-interface McpBinding {
-  nonce: string;
-  servers: Array<{
-    name: string;
-    type: "http";
-    url: string;
-    headers: Array<{ name: string; value: string }>;
-  }>;
 }
 
 function resolveCodexEffortConfig(
@@ -162,11 +160,15 @@ function isCommandLikeItemType(type: string | undefined): boolean {
 
 function buildThreadStartParams(
   input: CoordinatorRunInput,
-  config: CodexRunnerConfig,
-  mcpBinding?: McpBinding
+  config: CodexRunnerConfig
 ) {
   const settings = resolveWorkspaceCodexSettings(input.workspace);
   const effortConfig = resolveCodexEffortConfig(config);
+  const dynamicTools = input.tools.map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: tool.inputSchema
+  }));
   return {
     model: config.model?.id ?? null,
     cwd: input.workspaceDir,
@@ -175,7 +177,7 @@ function buildThreadStartParams(
     ephemeral: false,
     experimentalRawEvents: false,
     persistExtendedHistory: true,
-    ...(mcpBinding ? { mcpServers: mcpBinding.servers } : {}),
+    ...(dynamicTools.length > 0 ? { dynamicTools } : {}),
     ...(effortConfig ? { config: effortConfig } : {})
   };
 }
@@ -183,8 +185,7 @@ function buildThreadStartParams(
 function buildThreadResumeParams(
   input: CoordinatorRunInput,
   config: CodexRunnerConfig,
-  threadId: string,
-  mcpBinding?: McpBinding
+  threadId: string
 ) {
   const settings = resolveWorkspaceCodexSettings(input.workspace);
   const effortConfig = resolveCodexEffortConfig(config);
@@ -195,22 +196,31 @@ function buildThreadResumeParams(
     approvalPolicy: settings.approvalPolicy,
     sandbox: settings.sandboxMode,
     persistExtendedHistory: true,
-    ...(mcpBinding ? { mcpServers: mcpBinding.servers } : {}),
     ...(effortConfig ? { config: effortConfig } : {})
   };
 }
 
+function formatDynamicToolResult(result: unknown): string {
+  if (typeof result === "string") {
+    return result;
+  }
+  return JSON.stringify(result, null, 2);
+}
+
+function isDynamicToolErrorResult(result: unknown): boolean {
+  return Boolean(
+    result &&
+      typeof result === "object" &&
+      "error" in result &&
+      (result as { error?: unknown }).error
+  );
+}
+
 export class CodexAcpCoordinatorRunner implements CoordinatorRunner {
   private readonly appServerManager: CodexAppServer;
-  private readonly mcpNonces?: McpNonceRegistry;
-  private readonly mcpUrl?: string;
-  private readonly mcpServerName: string;
 
   public constructor(options: CodexAcpCoordinatorRunnerOptions = {}) {
     this.appServerManager = options.appServer ?? new CodexAppServerManager();
-    this.mcpNonces = options.mcpNonces;
-    this.mcpUrl = options.mcpUrl;
-    this.mcpServerName = options.mcpServerName ?? "workhorse";
   }
 
   public async resumeOrStart(
@@ -221,10 +231,10 @@ export class CodexAcpCoordinatorRunner implements CoordinatorRunner {
       throw new Error("Coordinator agent is not configured for Codex ACP");
     }
 
-    const mcpBinding = this.prepareMcpBinding(input);
     const connection = await this.appServerManager.createConnection();
     const ws = connection.ws;
     const pending = new Map<JsonRpcId, PendingRequest>();
+    const pendingDynamicToolCalls = new Map<string, PendingDynamicToolCall>();
     const chunkHandlers = new Set<(chunk: CoordinatorOutputChunk) => void>();
     const finishHandlers = new Set<(outcome: CoordinatorRunOutcome) => void>();
     const bufferedChunks: CoordinatorOutputChunk[] = [];
@@ -274,7 +284,6 @@ export class CodexAcpCoordinatorRunner implements CoordinatorRunner {
       } catch {
         // The socket may already be closed by the ACP server.
       }
-      this.cleanupMcpBinding(mcpBinding);
       for (const handler of finishHandlers) {
         try {
           handler(outcome);
@@ -284,7 +293,9 @@ export class CodexAcpCoordinatorRunner implements CoordinatorRunner {
       }
     };
 
-    const send = (message: JsonRpcRequest | JsonRpcNotification): void => {
+    const send = (
+      message: JsonRpcRequest | JsonRpcNotification | JsonRpcResponse
+    ): void => {
       ws.send(JSON.stringify(message));
     };
 
@@ -330,6 +341,23 @@ export class CodexAcpCoordinatorRunner implements CoordinatorRunner {
       }
 
       if ("id" in message && "method" in message) {
+        const requestMessage = message as JsonRpcRequest;
+        if (requestMessage.method === "item/tool/call") {
+          const params = requestMessage.params as DynamicToolCallParams;
+          const toolUseId = params.callId || String(requestMessage.id);
+          pendingDynamicToolCalls.set(toolUseId, {
+            requestId: requestMessage.id,
+            params
+          });
+          emitChunk({
+            type: "tool_use",
+            toolUseId,
+            name: params.tool,
+            input: params.arguments ?? {}
+          });
+          return;
+        }
+
         this.respondToServerRequest(ws, message.id, message.method);
         return;
       }
@@ -535,7 +563,7 @@ export class CodexAcpCoordinatorRunner implements CoordinatorRunner {
       try {
         const thread = await request<ThreadSessionResult>(
           "thread/resume",
-          buildThreadResumeParams(input, config, input.sessionKey, mcpBinding)
+          buildThreadResumeParams(input, config, input.sessionKey)
         );
         acpThreadId = thread.thread.id;
         resumed = true;
@@ -553,7 +581,7 @@ export class CodexAcpCoordinatorRunner implements CoordinatorRunner {
     if (!acpThreadId) {
       const thread = await request<ThreadSessionResult>(
         "thread/start",
-        buildThreadStartParams(input, config, mcpBinding)
+        buildThreadStartParams(input, config)
       );
       acpThreadId = thread.thread.id;
     }
@@ -563,7 +591,7 @@ export class CodexAcpCoordinatorRunner implements CoordinatorRunner {
     }
 
     console.log(
-      `[codex-coord] turn thread=${input.threadId} acp=${acpThreadId} resume=${resumed ? "yes" : "no"} msgs=${input.appendMessages.length} tools=${input.tools.length} mcp=${mcpBinding ? "on" : "off"}`
+      `[codex-coord] turn thread=${input.threadId} acp=${acpThreadId} resume=${resumed ? "yes" : "no"} msgs=${input.appendMessages.length} tools=${input.tools.length}`
     );
 
     const turn = await request<TurnStartResult>("turn/start", {
@@ -592,8 +620,25 @@ export class CodexAcpCoordinatorRunner implements CoordinatorRunner {
           finishHandlers.delete(handler);
         };
       },
-      async submitToolResult() {
-        // Workhorse tools are exposed to Codex via the per-turn MCP binding.
+      async submitToolResult(resultInput) {
+        const pendingToolCall = pendingDynamicToolCalls.get(resultInput.toolUseId);
+        if (!pendingToolCall) {
+          return;
+        }
+        pendingDynamicToolCalls.delete(resultInput.toolUseId);
+        send({
+          jsonrpc: "2.0",
+          id: pendingToolCall.requestId,
+          result: {
+            success: !isDynamicToolErrorResult(resultInput.result),
+            contentItems: [
+              {
+                type: "inputText",
+                text: formatDynamicToolResult(resultInput.result)
+              }
+            ]
+          }
+        });
       },
       async cancel() {
         stopRequested = true;
@@ -609,31 +654,6 @@ export class CodexAcpCoordinatorRunner implements CoordinatorRunner {
         }
       }
     };
-  }
-
-  private prepareMcpBinding(input: CoordinatorRunInput): McpBinding | undefined {
-    if (!this.mcpNonces || !this.mcpUrl) return undefined;
-    const nonce = this.mcpNonces.mint({
-      workspaceId: input.workspaceId,
-      threadId: input.threadId,
-      agentId: input.agentId
-    });
-    return {
-      nonce,
-      servers: [
-        {
-          name: this.mcpServerName,
-          type: "http",
-          url: this.mcpUrl,
-          headers: [{ name: MCP_NONCE_HEADER, value: nonce }]
-        }
-      ]
-    };
-  }
-
-  private cleanupMcpBinding(binding?: McpBinding): void {
-    if (!binding) return;
-    this.mcpNonces?.revoke(binding.nonce);
   }
 
   private respondToServerRequest(

@@ -83,7 +83,7 @@ export function buildCoordinatorSystemPrompt(
     "Each tool is atomic and has a strict JSON schema. Call them via the runner's tool-use protocol; never freehand SQL or shell."
   );
   lines.push(
-    "Workhorse exposes these through its MCP server; when the runner prefixes MCP tools, call them as `mcp__workhorse__<name>`."
+    "Codex ACP exposes these as direct dynamic tools using the names below; MCP-capable runners may expose the same tools with a runner-specific prefix."
   );
   for (const tool of tools) {
     lines.push(`- \`${tool.name}\`: ${tool.description}`);
