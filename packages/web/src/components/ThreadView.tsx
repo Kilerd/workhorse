@@ -24,6 +24,11 @@ import { formatRelativeTime } from "@/lib/format";
 import { renderMarkdownBlock } from "@/lib/markdown";
 import { isScrolledNearBottom } from "@/lib/scroll-position";
 import {
+  clearThreadDraft,
+  readThreadDraft,
+  writeThreadDraft
+} from "@/lib/thread-draft";
+import {
   buildThreadDisplayItems,
   mergeAdjacentAgentChatMessages,
   type ThreadDisplayItem
@@ -54,8 +59,9 @@ export function ThreadView({
   const postMessage = usePostThreadMessage(threadId);
 
   const messageListRef = useRef<HTMLDivElement>(null);
+  const isRestoringDraftRef = useRef(false);
   const [isPinnedToBottom, setIsPinnedToBottom] = useState(true);
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(() => readThreadDraft(threadId));
 
   const ordered = useMemo(() => {
     const items = messagesQuery.data ?? [];
@@ -87,6 +93,20 @@ export function ThreadView({
   }, [threadId]);
 
   useEffect(() => {
+    isRestoringDraftRef.current = true;
+    setDraft(readThreadDraft(threadId));
+  }, [threadId]);
+
+  useEffect(() => {
+    if (isRestoringDraftRef.current) {
+      isRestoringDraftRef.current = false;
+      return;
+    }
+
+    writeThreadDraft(threadId, draft);
+  }, [draft, threadId]);
+
+  useEffect(() => {
     const node = messageListRef.current;
     if (!node || !isPinnedToBottom) {
       return;
@@ -109,6 +129,7 @@ export function ThreadView({
     if (!content) return;
     try {
       await postMessage.mutateAsync({ content, kind: "chat" });
+      clearThreadDraft(threadId);
       setDraft("");
     } catch (error) {
       toast({
