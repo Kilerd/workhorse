@@ -37,6 +37,21 @@ export interface EnqueueCoordinatorTriggerResult {
   pending: Message[];
 }
 
+function readTextPayload(payload: unknown): string {
+  if (payload && typeof payload === "object" && "text" in payload) {
+    const text = (payload as { text?: unknown }).text;
+    if (typeof text === "string") return text;
+  }
+  if (typeof payload === "string") return payload;
+  return "";
+}
+
+function readObjectPayload(payload: unknown): Record<string, unknown> {
+  return payload && typeof payload === "object" && !Array.isArray(payload)
+    ? (payload as Record<string, unknown>)
+    : {};
+}
+
 // Allowed coordinator state transitions. Keeping them in a table makes the
 // rule table trivially auditable and lets the validator share the same source
 // of truth with tests.
@@ -167,6 +182,40 @@ export class ThreadService {
       message
     });
     return message;
+  }
+
+  public appendToMessageText(messageId: string, text: string): Message {
+    const existing = ensure(
+      this.store.getMessage(messageId) ?? undefined,
+      404,
+      "MESSAGE_NOT_FOUND",
+      `Message ${messageId} not found`
+    );
+
+    if (existing.kind !== "chat") {
+      throw new AppError(
+        409,
+        "MESSAGE_NOT_CHAT",
+        `Message ${messageId} is not a chat message`
+      );
+    }
+
+    const updated = this.store.updateMessagePayload(messageId, {
+      ...readObjectPayload(existing.payload),
+      text: `${readTextPayload(existing.payload)}${text}`
+    });
+    const result = ensure(
+      updated ?? undefined,
+      404,
+      "MESSAGE_NOT_FOUND",
+      `Message ${messageId} not found`
+    );
+    this.events.publish({
+      type: "thread.message",
+      threadId: result.threadId,
+      message: result
+    });
+    return result;
   }
 
   public listMessages(threadId: string, opts?: ListMessagesOptions): Message[] {

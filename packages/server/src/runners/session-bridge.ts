@@ -1,4 +1,4 @@
-import type { RunStatus } from "@workhorse/contracts";
+import type { RunStatus, RunnerConfig, Workspace } from "@workhorse/contracts";
 
 /**
  * A message passed to a coordinator session as a new turn. `role='user'` is
@@ -16,11 +16,22 @@ export interface CoordinatorInputMessage {
  * `tool_use` chunks carry a tool invocation the agent issued; the Orchestrator
  * routes them into the ToolRegistry. `text` chunks carry free-form assistant
  * output that is surfaced back to the thread as a `kind='chat'` message.
+ * `outputId` identifies the runner-level assistant output item. Chunks with
+ * the same output id are continuations; a new id is a new assistant paragraph.
+ * `mode='delta'` means the text is a streaming fragment that should be
+ * appended to the current in-flight assistant message. `mode='message'`
+ * means the runner is surfacing a complete update and the message boundary
+ * should be preserved in thread history.
  * `session_key` carries the runner-level session id (claude `--resume` id,
  * codex session id) that should be persisted to `AgentSession.runnerSessionKey`.
  */
 export type CoordinatorOutputChunk =
-  | { type: "text"; text: string }
+  | {
+      type: "text";
+      text: string;
+      mode?: "delta" | "message";
+      outputId?: string;
+    }
   | {
       type: "tool_use";
       toolUseId: string;
@@ -54,6 +65,8 @@ export interface CoordinatorRunInput {
   threadId: string;
   workspaceId: string;
   agentId: string;
+  runnerConfig: RunnerConfig;
+  workspace: Workspace;
   workspaceDir: string;
   systemPrompt: string;
   /**

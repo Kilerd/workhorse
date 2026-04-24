@@ -2555,6 +2555,94 @@ describe("agent API", () => {
 });
 
 describe("thread API", () => {
+  it("posts a coordinator-thread message and triggers the orchestrator directly", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "workhorse-test-"));
+    const workspaceDir = join(dataDir, "workspace");
+    await mkdir(workspaceDir, { recursive: true });
+
+    const events = new EventBus();
+    const service = new BoardService(new StateStore(dataDir), events);
+    const threads = new ThreadService((service as any).store as StateStore, events);
+    await service.initialize();
+
+    const workspace = await createWorkspace(service, workspaceDir);
+    const thread = threads.createThread({
+      workspaceId: workspace.id,
+      kind: "coordinator"
+    });
+
+    const triggered: string[] = [];
+    const app = createApp(service, {
+      threads,
+      orchestrator: {
+        async onThreadMessage(threadId) {
+          triggered.push(threadId);
+        },
+        async restartCoordinatorThread(threadId, agentId) {
+          return threads.setCoordinatorAgent(threadId, agentId);
+        }
+      }
+    });
+
+    const res = await app.request(`/api/threads/${thread.id}/messages`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        content: "hello coordinator"
+      })
+    });
+
+    expect(res.status).toBe(201);
+    expect(triggered).toEqual([thread.id]);
+    expect(threads.listMessages(thread.id)).toEqual([
+      expect.objectContaining({
+        threadId: thread.id,
+        sender: { type: "user" },
+        kind: "chat",
+        payload: { text: "hello coordinator" }
+      })
+    ]);
+  });
+
+  it("lists the latest thread messages when the history exceeds the default window", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "workhorse-test-"));
+    const workspaceDir = join(dataDir, "workspace");
+    await mkdir(workspaceDir, { recursive: true });
+
+    const events = new EventBus();
+    const service = new BoardService(new StateStore(dataDir), events);
+    const threads = new ThreadService((service as any).store as StateStore, events);
+    await service.initialize();
+
+    const workspace = await createWorkspace(service, workspaceDir);
+    const thread = threads.createThread({
+      workspaceId: workspace.id,
+      kind: "coordinator"
+    });
+    for (let index = 0; index < 505; index += 1) {
+      threads.appendMessage({
+        threadId: thread.id,
+        sender: { type: "agent", agentId: "wa-1" },
+        kind: "chat",
+        payload: { text: `old-token-${index}` }
+      });
+    }
+
+    const app = createApp(service, { threads });
+
+    const res = await app.request(`/api/threads/${thread.id}/messages`);
+
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as {
+      data: { items: Array<{ payload: { text: string } }> };
+    };
+    expect(data.data.items).toHaveLength(500);
+    expect(data.data.items[0]?.payload.text).toBe("old-token-5");
+    expect(data.data.items.at(-1)?.payload.text).toBe("old-token-504");
+  });
+
   it("restarts a coordinator thread with the mounted workspace coordinator", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "workhorse-test-"));
     const workspaceDir = join(dataDir, "workspace");

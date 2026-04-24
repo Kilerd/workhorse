@@ -38,6 +38,7 @@ interface ActiveRun {
   runId: string;
   session: AgentSession;
   handle: CoordinatorRunHandle;
+  streamingMessageId?: string;
 }
 
 /**
@@ -291,6 +292,8 @@ export class Orchestrator {
       threadId: thread.id,
       workspaceId: workspace.id,
       agentId: session.agentId,
+      runnerConfig: agent.runnerConfig,
+      workspace,
       workspaceDir: workspace.rootPath,
       systemPrompt,
       sessionKey: session.runnerSessionKey,
@@ -310,12 +313,32 @@ export class Orchestrator {
     handle: CoordinatorRunHandle
   ): Promise<void> {
     if (chunk.type === "text") {
-      this.threads.appendMessage({
-        threadId,
-        sender: { type: "agent", agentId: session.agentId },
-        kind: "chat",
-        payload: { text: chunk.text }
-      });
+      const active = this.activeRuns.get(threadId);
+      if (active?.runId !== handle.runId) {
+        return;
+      }
+
+      if (chunk.mode === "message") {
+        this.threads.appendMessage({
+          threadId,
+          sender: { type: "agent", agentId: session.agentId },
+          kind: "chat",
+          payload: chatPayload(chunk)
+        });
+        return;
+      }
+
+      if (active.streamingMessageId) {
+        this.threads.appendToMessageText(active.streamingMessageId, chunk.text);
+      } else {
+        const message = this.threads.appendMessage({
+          threadId,
+          sender: { type: "agent", agentId: session.agentId },
+          kind: "chat",
+          payload: chatPayload(chunk)
+        });
+        active.streamingMessageId = message.id;
+      }
       return;
     }
     if (chunk.type === "session_key") {
@@ -438,6 +461,16 @@ export class Orchestrator {
   private getWorkspace(workspaceId: string): Workspace | undefined {
     return this.store.listWorkspaces().find((w) => w.id === workspaceId);
   }
+}
+
+function chatPayload(chunk: Extract<CoordinatorOutputChunk, { type: "text" }>): {
+  text: string;
+  outputId?: string;
+} {
+  return {
+    text: chunk.text,
+    ...(chunk.outputId ? { outputId: chunk.outputId } : {})
+  };
 }
 
 function toInputMessage(message: Message): CoordinatorInputMessage {

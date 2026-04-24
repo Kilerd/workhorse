@@ -87,7 +87,8 @@ interface CreateAppOptions {
   reviewMonitorIntervalMs?: number;
   threads?: ThreadService;
   plans?: PlanService;
-  orchestrator?: Pick<Orchestrator, "restartCoordinatorThread">;
+  orchestrator?: Pick<Orchestrator, "restartCoordinatorThread"> &
+    Partial<Pick<Orchestrator, "onThreadMessage">>;
 }
 
 export function createApp(
@@ -629,6 +630,15 @@ export function createApp(
         kind: body.kind ?? "chat",
         payload: { text: body.content }
       });
+      const thread = threads.requireThread(params.threadId);
+      if (thread.kind === "coordinator" && orchestrator?.onThreadMessage) {
+        void orchestrator.onThreadMessage(params.threadId).catch((error) => {
+          console.error(
+            `[thread-api] failed to trigger coordinator thread ${params.threadId}`,
+            error
+          );
+        });
+      }
       return c.json(ok({ message }), 201);
     });
 

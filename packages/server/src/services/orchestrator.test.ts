@@ -315,7 +315,7 @@ describe("Orchestrator — tool routing", () => {
     expect(plans.listPlansByThread(threadId)).toHaveLength(1);
   });
 
-  it("streams assistant text chunks as kind='chat' messages", async () => {
+  it("streams assistant text chunks into a single kind='chat' message", async () => {
     const { threads, runner, orchestrator, threadId } = harness;
     threads.appendMessage({
       threadId,
@@ -326,12 +326,50 @@ describe("Orchestrator — tool routing", () => {
     await orchestrator.onThreadMessage(threadId);
     const handle = runner.handles[0]!;
 
-    handle.emitChunk({ type: "text", text: "hello there" });
+    handle.emitChunk({ type: "text", text: "hello ", outputId: "turn-1:item-1" });
+    handle.emitChunk({ type: "text", text: "there", outputId: "turn-1:item-1" });
 
     const msgs = threads.listMessages(threadId);
     const chat = msgs.filter((m) => m.sender.type === "agent");
     expect(chat).toHaveLength(1);
-    expect(chat[0]?.payload).toEqual({ text: "hello there" });
+    expect(chat[0]?.payload).toEqual({
+      text: "hello there",
+      outputId: "turn-1:item-1"
+    });
+  });
+
+  it("preserves message boundaries for complete assistant updates", async () => {
+    const { threads, runner, orchestrator, threadId } = harness;
+    threads.appendMessage({
+      threadId,
+      sender: { type: "user" },
+      kind: "chat",
+      payload: { text: "status?" }
+    });
+    await orchestrator.onThreadMessage(threadId);
+    const handle = runner.handles[0]!;
+
+    handle.emitChunk({
+      type: "text",
+      text: "checking the renderer",
+      mode: "message",
+      outputId: "turn-1:item-1"
+    });
+    handle.emitChunk({
+      type: "text",
+      text: "root cause confirmed",
+      mode: "message",
+      outputId: "turn-1:item-2"
+    });
+
+    const chats = threads
+      .listMessages(threadId)
+      .filter((m) => m.kind === "chat" && m.sender.type === "agent");
+    expect(chats).toHaveLength(2);
+    expect(chats.map((message) => message.payload)).toEqual([
+      { text: "checking the renderer", outputId: "turn-1:item-1" },
+      { text: "root cause confirmed", outputId: "turn-1:item-2" }
+    ]);
   });
 
   it("persists the runner session key on session_key chunks", async () => {

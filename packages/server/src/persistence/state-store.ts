@@ -865,18 +865,94 @@ export class StateStore {
       .run();
   }
 
+  public getMessage(id: string): Message | null {
+    const row = this.sqlite
+      .prepare(
+        `SELECT id, thread_id, sender_type, sender_agent_id, kind, payload,
+                consumed_by_run_id, created_at
+         FROM messages
+         WHERE id = ?
+         LIMIT 1`
+      )
+      .get(id) as
+      | {
+          id: string;
+          thread_id: string;
+          sender_type: string;
+          sender_agent_id: string | null;
+          kind: string;
+          payload: string;
+          consumed_by_run_id: string | null;
+          created_at: string;
+        }
+      | undefined;
+
+    if (!row) return null;
+
+    return rowToMessage({
+      id: row.id,
+      threadId: row.thread_id,
+      senderType: row.sender_type,
+      senderAgentId: row.sender_agent_id,
+      kind: row.kind,
+      payload: row.payload,
+      consumedByRunId: row.consumed_by_run_id,
+      createdAt: row.created_at
+    } as MessageRow);
+  }
+
+  public updateMessagePayload(id: string, payload: unknown): Message | null {
+    const result = this.sqlite
+      .prepare(`UPDATE messages SET payload = ? WHERE id = ?`)
+      .run(JSON.stringify(payload ?? {}), id);
+    if (result.changes === 0) {
+      return null;
+    }
+    return this.getMessage(id);
+  }
+
   public listMessages(
     threadId: string,
     opts: { after?: string; limit?: number } = {}
   ): Message[] {
-    // Raw SQL keeps the `after` + `limit` path simple without drizzle op juggling.
-    const clauses: string[] = ["thread_id = ?"];
-    const params: unknown[] = [threadId];
-    if (opts.after) {
-      clauses.push("created_at > ?");
-      params.push(opts.after);
-    }
+    // Raw SQL keeps the cursor + limit path simple without drizzle op juggling.
     const limit = Math.max(1, Math.min(opts.limit ?? 500, 500));
+    if (!opts.after) {
+      const rows = this.sqlite
+        .prepare(
+          `SELECT id, thread_id, sender_type, sender_agent_id, kind, payload,
+                  consumed_by_run_id, created_at
+           FROM messages
+           WHERE thread_id = ?
+           ORDER BY created_at DESC, rowid DESC
+           LIMIT ?`
+        )
+        .all(threadId, limit) as Array<{
+        id: string;
+        thread_id: string;
+        sender_type: string;
+        sender_agent_id: string | null;
+        kind: string;
+        payload: string;
+        consumed_by_run_id: string | null;
+        created_at: string;
+      }>;
+      return rows.reverse().map((row) =>
+        rowToMessage({
+          id: row.id,
+          threadId: row.thread_id,
+          senderType: row.sender_type,
+          senderAgentId: row.sender_agent_id,
+          kind: row.kind,
+          payload: row.payload,
+          consumedByRunId: row.consumed_by_run_id,
+          createdAt: row.created_at
+        } as MessageRow)
+      );
+    }
+
+    const clauses: string[] = ["thread_id = ?", "created_at > ?"];
+    const params: unknown[] = [threadId, opts.after];
     const rows = this.sqlite
       .prepare(
         `SELECT id, thread_id, sender_type, sender_agent_id, kind, payload,

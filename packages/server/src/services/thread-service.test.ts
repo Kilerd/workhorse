@@ -137,6 +137,30 @@ describe("ThreadService — messages", () => {
     expect(listed[0]?.payload).toEqual({ text: "one" });
   });
 
+  it("returns the latest 500 messages by default when a thread exceeds the window", async () => {
+    const { service, workspace } = await setup();
+    const thread = service.createThread({
+      workspaceId: workspace.id,
+      kind: "coordinator"
+    });
+    const created = Array.from({ length: 505 }, (_, index) =>
+      service.appendMessage({
+        threadId: thread.id,
+        sender: { type: "agent", agentId: "wa-1" },
+        kind: "chat",
+        payload: { text: `chunk-${index}` }
+      })
+    );
+
+    const listed = service.listMessages(thread.id);
+
+    expect(listed).toHaveLength(500);
+    expect(listed.map((message) => message.id)).toEqual(
+      created.slice(5).map((message) => message.id)
+    );
+    expect(listed.at(-1)?.payload).toEqual({ text: "chunk-504" });
+  });
+
   it("listPendingMessages returns user messages with consumed_by_run_id IS NULL", async () => {
     const { service, workspace } = await setup();
     const thread = service.createThread({
@@ -172,6 +196,43 @@ describe("ThreadService — messages", () => {
     const all = service.listMessages(thread.id);
     const u1Row = all.find((m) => m.id === u1.id);
     expect(u1Row?.consumedByRunId).toBe("run-1");
+  });
+
+  it("appends streamed text onto an existing chat message", async () => {
+    const { service, events, workspace } = await setup();
+    const thread = service.createThread({
+      workspaceId: workspace.id,
+      kind: "coordinator"
+    });
+    const message = service.appendMessage({
+      threadId: thread.id,
+      sender: { type: "agent", agentId: "wa-1" },
+      kind: "chat",
+      payload: { text: "work", outputId: "turn-1:item-1" }
+    });
+    events.published.length = 0;
+
+    const updated = service.appendToMessageText(message.id, "horse");
+
+    expect(updated.payload).toEqual({
+      text: "workhorse",
+      outputId: "turn-1:item-1"
+    });
+    expect(service.listMessages(thread.id)).toHaveLength(1);
+    expect(service.listMessages(thread.id)[0]?.payload).toEqual({
+      text: "workhorse",
+      outputId: "turn-1:item-1"
+    });
+    expect(events.published).toEqual([
+      expect.objectContaining({
+        type: "thread.message",
+        threadId: thread.id,
+        message: expect.objectContaining({
+          id: message.id,
+          payload: { text: "workhorse", outputId: "turn-1:item-1" }
+        })
+      })
+    ]);
   });
 });
 

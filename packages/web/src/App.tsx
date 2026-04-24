@@ -11,6 +11,7 @@ import {
   useParams
 } from "react-router-dom";
 import type {
+  Message,
   RunLogEntry,
   ServerEvent,
   Thread,
@@ -36,6 +37,7 @@ import { api } from "@/lib/api";
 import { useWorkspaceSocket } from "@/hooks/useWorkspaceSocket";
 import { resolveRunSelectionAfterStart } from "@/lib/run-selection";
 import { isBoardVisibleColumn, type DisplayTaskColumn } from "@/lib/task-view";
+import { upsertThreadMessage } from "@/lib/thread-messages";
 import { queryClient } from "@/lib/query";
 import { applyTheme, getPreferredTheme, type ThemeMode } from "@/lib/theme";
 import { Button } from "@/components/ui/button";
@@ -147,9 +149,17 @@ function ReactAppShell() {
           queryClient.invalidateQueries({ queryKey: threadQueryKeys.lists() });
           break;
         case "thread.message":
-          queryClient.invalidateQueries({
-            queryKey: threadQueryKeys.messages(event.threadId)
-          });
+          if (queryClient.getQueryState<Message[]>(threadQueryKeys.messages(event.threadId))?.data) {
+            queryClient.setQueryData<Message[]>(
+              threadQueryKeys.messages(event.threadId),
+              (current) =>
+                current ? upsertThreadMessage(current, event.message) : current
+            );
+          } else {
+            queryClient.invalidateQueries({
+              queryKey: threadQueryKeys.messages(event.threadId)
+            });
+          }
           break;
         default:
           break;

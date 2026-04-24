@@ -8,6 +8,8 @@ import { createFrontendHandler } from "./frontend.js";
 import { createMcpHttpHandler } from "./mcp/mcp-http-handler.js";
 import { McpNonceRegistry } from "./mcp/nonce-registry.js";
 import { StateStore } from "./persistence/state-store.js";
+import { CodexAcpCoordinatorRunner } from "./runners/codex-acp-coordinator-runner.js";
+import { CodexAppServerManager } from "./runners/codex-app-server-manager.js";
 import { ClaudeCliCoordinatorRunner } from "./runners/claude-cli-coordinator-runner.js";
 import { CoordinatorRunnerRegistry } from "./runners/coordinator-runner-registry.js";
 import { NoopCoordinatorRunner } from "./runners/noop-coordinator-runner.js";
@@ -22,7 +24,8 @@ import { EventBus } from "./ws/event-bus.js";
 async function main(): Promise<void> {
   const store = new StateStore(DATA_DIR);
   const events = new EventBus();
-  const service = new BoardService(store, events);
+  const codexAppServer = new CodexAppServerManager();
+  const service = new BoardService(store, events, { codexAppServer });
   const threads = new ThreadService(store, events);
   const plans = new PlanService(store, events);
   const tasks = new TaskService(store, threads, events);
@@ -37,6 +40,7 @@ async function main(): Promise<void> {
       mcpUrl: `http://127.0.0.1:${DEFAULT_PORT}/mcp`
     })
   );
+  runners.register("codex", new CodexAcpCoordinatorRunner(codexAppServer));
   const orchestrator = new Orchestrator({
     store,
     events,

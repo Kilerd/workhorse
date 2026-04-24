@@ -11,6 +11,8 @@ import {
 } from "@/hooks/useThreads";
 import { readErrorMessage } from "@/lib/error-message";
 import { formatRelativeTime } from "@/lib/format";
+import { renderMarkdownBlock } from "@/lib/markdown";
+import { mergeAdjacentAgentChatMessages } from "@/lib/thread-messages";
 import { cn } from "@/lib/utils";
 
 import { PlanDraftCard } from "./PlanDraftCard";
@@ -36,6 +38,10 @@ export function ThreadView({ threadId, thread, className }: Props) {
       (a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt)
     );
   }, [messagesQuery.data]);
+  const displayMessages = useMemo(
+    () => mergeAdjacentAgentChatMessages(ordered),
+    [ordered]
+  );
 
   const pendingCount = useMemo(
     () => ordered.filter((m) => isUserFacing(m) && !m.consumedByRunId).length,
@@ -73,7 +79,7 @@ export function ThreadView({ threadId, thread, className }: Props) {
         </div>
       ) : (
         <div className="grid min-h-0 flex-1 auto-rows-max content-start gap-2 overflow-y-auto pr-1">
-          {ordered.map((msg) => (
+          {displayMessages.map((msg) => (
             <MessageRow key={msg.id} message={msg} threadId={threadId} />
           ))}
         </div>
@@ -214,24 +220,27 @@ function readText(payload: unknown): string {
   return "";
 }
 
-function ChatRow({ message }: { message: Message }) {
+export function ChatRow({ message }: { message: Message }) {
   const text = readText(message.payload);
   const isUser = message.sender.type === "user";
+
+  if (!isUser) {
+    return (
+      <article className="w-full max-w-[min(54rem,96%)] px-1 py-1 text-sm leading-[1.55]">
+        {renderMarkdownBlock(text, { className: "gap-2" })}
+      </article>
+    );
+  }
+
   return (
-    <article
-      className={cn(
-        "grid gap-1.5",
-        isUser ? "ml-auto max-w-[min(34rem,92%)] justify-items-end" : "max-w-[min(48rem,94%)]"
-      )}
-    >
-      <Meta message={message} align={isUser ? "end" : undefined} />
+    <article className="ml-auto grid max-w-[min(34rem,92%)] justify-items-end">
       <div
         className={cn(
           "rounded-lg border border-border bg-[var(--panel)] px-3 py-2 text-sm leading-[1.55]",
-          isUser && "border-amber-400/30"
+          "border-amber-400/30"
         )}
       >
-        <p className="m-0 whitespace-pre-wrap break-words">{text}</p>
+        {renderMarkdownBlock(text, { className: "gap-2" })}
       </div>
     </article>
   );

@@ -134,7 +134,7 @@ export class ClaudeCliCoordinatorRunner implements CoordinatorRunner {
         parsed = JSON.parse(trimmed);
       } catch {
         // Unknown lines: surface as text so nothing is silently dropped.
-        emitChunk({ type: "text", text: line });
+        emitChunk({ type: "text", text: line, mode: "message" });
         return;
       }
       if (!parsed || typeof parsed !== "object") return;
@@ -150,7 +150,14 @@ export class ClaudeCliCoordinatorRunner implements CoordinatorRunner {
 
       if (type === "assistant") {
         const text = extractAssistantText(event);
-        if (text) emitChunk({ type: "text", text });
+        if (text) {
+          emitChunk({
+            type: "text",
+            text,
+            mode: "message",
+            outputId: extractAssistantOutputId(event)
+          });
+        }
         return;
       }
 
@@ -160,7 +167,7 @@ export class ClaudeCliCoordinatorRunner implements CoordinatorRunner {
         if (textEmitted) return;
         const resultText =
           typeof event.result === "string" ? event.result : "";
-        if (resultText) emitChunk({ type: "text", text: resultText });
+        if (resultText) emitChunk({ type: "text", text: resultText, mode: "message" });
       }
     };
 
@@ -179,11 +186,15 @@ export class ClaudeCliCoordinatorRunner implements CoordinatorRunner {
     child.stderr.on("data", (chunk: Buffer) => {
       // Route stderr as text so orchestrators / UI see failures.
       const text = chunk.toString("utf8");
-      if (text.trim()) emitChunk({ type: "text", text });
+      if (text.trim()) emitChunk({ type: "text", text, mode: "message" });
     });
 
     child.on("error", (error) => {
-      emitChunk({ type: "text", text: `[claude-coord] ${error.message}` });
+      emitChunk({
+        type: "text",
+        text: `[claude-coord] ${error.message}`,
+        mode: "message"
+      });
       finish({ status: "failed", error: error.message });
     });
 
@@ -302,4 +313,11 @@ function extractAssistantText(event: Record<string, unknown>): string {
     })
     .join("\n\n")
     .trim();
+}
+
+function extractAssistantOutputId(event: Record<string, unknown>): string | undefined {
+  const message = event.message;
+  if (!message || typeof message !== "object") return undefined;
+  const id = (message as { id?: unknown }).id;
+  return typeof id === "string" && id ? id : undefined;
 }
