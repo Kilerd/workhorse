@@ -49,6 +49,9 @@ export function buildCoordinatorSystemPrompt(
     "- Code is a tool server. Decide *when* to call tools; do not invent state-machine shortcuts."
   );
   lines.push(
+    "- Use start_task when a task should begin work; running/review columns are lifecycle state and must not be set directly."
+  );
+  lines.push(
     "- Every user message is a turn in this session. Pending user messages are batched between runs; act on them together."
   );
   lines.push(

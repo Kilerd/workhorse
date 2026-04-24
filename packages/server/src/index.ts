@@ -34,6 +34,7 @@ async function main(): Promise<void> {
     tasks,
     plans,
     threads,
+    startTask: (taskId) => service.startTask(taskId),
     requestTaskReview: (taskId) => service.requestTaskReview(taskId)
   });
   const mcpNonces = new McpNonceRegistry();

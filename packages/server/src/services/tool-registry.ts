@@ -183,6 +183,7 @@ export interface ToolRegistryDeps {
   tasks: TaskService;
   plans: PlanService;
   threads: ThreadService;
+  startTask?(taskId: string): Promise<{ task: Task; run: Run }>;
   requestTaskReview?(taskId: string): Promise<{ task: Task; run: Run }>;
 }
 
@@ -194,7 +195,7 @@ export interface ToolRegistryDeps {
 export function buildDefaultToolRegistry(
   deps: ToolRegistryDeps
 ): ToolRegistry {
-  const { store, tasks, plans, threads, requestTaskReview } = deps;
+  const { store, tasks, plans, threads, startTask, requestTaskReview } = deps;
   const registry = new ToolRegistry({
     onToolStarted: ({ toolUseId, name, input, ctx }) => {
       threads.appendMessage({
@@ -296,6 +297,26 @@ export function buildDefaultToolRegistry(
       return { task };
     }
   });
+
+  if (startTask) {
+    registry.register<Record<string, unknown>, { task: Task; run: Run }>({
+      name: "start_task",
+      description:
+        "Start a task through the run lifecycle. Use this instead of move_task when work should begin; it creates a real run and lets the lifecycle move the task to running.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          taskId: { type: "string" }
+        },
+        required: ["taskId"]
+      },
+      handler: async (input) => {
+        const obj = asRecord(input, "start_task");
+        const taskId = requireString(obj, "taskId", "start_task");
+        return startTask(taskId);
+      }
+    });
+  }
 
   registry.register<Record<string, unknown>, { task: Task }>({
     name: "annotate_task",

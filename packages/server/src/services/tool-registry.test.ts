@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { AccountAgent, Workspace } from "@workhorse/contracts";
+import type { AccountAgent, Run, Task, Workspace } from "@workhorse/contracts";
 
 import { StateStore } from "../persistence/state-store.js";
 import { EventBus } from "../ws/event-bus.js";
@@ -173,6 +173,53 @@ describe("ToolRegistry — create_task", () => {
     await expect(tools.invoke("create_task", {}, ctx)).rejects.toThrow(
       /title/i
     );
+  });
+});
+
+describe("ToolRegistry — start_task", () => {
+  it("delegates execution starts to the run lifecycle", async () => {
+    const base = await setup();
+    let startedTaskId: string | undefined;
+    const tools = buildDefaultToolRegistry({
+      store: base.store,
+      tasks: base.tasks,
+      plans: base.plans,
+      threads: base.threads,
+      startTask: async (taskId) => {
+        startedTaskId = taskId;
+        const task = base.tasks.requireTask(taskId);
+        const now = new Date().toISOString();
+        return {
+          task: { ...task, column: "running" },
+          run: {
+            id: "run-1",
+            taskId,
+            status: "running",
+            runnerType: "codex",
+            command: "codex",
+            startedAt: now
+          }
+        };
+      }
+    });
+    const { task } = await base.tasks.createTask({
+      workspaceId: base.workspaceId,
+      title: "run me"
+    });
+
+    const out = (await tools.invoke(
+      "start_task",
+      { taskId: task.id },
+      base.ctx
+    )) as { task: Task; run: Run };
+
+    expect(startedTaskId).toBe(task.id);
+    expect(out.task.column).toBe("running");
+    expect(out.run).toMatchObject({
+      taskId: task.id,
+      status: "running",
+      runnerType: "codex"
+    });
   });
 });
 
