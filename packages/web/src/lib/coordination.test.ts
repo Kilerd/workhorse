@@ -18,8 +18,6 @@ function makeTask(overrides: Partial<DisplayTask>): DisplayTask {
     workspaceId: "ws-1",
     column: "todo",
     order: 1024,
-    runnerType: "codex",
-    runnerConfig: { type: "codex", prompt: "Do the work." },
     dependencies: [],
     worktree: {
       path: undefined,

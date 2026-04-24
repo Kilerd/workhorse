@@ -45,11 +45,6 @@ const TASK: Task = {
   workspaceId: WORKSPACE.id,
   column: "todo",
   order: 0,
-  runnerType: "codex",
-  runnerConfig: {
-    type: "codex",
-    prompt: "Implement the UI change."
-  },
   dependencies: [],
   worktree: {
     baseRef: "origin/main",

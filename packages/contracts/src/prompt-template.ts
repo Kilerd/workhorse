@@ -254,7 +254,7 @@ export const WORKSPACE_PROMPT_TEMPLATE_DEFINITIONS = {
   review: {
     label: "Review Prompt",
     description:
-      "Used by the built-in Claude reviewer for manual and automatic review runs.",
+      "Used by the built-in Claude reviewer for explicitly requested review runs.",
     defaultTemplate: DEFAULT_REVIEW_TEMPLATE,
     variables: [
       {

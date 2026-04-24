@@ -24,13 +24,6 @@ function createClaudeContext(
       workspaceId: "workspace-1",
       column: "review",
       order: 1024,
-      runnerType: "claude",
-      runnerConfig: {
-        type: "claude",
-        prompt: "Review the changes for regressions.",
-        agent: "code-reviewer",
-        permissionMode: "default"
-      },
       dependencies: [],
       taskKind: "user",
       worktree: {
@@ -41,6 +34,12 @@ function createClaudeContext(
       },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
+    },
+    runnerConfig: {
+      type: "claude",
+      prompt: "Review the changes for regressions.",
+      agent: "code-reviewer",
+      permissionMode: "default"
     },
     workspace: {
       id: "workspace-1",

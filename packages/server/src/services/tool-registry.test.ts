@@ -35,7 +35,7 @@ function makeAgent(overrides: Partial<AccountAgent> = {}): AccountAgent {
     id: "agent-a",
     name: "Frontend worker",
     description: "Builds user-facing UI",
-    runnerConfig: { type: "shell", command: "true" },
+    runnerConfig: { type: "codex", prompt: "Do the assigned work." },
     createdAt: now,
     updatedAt: now,
     ...overrides

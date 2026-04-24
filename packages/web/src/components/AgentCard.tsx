@@ -23,8 +23,6 @@ function describeModelConfig(model: ModelConfig | undefined): string | null {
 
 function describeRunner(agent: AccountAgent): string {
   switch (agent.runnerConfig.type) {
-    case "shell":
-      return agent.runnerConfig.command;
     case "claude": {
       const modelLabel = describeModelConfig(agent.runnerConfig.model);
       return modelLabel ? `claude · ${modelLabel}` : "claude";

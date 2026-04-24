@@ -3,6 +3,7 @@ import type {
   AgentSession,
   Message,
   ServerEvent,
+  Task,
   Thread,
   Workspace
 } from "@workhorse/contracts";
@@ -450,6 +451,49 @@ export class Orchestrator {
       await this.onThreadMessage(plan.threadId);
       return;
     }
+
+    if (event.type === "run.finished") {
+      const thread = this.findCoordinatorThreadForTask(event.task);
+      if (!thread) return;
+      this.injectSystemEvent(thread.id, {
+        kind: "run.finished",
+        taskId: event.taskId,
+        taskTitle: event.task.title,
+        taskColumn: event.task.column,
+        assigneeAgentId: event.task.assigneeAgentId,
+        runId: event.run.id,
+        runStatus: event.run.status,
+        runnerType: event.run.runnerType,
+        trigger: event.run.metadata?.trigger,
+        reviewVerdict: event.run.metadata?.reviewVerdict,
+        reviewSummary: event.run.metadata?.reviewSummary,
+        pullRequestUrl: event.task.pullRequestUrl
+      });
+      await this.onThreadMessage(thread.id);
+      return;
+    }
+  }
+
+  private findCoordinatorThreadForTask(task: Task): Thread | undefined {
+    if (task.planId) {
+      const plan = this.plans.getPlan(task.planId);
+      if (plan) {
+        const thread = this.threads.getThread(plan.threadId);
+        if (thread && !thread.archivedAt && thread.coordinatorAgentId) {
+          return thread;
+        }
+      }
+    }
+
+    return this.threads
+      .listThreads(task.workspaceId)
+      .filter(
+        (thread) =>
+          thread.kind === "coordinator" &&
+          !thread.archivedAt &&
+          Boolean(thread.coordinatorAgentId)
+      )
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
   }
 
   private injectSystemEvent(threadId: string, payload: unknown): void {

@@ -55,11 +55,6 @@ describe("useLiveLog helpers", () => {
         description: "",
         workspaceId: "workspace-1",
         column: "review",
-        runnerType: "codex",
-        runnerConfig: {
-          type: "codex",
-          prompt: "Fix the bug"
-        },
         order: 1024,
         worktree: {
           path: "/tmp/worktree",

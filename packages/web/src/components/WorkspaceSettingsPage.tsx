@@ -466,11 +466,6 @@ function describeModelConfig(model: ModelConfig | undefined): string | null {
 
 function describeRunnerConfig(config: RunnerConfig): { label: string; detail: string } {
   switch (config.type) {
-    case "shell":
-      return {
-        label: "Shell runner",
-        detail: config.command
-      };
     case "claude": {
       const detail = [
         config.agent?.trim() ? `agent ${config.agent.trim()}` : null,

@@ -55,60 +55,6 @@ export class AiReviewService {
     return trigger === "manual_claude_review" || trigger === "auto_ai_review";
   }
 
-  public shouldAutoTriggerAiReview(
-    task: Task,
-    run: Run,
-    status: Run["status"]
-  ): boolean {
-    if (status !== "succeeded") {
-      return false;
-    }
-
-    if (task.runnerType === "shell") {
-      return false;
-    }
-
-    if (this.isAiReviewTrigger(run.metadata?.trigger)) {
-      return false;
-    }
-
-    if (run.metadata?.trigger === "gh_pr_monitor") {
-      return false;
-    }
-
-    const workspace = this.deps.store
-      .listWorkspaces()
-      .find((entry) => entry.id === task.workspaceId);
-    return Boolean(workspace?.isGitRepo);
-  }
-
-  public async triggerAiReview(task: Task): Promise<void> {
-    try {
-      const workspace = this.deps.store
-        .listWorkspaces()
-        .find((entry) => entry.id === task.workspaceId);
-      if (!workspace) {
-        return;
-      }
-
-      const refreshedTask = await this.deps.refreshPullRequestSnapshot(
-        task,
-        workspace
-      );
-      await this.deps.startTask(refreshedTask.id, {
-        allowedColumns: ["running"],
-        targetColumn: "running",
-        runnerConfigOverride: this.buildManualReviewRunnerConfig(refreshedTask, workspace),
-        runMetadata: {
-          ...this.buildManualReviewRunMetadata(refreshedTask),
-          trigger: "auto_ai_review"
-        }
-      });
-    } catch {
-      await this.moveTaskToColumnOnFailure(task.id, "review");
-    }
-  }
-
   public async triggerReworkFromReview(task: Task, reviewRun: Run): Promise<void> {
     try {
       const workspace = this.deps.store

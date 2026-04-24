@@ -3,6 +3,8 @@ import type {
   RunLogKind,
   RunLogStream,
   RunStatus,
+  RunnerConfig,
+  RunnerType,
   Task,
   Workspace
 } from "@workhorse/contracts";
@@ -11,6 +13,7 @@ export interface RunnerStartContext {
   run: Run;
   previousRun?: Run;
   task: Task;
+  runnerConfig: RunnerConfig;
   workspace: Workspace;
   inputText?: string;
   resumeSessionId?: string;
@@ -41,7 +44,7 @@ export interface RunnerControl {
 }
 
 export interface RunnerAdapter {
-  readonly type: "claude" | "codex" | "shell";
+  readonly type: RunnerType;
   start(
     context: RunnerStartContext,
     hooks: RunnerLifecycleHooks

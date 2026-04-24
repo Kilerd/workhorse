@@ -39,7 +39,7 @@ function makeAgent(): WorkspaceAgent {
     description: "Builds product settings UI",
     workspaceDescription: "Own workspace-agent description editing and tests.",
     role: "worker",
-    runnerConfig: { type: "shell", command: "true" },
+    runnerConfig: { type: "codex", prompt: "Do the assigned work." },
     createdAt: now,
     updatedAt: now
   };

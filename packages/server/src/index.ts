@@ -29,7 +29,13 @@ async function main(): Promise<void> {
   const threads = new ThreadService(store, events);
   const plans = new PlanService(store, events);
   const tasks = new TaskService(store, threads, events);
-  const tools = buildDefaultToolRegistry({ store, tasks, plans, threads });
+  const tools = buildDefaultToolRegistry({
+    store,
+    tasks,
+    plans,
+    threads,
+    requestTaskReview: (taskId) => service.requestTaskReview(taskId)
+  });
   const mcpNonces = new McpNonceRegistry();
   const mcpHandler = createMcpHttpHandler(tools, mcpNonces);
   const runners = new CoordinatorRunnerRegistry(new NoopCoordinatorRunner());

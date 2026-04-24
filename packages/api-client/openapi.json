@@ -2345,9 +2345,6 @@
           },
           "codex": {
             "type": "number"
-          },
-          "shell": {
-            "type": "number"
           }
         },
         "required": [],
@@ -2597,12 +2594,6 @@
           "order": {
             "type": "number"
           },
-          "runnerType": {
-            "$ref": "#/components/schemas/RunnerType"
-          },
-          "runnerConfig": {
-            "$ref": "#/components/schemas/RunnerConfig"
-          },
           "dependencies": {
             "type": "array",
             "items": {
@@ -2717,8 +2708,6 @@
           "workspaceId",
           "column",
           "order",
-          "runnerType",
-          "runnerConfig",
           "dependencies",
           "worktree",
           "createdAt",
@@ -2762,250 +2751,6 @@
               "archived"
             ]
           }
-        ]
-      },
-      "RunnerType": {
-        "oneOf": [
-          {
-            "enum": [
-              "claude"
-            ]
-          },
-          {
-            "enum": [
-              "codex"
-            ]
-          },
-          {
-            "enum": [
-              "shell"
-            ]
-          }
-        ]
-      },
-      "RunnerConfig": {
-        "oneOf": [
-          {
-            "$ref": "#/components/schemas/ShellRunnerConfig"
-          },
-          {
-            "$ref": "#/components/schemas/ClaudeRunnerConfig"
-          },
-          {
-            "$ref": "#/components/schemas/CodexRunnerConfig"
-          }
-        ],
-        "discriminator": {
-          "propertyName": "type",
-          "mapping": {
-            "shell": "#/components/schemas/ShellRunnerConfig",
-            "claude": "#/components/schemas/ClaudeRunnerConfig",
-            "codex": "#/components/schemas/CodexRunnerConfig"
-          }
-        }
-      },
-      "ShellRunnerConfig": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "enum": [
-              "shell"
-            ]
-          },
-          "command": {
-            "type": "string"
-          },
-          "env": {
-            "$ref": "#/components/schemas/Recordstringstring"
-          }
-        },
-        "required": [
-          "type",
-          "command"
-        ]
-      },
-      "Recordstringstring": {
-        "type": "object",
-        "properties": {},
-        "required": [],
-        "description": "Construct a type with a set of properties K of type T",
-        "additionalProperties": {
-          "type": "string"
-        }
-      },
-      "ClaudeRunnerConfig": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "enum": [
-              "claude"
-            ]
-          },
-          "prompt": {
-            "type": "string"
-          },
-          "agent": {
-            "type": "string"
-          },
-          "model": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/BuiltinModelConfig"
-              },
-              {
-                "$ref": "#/components/schemas/CustomModelConfig"
-              }
-            ],
-            "discriminator": {
-              "propertyName": "mode",
-              "mapping": {
-                "builtin": "#/components/schemas/BuiltinModelConfig",
-                "custom": "#/components/schemas/CustomModelConfig"
-              }
-            }
-          },
-          "permissionMode": {
-            "oneOf": [
-              {
-                "enum": [
-                  "plan"
-                ]
-              },
-              {
-                "enum": [
-                  "acceptEdits"
-                ]
-              },
-              {
-                "enum": [
-                  "bypassPermissions"
-                ]
-              },
-              {
-                "enum": [
-                  "default"
-                ]
-              },
-              {
-                "enum": [
-                  "dontAsk"
-                ]
-              }
-            ]
-          },
-          "env": {
-            "$ref": "#/components/schemas/Recordstringstring"
-          }
-        },
-        "required": [
-          "type",
-          "prompt"
-        ]
-      },
-      "BuiltinModelConfig": {
-        "type": "object",
-        "properties": {
-          "mode": {
-            "enum": [
-              "builtin"
-            ]
-          },
-          "id": {
-            "type": "string"
-          },
-          "reasoningEffort": {
-            "oneOf": [
-              {
-                "enum": [
-                  "low"
-                ]
-              },
-              {
-                "enum": [
-                  "medium"
-                ]
-              },
-              {
-                "enum": [
-                  "high"
-                ]
-              },
-              {
-                "enum": [
-                  "xhigh"
-                ]
-              }
-            ]
-          }
-        },
-        "required": [
-          "mode",
-          "id"
-        ]
-      },
-      "CustomModelConfig": {
-        "type": "object",
-        "properties": {
-          "mode": {
-            "enum": [
-              "custom"
-            ]
-          },
-          "id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "mode",
-          "id"
-        ]
-      },
-      "CodexRunnerConfig": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "enum": [
-              "codex"
-            ]
-          },
-          "prompt": {
-            "type": "string"
-          },
-          "model": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/BuiltinModelConfig"
-              },
-              {
-                "$ref": "#/components/schemas/CustomModelConfig"
-              }
-            ],
-            "discriminator": {
-              "propertyName": "mode",
-              "mapping": {
-                "builtin": "#/components/schemas/BuiltinModelConfig",
-                "custom": "#/components/schemas/CustomModelConfig"
-              }
-            }
-          },
-          "approvalMode": {
-            "oneOf": [
-              {
-                "enum": [
-                  "default"
-                ]
-              },
-              {
-                "enum": [
-                  "auto"
-                ]
-              }
-            ]
-          }
-        },
-        "required": [
-          "type",
-          "prompt"
         ]
       },
       "TaskPullRequest": {
@@ -3190,6 +2935,29 @@
             ]
           }
         ]
+      },
+      "RunnerType": {
+        "oneOf": [
+          {
+            "enum": [
+              "claude"
+            ]
+          },
+          {
+            "enum": [
+              "codex"
+            ]
+          }
+        ]
+      },
+      "Recordstringstring": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "description": "Construct a type with a set of properties K of type T",
+        "additionalProperties": {
+          "type": "string"
+        }
       },
       "UpdateSettingsBody": {
         "type": "object",
@@ -3388,18 +3156,13 @@
           "order": {
             "type": "number"
           },
-          "runnerType": {
-            "$ref": "#/components/schemas/RunnerType"
-          },
-          "runnerConfig": {
-            "$ref": "#/components/schemas/RunnerConfig"
+          "assigneeAgentId": {
+            "type": "string"
           }
         },
         "required": [
           "title",
-          "workspaceId",
-          "runnerType",
-          "runnerConfig"
+          "workspaceId"
         ]
       },
       "ApproveTaskParams": {
@@ -3513,45 +3276,8 @@
           "order": {
             "type": "number"
           },
-          "runnerType": {
-            "oneOf": [
-              {
-                "enum": [
-                  "claude"
-                ]
-              },
-              {
-                "enum": [
-                  "codex"
-                ]
-              },
-              {
-                "enum": [
-                  "shell"
-                ]
-              }
-            ]
-          },
-          "runnerConfig": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/ShellRunnerConfig"
-              },
-              {
-                "$ref": "#/components/schemas/ClaudeRunnerConfig"
-              },
-              {
-                "$ref": "#/components/schemas/CodexRunnerConfig"
-              }
-            ],
-            "discriminator": {
-              "propertyName": "type",
-              "mapping": {
-                "shell": "#/components/schemas/ShellRunnerConfig",
-                "claude": "#/components/schemas/ClaudeRunnerConfig",
-                "codex": "#/components/schemas/CodexRunnerConfig"
-              }
-            }
+          "assigneeAgentId": {
+            "type": "string"
           }
         },
         "required": []
@@ -4817,6 +4543,198 @@
         ],
         "description": "An account-level agent definition. Agents are created once and can be\nmounted to multiple workspaces with different roles."
       },
+      "RunnerConfig": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/ClaudeRunnerConfig"
+          },
+          {
+            "$ref": "#/components/schemas/CodexRunnerConfig"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": {
+            "claude": "#/components/schemas/ClaudeRunnerConfig",
+            "codex": "#/components/schemas/CodexRunnerConfig"
+          }
+        }
+      },
+      "ClaudeRunnerConfig": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "enum": [
+              "claude"
+            ]
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "model": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BuiltinModelConfig"
+              },
+              {
+                "$ref": "#/components/schemas/CustomModelConfig"
+              }
+            ],
+            "discriminator": {
+              "propertyName": "mode",
+              "mapping": {
+                "builtin": "#/components/schemas/BuiltinModelConfig",
+                "custom": "#/components/schemas/CustomModelConfig"
+              }
+            }
+          },
+          "permissionMode": {
+            "oneOf": [
+              {
+                "enum": [
+                  "plan"
+                ]
+              },
+              {
+                "enum": [
+                  "acceptEdits"
+                ]
+              },
+              {
+                "enum": [
+                  "bypassPermissions"
+                ]
+              },
+              {
+                "enum": [
+                  "default"
+                ]
+              },
+              {
+                "enum": [
+                  "dontAsk"
+                ]
+              }
+            ]
+          },
+          "env": {
+            "$ref": "#/components/schemas/Recordstringstring"
+          }
+        },
+        "required": [
+          "type",
+          "prompt"
+        ]
+      },
+      "BuiltinModelConfig": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "enum": [
+              "builtin"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "reasoningEffort": {
+            "oneOf": [
+              {
+                "enum": [
+                  "low"
+                ]
+              },
+              {
+                "enum": [
+                  "medium"
+                ]
+              },
+              {
+                "enum": [
+                  "high"
+                ]
+              },
+              {
+                "enum": [
+                  "xhigh"
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "mode",
+          "id"
+        ]
+      },
+      "CustomModelConfig": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "enum": [
+              "custom"
+            ]
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "id"
+        ]
+      },
+      "CodexRunnerConfig": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "enum": [
+              "codex"
+            ]
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "model": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BuiltinModelConfig"
+              },
+              {
+                "$ref": "#/components/schemas/CustomModelConfig"
+              }
+            ],
+            "discriminator": {
+              "propertyName": "mode",
+              "mapping": {
+                "builtin": "#/components/schemas/BuiltinModelConfig",
+                "custom": "#/components/schemas/CustomModelConfig"
+              }
+            }
+          },
+          "approvalMode": {
+            "oneOf": [
+              {
+                "enum": [
+                  "default"
+                ]
+              },
+              {
+                "enum": [
+                  "auto"
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "prompt"
+        ]
+      },
       "WorkspaceAgent": {
         "type": "object",
         "properties": {
@@ -4900,9 +4818,6 @@
           "runnerConfig": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/ShellRunnerConfig"
-              },
-              {
                 "$ref": "#/components/schemas/ClaudeRunnerConfig"
               },
               {
@@ -4912,7 +4827,6 @@
             "discriminator": {
               "propertyName": "type",
               "mapping": {
-                "shell": "#/components/schemas/ShellRunnerConfig",
                 "claude": "#/components/schemas/ClaudeRunnerConfig",
                 "codex": "#/components/schemas/CodexRunnerConfig"
               }

@@ -7,7 +7,7 @@ export type TaskColumn =
   | "done"
   | "archived";
 
-export type RunnerType = "claude" | "codex" | "shell";
+export type RunnerType = "claude" | "codex";
 
 export type RunStatus =
   | "queued"
@@ -186,12 +186,6 @@ export const CODEX_REASONING_EFFORTS: readonly ReasoningEffort[] = [
   "xhigh"
 ];
 
-export interface ShellRunnerConfig {
-  type: "shell";
-  command: string;
-  env?: Record<string, string>;
-}
-
 export type ClaudePermissionMode =
   | "acceptEdits"
   | "bypassPermissions"
@@ -215,7 +209,7 @@ export interface CodexRunnerConfig {
   approvalMode?: "default" | "auto";
 }
 
-export type RunnerConfig = ShellRunnerConfig | ClaudeRunnerConfig | CodexRunnerConfig;
+export type RunnerConfig = ClaudeRunnerConfig | CodexRunnerConfig;
 
 export interface Task {
   id: string;
@@ -224,8 +218,6 @@ export interface Task {
   workspaceId: string;
   column: TaskColumn;
   order: number;
-  runnerType: RunnerType;
-  runnerConfig: RunnerConfig;
   /** Task IDs that must be "done" before this task can start */
   dependencies: string[];
   plan?: string;

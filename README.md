@@ -3,13 +3,13 @@
 ![Workhorse board screenshot](./workhorse-header.png)
 
 Workhorse is a local-first kanban runtime for engineering work across multiple repositories.
-It combines a multi-workspace board, AI and shell runners, Git worktrees, realtime logs, and PR-aware review automation in one app that runs entirely on your machine.
+It combines a multi-workspace board, assignable AI agents, Git worktrees, realtime logs, and PR-aware review tools in one app that runs entirely on your machine.
 
 ## Why Workhorse
 
 - Run engineering tasks for multiple local workspaces from one board instead of juggling terminal tabs and ad hoc notes.
 - Keep everything local: state lives on disk, logs are persisted, and the app serves its own API and UI from a single local port.
-- Use the right executor for each task: `codex` for implementation, `claude` for planning or review, and `shell` for deterministic commands.
+- Assign each task to a mounted workspace agent; the agent's runner profile decides whether Codex or Claude executes the work.
 - Track work the way engineers actually work: each Git-backed task can target a base ref, create its own worktree and branch, and carry PR metadata through review.
 - Watch progress in realtime with live run output, sticky plans, run history, diffs, and PR status in the task detail view.
 - Close the review loop faster: merged PRs can move tasks to `done`, while behind/conflicting PRs, failing checks, or new review feedback can trigger follow-up runs automatically.
@@ -28,7 +28,7 @@ Optional but strongly recommended:
 - `gh` CLI authenticated with `gh auth login` for PR polling and publishing GitHub reviews
 - OpenRouter credentials if you want Workhorse to auto-generate task titles and worktree names when the title is left blank
 
-Workhorse still works without every integration enabled. For example, `shell` tasks do not require `codex`, `claude`, or `gh`.
+Workhorse still works without every integration enabled. For example, Codex-only workspaces do not require `claude` or `gh`.
 
 ## Quick Start
 
@@ -85,11 +85,11 @@ This is optional. If you always provide a task title yourself, OpenRouter is not
 
 ### 3. Create a task
 
-Each task belongs to a workspace and uses one runner type:
+Each task belongs to a workspace and is assigned to one mounted agent:
 
-- `codex`: implementation tasks that should edit code and finish the full engineering loop
-- `claude`: planning, analysis, or review-style tasks
-- `shell`: explicit commands such as `npm test`, `cargo test`, or custom scripts
+- Codex agents are best for implementation tasks that should edit code and finish the engineering loop.
+- Claude agents are best for planning, analysis, and explicit review runs.
+- Runner settings live on agents, not on tasks; a task only records the assigned agent.
 
 For Git workspaces, select the base ref that the task should branch from, typically `origin/main`.
 
@@ -113,17 +113,16 @@ For Git-backed tasks, Workhorse keeps the review stage connected to GitHub:
 - completed tasks can carry a PR URL and PR snapshot
 - merged PRs can automatically move tasks from `review` to `done`
 - behind/conflicting PRs, failing checks, unresolved conversations, or new review feedback can trigger a follow-up run from review
-- manual and automatic Claude review runs can publish a GitHub review through `gh`
+- explicitly requested Claude review runs can publish a GitHub review through `gh`
 
 If `gh` is not available or not authenticated, the board still works, but GitHub polling and review publication are skipped.
 
-## Runners At A Glance
+## Agents At A Glance
 
-| Runner | Best for | Requires |
+| Agent runner | Best for | Requires |
 | --- | --- | --- |
 | `codex` | feature work, code edits, end-to-end implementation tasks | `codex` CLI |
 | `claude` | planning, analysis, AI review, read-heavy workflows | `claude` CLI |
-| `shell` | tests, scripts, build steps, deterministic commands | local shell only |
 
 Workspace-level Codex settings let you choose the approval policy and sandbox mode used for future Codex runs in that workspace.
 
@@ -182,7 +181,7 @@ Useful environment variables:
 
 ### `codex` or `claude` is not found
 
-Install the corresponding CLI locally and make sure it is available on your `PATH`. Until then, use `shell` tasks for basic command execution.
+Install the corresponding CLI locally and make sure it is available on your `PATH`, or assign work to an agent backed by a runner that is available on this machine.
 
 ### PR features are missing
 

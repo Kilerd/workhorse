@@ -342,7 +342,7 @@ export function TaskDetailsPanel({
 
   const canSendInput =
     (isPlanPhaseActive && canSendPlanFeedback) ||
-    (task.runnerType === "codex" &&
+    ((activeRun?.runnerType === "codex" || viewedRun?.runnerType === "codex") &&
       ((activeRun?.id !== undefined && viewedRun?.id === activeRun.id) ||
         (!activeRun && task.column === "review" && viewedRun?.id === task.lastRunId)));
   const inputMode: "running" | "review" | "plan-feedback" | null =

@@ -2,6 +2,7 @@ import type {
   Run,
   RunLogEntry,
   RunnerConfig,
+  RunnerType,
   Task,
   Workspace
 } from "@workhorse/contracts";
@@ -30,7 +31,7 @@ export interface ActiveRun {
   control: RunnerControl;
   stopRequested: boolean;
   runId: string;
-  runnerType: Task["runnerType"];
+  runnerType: RunnerType;
   queue(work: () => Promise<void>): Promise<void>;
 }
 
@@ -54,6 +55,7 @@ export interface RunLifecycleDependencies {
   requireTask(taskId: string, source?: Task[]): Task;
   requireWorkspace(workspaceId: string): Workspace;
   requireRun(runId: string, source?: Run[]): Run;
+  resolveRunnerConfig(task: Task): RunnerConfig;
   topOrder(column: Task["column"], excludingTaskId?: string): number;
   canTaskStart(task: Task, source?: Task[]): boolean;
   evaluateScheduler(): Promise<void>;
@@ -77,7 +79,7 @@ export class RunLifecycleService {
     return this.activeRuns.size;
   }
 
-  public activeCountByRunner(type: Task["runnerType"]): number {
+  public activeCountByRunner(type: RunnerType): number {
     return [...this.activeRuns.values()].filter((entry) => entry.runnerType === type)
       .length;
   }
@@ -124,15 +126,11 @@ export class RunLifecycleService {
       };
     }
 
-    const executionTask = options.runnerConfigOverride
-      ? {
-          ...task,
-          runnerType: options.runnerConfigOverride.type,
-          runnerConfig: options.runnerConfigOverride
-        }
-      : task;
+    const runnerConfig =
+      options.runnerConfigOverride ?? this.deps.resolveRunnerConfig(task);
+    const runnerType = runnerConfig.type;
     const currentRuns = this.deps.store.listRuns();
-    const previousRunId = resolveContinuationCandidateRunId(task, executionTask.runnerType);
+    const previousRunId = resolveContinuationCandidateRunId(task, runnerType);
     const previousRunEntry =
       previousRunId !== undefined
         ? currentRuns.find((entry) => entry.id === previousRunId)
@@ -141,7 +139,7 @@ export class RunLifecycleService {
       ? cloneRun(previousRunEntry)
       : undefined;
     const reusableRunEntry = canContinueCodexRun(
-      executionTask.runnerType,
+      runnerType,
       previousRunEntry
     )
       ? previousRunEntry
@@ -154,7 +152,7 @@ export class RunLifecycleService {
             id: runId,
             taskId: task.id,
             status: "queued",
-            runnerType: executionTask.runnerType,
+            runnerType,
             command: "",
             startedAt: new Date().toISOString(),
             logFile: this.deps.store.createLogPath(runId),
@@ -175,7 +173,7 @@ export class RunLifecycleService {
       lastRunStatus: "queued",
       rejected: false,
       continuationRunId:
-        executionTask.runnerType === "codex" ? run.id : task.continuationRunId,
+        runnerType === "codex" ? run.id : task.continuationRunId,
       updatedAt: new Date().toISOString()
     };
 
@@ -197,12 +195,12 @@ export class RunLifecycleService {
       );
     }
 
-    const runner = this.deps.runners()[executionTask.runnerType];
+    const runner = this.deps.runners()[runnerType];
     if (!runner) {
       throw new AppError(
         400,
         "RUNNER_NOT_SUPPORTED",
-        `No runner available for ${executionTask.runnerType}`
+        `No runner available for ${runnerType}`
       );
     }
 
@@ -221,7 +219,8 @@ export class RunLifecycleService {
             logFile: this.deps.store.createLogPath(run.id)
           },
           previousRun,
-          task: executionTask,
+          task,
+          runnerConfig,
           workspace: executionWorkspace,
           inputText: options.initialInputText,
           resumeSessionId: options.runMetadata?.resumeSessionId
@@ -261,7 +260,7 @@ export class RunLifecycleService {
         control,
         stopRequested: false,
         runId: run.id,
-        runnerType: executionTask.runnerType,
+        runnerType,
         queue: queueOutput
       });
 
@@ -343,7 +342,9 @@ export class RunLifecycleService {
 
     const task = this.deps.requireTask(taskId);
 
-    if (task.runnerType !== "codex") {
+    const active = this.activeRuns.get(taskId);
+    const runnerType = active?.runnerType ?? this.deps.resolveRunnerConfig(task).type;
+    if (runnerType !== "codex") {
       throw new AppError(
         400,
         "TASK_INPUT_NOT_SUPPORTED",
@@ -351,7 +352,6 @@ export class RunLifecycleService {
       );
     }
 
-    const active = this.activeRuns.get(taskId);
     if (!active) {
       if (task.column !== "review") {
         throw new AppError(
@@ -538,12 +538,7 @@ export class RunLifecycleService {
       return { run: runEntry, task: taskEntry };
     }
 
-    const shouldAutoReview = this.deps.aiReview.shouldAutoTriggerAiReview(taskEntry, runEntry, result.status);
     const isAiReviewRun = this.deps.aiReview.isAiReviewTrigger(runEntry.metadata?.trigger);
-    const shouldRework =
-      isAiReviewRun &&
-      result.status === "succeeded" &&
-      runEntry.metadata?.reviewVerdict === "request_changes";
     const shouldPreserveCancelledDone =
       result.status === "canceled" && typeof taskEntry.cancelledAt === "string";
 
@@ -576,8 +571,7 @@ export class RunLifecycleService {
       };
     }
 
-    const nextColumn: Task["column"] =
-      shouldAutoReview || shouldRework ? "running" : "review";
+    const nextColumn: Task["column"] = "review";
 
     taskEntry.column = nextColumn;
     taskEntry.order = this.deps.topOrder(nextColumn, taskId);
@@ -606,14 +600,6 @@ export class RunLifecycleService {
       run: runEntry,
       task: taskEntry
     });
-
-    if (shouldAutoReview) {
-      await this.deps.aiReview.triggerAiReview(taskEntry);
-    }
-
-    if (shouldRework) {
-      await this.deps.aiReview.triggerReworkFromReview(taskEntry, runEntry);
-    }
 
     await this.deps.evaluateScheduler();
     await this.deps.afterRunFinished?.(taskEntry, runEntry);

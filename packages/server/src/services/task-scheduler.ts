@@ -13,6 +13,7 @@ export interface SchedulerConfig {
 interface TaskSchedulerDependencies {
   store: StateStore;
   events: EventBus;
+  resolveRunnerType(task: Task): RunnerType;
   lifecycle: {
     startTask(taskId: string, options?: StartTaskOptions): Promise<unknown>;
     isActive(taskId: string): boolean;
@@ -88,7 +89,7 @@ export class TaskScheduler {
     }
 
     const activeByRunner = new Map<RunnerType, number>();
-    for (const runnerType of ["claude", "codex", "shell"] as const) {
+    for (const runnerType of ["claude", "codex"] as const) {
       activeByRunner.set(runnerType, this.activeCountByRunner(runnerType));
     }
 
@@ -98,15 +99,21 @@ export class TaskScheduler {
         break;
       }
 
-      const runnerLimit = config.maxPerRunner?.[task.runnerType];
-      const runnerActive = activeByRunner.get(task.runnerType) ?? 0;
+      let runnerType: RunnerType;
+      try {
+        runnerType = this.deps.resolveRunnerType(task);
+      } catch {
+        continue;
+      }
+      const runnerLimit = config.maxPerRunner?.[runnerType];
+      const runnerActive = activeByRunner.get(runnerType) ?? 0;
       if (runnerLimit !== undefined && runnerActive >= runnerLimit) {
         continue;
       }
 
       startQueue.push(task);
       remainingCapacity -= 1;
-      activeByRunner.set(task.runnerType, runnerActive + 1);
+      activeByRunner.set(runnerType, runnerActive + 1);
     }
 
     const runningTasks = tasks

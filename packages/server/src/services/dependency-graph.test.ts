@@ -12,8 +12,6 @@ function makeTask(id: string, dependencies: string[] = [], order = 0): Task {
     workspaceId: "ws-1",
     column: "todo",
     order,
-    runnerType: "shell",
-    runnerConfig: { type: "shell", command: "echo done" },
     dependencies,
     taskKind: "user",
     worktree: {

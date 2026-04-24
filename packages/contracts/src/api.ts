@@ -144,8 +144,7 @@ export interface CreateTaskBody {
   worktreeBaseRef?: string;
   column?: TaskColumn;
   order?: number;
-  runnerType: RunnerType;
-  runnerConfig: RunnerConfig;
+  assigneeAgentId?: string;
 }
 
 export interface UpdateTaskParams {
@@ -175,8 +174,7 @@ export interface UpdateTaskBody {
   worktreeBaseRef?: string;
   column?: TaskColumn;
   order?: number;
-  runnerType?: RunnerType;
-  runnerConfig?: RunnerConfig;
+  assigneeAgentId?: string;
 }
 
 export interface DeleteTaskParams {

@@ -143,7 +143,7 @@ export class ClaudeCliRunner implements RunnerAdapter {
     context: RunnerStartContext,
     hooks: RunnerLifecycleHooks
   ): Promise<RunnerControl> {
-    const config = context.task.runnerConfig;
+    const config = context.runnerConfig;
     if (config.type !== "claude") {
       throw new AppError(400, "INVALID_RUNNER_CONFIG", "Task is not configured for Claude CLI");
     }

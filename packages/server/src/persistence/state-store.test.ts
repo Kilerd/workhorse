@@ -39,11 +39,6 @@ function makeTask(workspaceId: string): Task {
     workspaceId,
     column: "backlog",
     order: 1_024,
-    runnerType: "shell",
-    runnerConfig: {
-      type: "shell",
-      command: "true"
-    },
     dependencies: [],
     taskKind: "user",
     worktree: {
@@ -62,8 +57,8 @@ function makeRun(taskId: string, overrides: Partial<Run> = {}): Run {
     id: "run-1",
     taskId,
     status: "succeeded",
-    runnerType: "shell",
-    command: "true",
+    runnerType: "codex",
+    command: "codex mock",
     startedAt: now,
     endedAt: now,
     logFile: `/tmp/${taskId}.log`,
@@ -245,7 +240,7 @@ function makeAgent(overrides: Partial<AccountAgent> = {}): AccountAgent {
     id: "agent-a",
     name: "Test Agent",
     description: "desc",
-    runnerConfig: { type: "shell", command: "true" },
+    runnerConfig: { type: "codex", prompt: "Do the assigned work." },
     createdAt: now,
     updatedAt: now,
     ...overrides
@@ -263,7 +258,10 @@ describe("StateStore — Account Agents (Phase 4)", () => {
     const found = store.getAgent("agent-a");
     expect(found).not.toBeNull();
     expect(found?.name).toBe("Test Agent");
-    expect(found?.runnerConfig).toEqual({ type: "shell", command: "true" });
+    expect(found?.runnerConfig).toEqual({
+      type: "codex",
+      prompt: "Do the assigned work."
+    });
   });
 
   it("lists all agents", async () => {
@@ -283,11 +281,11 @@ describe("StateStore — Account Agents (Phase 4)", () => {
     store.createAgent(makeAgent());
     const updated = store.updateAgent("agent-a", {
       name: "Renamed",
-      runnerConfig: { type: "shell", command: "echo updated" }
+      runnerConfig: { type: "codex", prompt: "Updated prompt" }
     });
 
     expect(updated?.name).toBe("Renamed");
-    expect((updated?.runnerConfig as { command: string }).command).toBe("echo updated");
+    expect((updated?.runnerConfig as { prompt: string }).prompt).toBe("Updated prompt");
   });
 
   it("returns null when updating a non-existent agent", async () => {

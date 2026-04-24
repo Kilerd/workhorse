@@ -40,6 +40,13 @@ import * as schema from "./schema.js";
 
 const SETTINGS_KEY = "global";
 const AGENT_DRIVEN_BOARD_BACKFILL_MARKER = "agent_driven_board_backfill_v1";
+const DEFAULT_CODEX_RUNNER_CONFIG: RunnerConfig = {
+  type: "codex",
+  prompt:
+    "You are a workhorse agent powered by Codex. Coordinate or implement the task below end-to-end, make the required changes, and report concrete results. Prefer minimal diffs and verify your work before finishing.",
+  model: { mode: "builtin", id: "gpt-5.4", reasoningEffort: "medium" },
+  approvalMode: "default"
+};
 
 // ---------------------------------------------------------------------------
 // JSON migration helpers (kept for one-shot migration from legacy state.json)
@@ -76,7 +83,7 @@ function migrateJsonState(state: AppState): AppState {
   });
 
   return {
-    schemaVersion: state.schemaVersion ?? 8,
+    schemaVersion: state.schemaVersion ?? 9,
     settings: resolvedSettings,
     workspaces: workspaceList,
     tasks: taskList,
@@ -172,10 +179,14 @@ function rowToAgent(row: AgentRow): AccountAgent {
 
 function normalizeRunnerConfig(raw: unknown): RunnerConfig {
   if (!raw || typeof raw !== "object") {
-    return raw as RunnerConfig;
+    return structuredClone(DEFAULT_CODEX_RUNNER_CONFIG);
   }
 
   const config = raw as Record<string, unknown>;
+
+  if (config.type === "shell") {
+    return structuredClone(DEFAULT_CODEX_RUNNER_CONFIG);
+  }
 
   if (typeof config.model === "string") {
     config.model = { mode: "custom", id: config.model };
@@ -287,8 +298,6 @@ function rowToTask(row: TaskRow, depIds: string[]): Task {
     workspaceId: row.workspaceId,
     column: row.column as Task["column"],
     order: row.taskOrder,
-    runnerType: row.runnerType as Task["runnerType"],
-    runnerConfig: normalizeRunnerConfig(JSON.parse(row.runnerConfig)),
     dependencies: depIds,
     plan: row.plan ?? undefined,
     worktree: JSON.parse(row.worktree),
@@ -319,8 +328,6 @@ function taskToRow(task: Task): typeof schema.tasks.$inferInsert {
     workspaceId: task.workspaceId,
     column: task.column,
     taskOrder: task.order,
-    runnerType: task.runnerType,
-    runnerConfig: JSON.stringify(task.runnerConfig),
     plan: task.plan ?? null,
     worktree: JSON.stringify(task.worktree),
     lastRunId: task.lastRunId ?? null,
@@ -406,7 +413,7 @@ export class StateStore {
   private db!: ReturnType<typeof drizzle<typeof schema>>;
 
   private state: AppState = {
-    schemaVersion: 8,
+    schemaVersion: 9,
     settings: resolveGlobalSettings(undefined),
     workspaces: [],
     tasks: [],
@@ -1197,8 +1204,8 @@ export class StateStore {
     const row = taskToRow(task);
     this.sqlite
       .prepare(
-        `INSERT INTO tasks (id, title, description, workspace_id, column, task_order, runner_type, runner_config, plan, worktree, last_run_id, last_run_status, continuation_run_id, pull_request_url, pull_request, rejected, cancelled_at, task_kind, parent_task_id, source, plan_id, assignee_agent_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO tasks (id, title, description, workspace_id, column, task_order, plan, worktree, last_run_id, last_run_status, continuation_run_id, pull_request_url, pull_request, rejected, cancelled_at, task_kind, parent_task_id, source, plan_id, assignee_agent_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         row.id,
@@ -1207,8 +1214,6 @@ export class StateStore {
         row.workspaceId,
         row.column,
         row.taskOrder,
-        row.runnerType,
-        row.runnerConfig,
         row.plan ?? null,
         row.worktree,
         row.lastRunId ?? null,
@@ -1334,8 +1339,6 @@ export class StateStore {
         workspace_id TEXT NOT NULL,
         column TEXT NOT NULL,
         task_order REAL NOT NULL,
-        runner_type TEXT NOT NULL,
-        runner_config TEXT NOT NULL,
         plan TEXT,
         worktree TEXT NOT NULL,
         last_run_id TEXT,
@@ -1507,7 +1510,9 @@ export class StateStore {
     // statements fail silently via try/catch.
     for (const drop of [
       "ALTER TABLE tasks DROP COLUMN team_id",
-      "ALTER TABLE tasks DROP COLUMN team_agent_id"
+      "ALTER TABLE tasks DROP COLUMN team_agent_id",
+      "ALTER TABLE tasks DROP COLUMN runner_type",
+      "ALTER TABLE tasks DROP COLUMN runner_config"
     ]) {
       try {
         this.sqlite.exec(drop);
@@ -1515,6 +1520,17 @@ export class StateStore {
         // column already absent — safe to ignore
       }
     }
+
+    this.sqlite.exec(`
+      UPDATE tasks
+      SET column = 'todo', updated_at = datetime('now')
+      WHERE column = 'running'
+        AND NOT EXISTS (
+          SELECT 1 FROM runs
+          WHERE runs.task_id = tasks.id
+            AND runs.status IN ('queued', 'running')
+        );
+    `);
   }
 
 
@@ -1548,7 +1564,7 @@ export class StateStore {
     const runList = runRows.map(rowToRun);
 
     return {
-      schemaVersion: 8,
+      schemaVersion: 9,
       settings: globalSettings,
       workspaces: workspaceList,
       tasks: taskList,
@@ -1626,8 +1642,8 @@ export class StateStore {
         const row = taskToRow(task);
         this.sqlite
           .prepare(
-            `INSERT INTO tasks (id, title, description, workspace_id, column, task_order, runner_type, runner_config, plan, worktree, last_run_id, last_run_status, continuation_run_id, pull_request_url, pull_request, rejected, cancelled_at, task_kind, parent_task_id, source, plan_id, assignee_agent_id, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            `INSERT INTO tasks (id, title, description, workspace_id, column, task_order, plan, worktree, last_run_id, last_run_status, continuation_run_id, pull_request_url, pull_request, rejected, cancelled_at, task_kind, parent_task_id, source, plan_id, assignee_agent_id, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
           )
           .run(
             row.id,
@@ -1636,8 +1652,6 @@ export class StateStore {
             row.workspaceId,
             row.column,
             row.taskOrder,
-            row.runnerType,
-            row.runnerConfig,
             row.plan ?? null,
             row.worktree,
             row.lastRunId ?? null,

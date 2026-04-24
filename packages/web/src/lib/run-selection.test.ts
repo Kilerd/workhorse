@@ -12,8 +12,8 @@ function makeRun(overrides: Partial<Run>): Run {
     id: "run-1",
     taskId: "task-1",
     status: "succeeded",
-    runnerType: "shell",
-    command: "true",
+    runnerType: "codex",
+    command: "codex mock",
     startedAt: "2026-04-01T01:00:00.000Z",
     logFile: "/tmp/run-1.log",
     ...overrides

@@ -238,7 +238,7 @@ function ReactAppShell() {
         )
           ? "agents coordination"
           : "";
-      return [task.title, task.description, workspaceName, coordinationTag, task.runnerType, task.column]
+      return [task.title, task.description, workspaceName, coordinationTag, task.column]
         .join(" ")
         .toLowerCase()
         .includes(query);

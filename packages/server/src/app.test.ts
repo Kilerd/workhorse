@@ -5,16 +5,14 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 import { describe, expect, it } from "vitest";
 
-import type { HealthCodexQuotaData, Run, Task } from "@workhorse/contracts";
+import type { HealthCodexQuotaData, Run, RunnerType, Task } from "@workhorse/contracts";
 
 import { createApp } from "./app.js";
 import { createRunLogEntry } from "./lib/run-log.js";
 import { StateStore } from "./persistence/state-store.js";
 import type { CodexAppServer } from "./runners/codex-app-server-manager.js";
 import { ClaudeCliRunner } from "./runners/claude-cli-runner.js";
-import { CodexAcpRunner } from "./runners/codex-acp-runner.js";
 import type { RunnerAdapter, RunnerControl, RunnerLifecycleHooks, RunnerStartContext } from "./runners/types.js";
-import { ShellRunner } from "./runners/shell-runner.js";
 import type { TaskIdentityGenerator } from "./services/openrouter-task-naming-service.js";
 import { BoardService } from "./services/board-service.js";
 import { ThreadService } from "./services/thread-service.js";
@@ -46,8 +44,45 @@ class MockClaudeRunner implements RunnerAdapter {
   }
 }
 
+class MockCodexRunner implements RunnerAdapter {
+  public readonly type = "codex" as const;
+  public async start(
+    context: RunnerStartContext,
+    hooks: RunnerLifecycleHooks
+  ): Promise<RunnerControl> {
+    let stopped = false;
+    const holdsUntilStopped = context.task.description.includes("setInterval");
+    const timer = setTimeout(async () => {
+      if (stopped) {
+        return;
+      }
+      await hooks.onOutput({
+        kind: "text",
+        text: "hello from codex",
+        stream: "stdout",
+      });
+      if (holdsUntilStopped) {
+        return;
+      }
+      await hooks.onExit({ status: "succeeded", exitCode: 0, metadata: { threadId: "mock-thread" } });
+    }, 10);
+    return {
+      command: "codex (mock)",
+      metadata: { threadId: "mock-thread" },
+      async stop() {
+        if (stopped) {
+          return;
+        }
+        stopped = true;
+        clearTimeout(timer);
+        await hooks.onExit({ status: "canceled", exitCode: 0 });
+      }
+    };
+  }
+}
+
 class HoldingRunner implements RunnerAdapter {
-  public constructor(public readonly type: "claude" | "codex" | "shell") {}
+  public constructor(public readonly type: RunnerType) {}
 
   public async start(
     _context: RunnerStartContext,
@@ -210,11 +245,11 @@ class ConfigAwareHoldingClaudeRunner implements RunnerAdapter {
     context: RunnerStartContext,
     hooks: RunnerLifecycleHooks
   ): Promise<RunnerControl> {
-    if (context.task.runnerConfig.type !== "claude") {
+    if (context.runnerConfig.type !== "claude") {
       throw new Error("Expected claude runner config");
     }
 
-    const args = this.cli.buildCommandArgs(context.task.runnerConfig);
+    const args = this.cli.buildCommandArgs(context.runnerConfig);
     let stopped = false;
 
     return {
@@ -287,8 +322,7 @@ async function createRuntime(options?: {
       options?.runners ??
       {
         claude: new MockClaudeRunner(),
-        shell: new ShellRunner(),
-        codex: new CodexAcpRunner(codexServer)
+        codex: new MockCodexRunner()
       }
   });
   await service.initialize();
@@ -306,10 +340,21 @@ async function createWorkspace(
   workspaceDir: string,
   name = "Sample"
 ) {
-  return service.createWorkspace({
+  const workspace = await service.createWorkspace({
     name,
     rootPath: workspaceDir
   });
+  const agent = service.createAgent({
+    name: `${name} Worker`,
+    description: "",
+    runnerConfig: {
+      type: "codex",
+      prompt: "Run the assigned task.",
+      approvalMode: "default"
+    }
+  });
+  service.mountAgent(workspace.id, { agentId: agent.id, role: "worker" });
+  return workspace;
 }
 
 async function createShellTask(
@@ -319,12 +364,8 @@ async function createShellTask(
 ) {
   return service.createTask({
     title: "Run shell command",
-    workspaceId,
-    runnerType: "shell",
-    runnerConfig: {
-      type: "shell",
-      command
-    }
+    description: command,
+    workspaceId
   });
 }
 
@@ -336,12 +377,7 @@ async function createCodexTask(
   return service.createTask({
     title: "Run codex task",
     workspaceId,
-    column,
-    runnerType: "codex",
-    runnerConfig: {
-      type: "codex",
-      prompt: "Continue the task"
-    }
+    column
   });
 }
 
@@ -350,16 +386,21 @@ async function createClaudeTask(
   workspaceId: string,
   column: "backlog" | "todo" | "review" = "backlog"
 ) {
-  return service.createTask({
-    title: "Run claude task",
-    workspaceId,
-    column,
-    runnerType: "claude",
+  const agent = service.createAgent({
+    name: "Claude Worker",
+    description: "",
     runnerConfig: {
       type: "claude",
       prompt: "Review the current changes and summarize concrete issues.",
       agent: "code-reviewer"
     }
+  });
+  service.mountAgent(workspaceId, { agentId: agent.id, role: "worker" });
+  return service.createTask({
+    title: "Run claude task",
+    workspaceId,
+    column,
+    assigneeAgentId: agent.id
   });
 }
 
@@ -426,8 +467,6 @@ async function createReviewSubtask(
     workspaceId: string;
     parentTaskId: string;
     title: string;
-    runnerType?: Task["runnerType"];
-    runnerConfig?: Task["runnerConfig"];
     lastRunStatus?: Run["status"];
   }
 ) {
@@ -446,8 +485,6 @@ async function createSubtask(
     title: string;
     description?: string;
     column?: Task["column"];
-    runnerType?: Task["runnerType"];
-    runnerConfig?: Task["runnerConfig"];
     lastRunStatus?: Run["status"];
     cancelledAt?: string;
     rejected?: boolean;
@@ -466,13 +503,6 @@ async function createSubtask(
     workspaceId: input.workspaceId,
     column: input.column ?? "review",
     order: 1_024,
-    runnerType: input.runnerType ?? "shell",
-    runnerConfig:
-      input.runnerConfig ??
-      {
-        type: "shell",
-        command: "true"
-      },
     dependencies: [],
     taskKind: "user",
     worktree: {
@@ -493,8 +523,8 @@ async function createSubtask(
         id: runId,
         taskId,
         status: input.lastRunStatus!,
-        runnerType: task.runnerType,
-        command: task.runnerType === "shell" ? "true" : "codex mock",
+        runnerType: "codex",
+        command: "codex mock",
         startedAt: now,
         endedAt: now
       }
@@ -541,12 +571,7 @@ describe("workhorse runtime", () => {
       },
       body: JSON.stringify({
         title: "Run shell command",
-        workspaceId: workspacePayload.data.workspace.id,
-        runnerType: "shell",
-        runnerConfig: {
-          type: "shell",
-          command: "node -e \"console.log('hello from shell')\""
-        }
+        workspaceId: workspacePayload.data.workspace.id
       })
     });
 
@@ -598,12 +623,7 @@ describe("workhorse runtime", () => {
     const parentTask = await service.createTask({
       title: "Coordinate rollout",
       workspaceId: workspace.id,
-      column: "running",
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "echo should-be-overridden"
-      }
+      column: "running"
     });
     const subtask = await createReviewSubtask(service, {
       workspaceId: workspace.id,
@@ -632,12 +652,7 @@ describe("workhorse runtime", () => {
     const parentTask = await service.createTask({
       title: "Coordinate rollout",
       workspaceId: workspace.id,
-      column: "running",
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "echo should-be-overridden"
-      }
+      column: "running"
     });
     const subtask = await createReviewSubtask(service, {
       workspaceId: workspace.id,
@@ -674,12 +689,7 @@ describe("workhorse runtime", () => {
     const parentTask = await service.createTask({
       title: "Coordinate rollout",
       workspaceId: workspace.id,
-      column: "running",
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "echo should-be-overridden"
-      }
+      column: "running"
     });
     const subtask = await createReviewSubtask(service, {
       workspaceId: workspace.id,
@@ -711,30 +721,19 @@ describe("workhorse runtime", () => {
     const { app, service, workspaceDir } = await createRuntime({
       runners: {
         claude: new MockClaudeRunner(),
-        codex: new HoldingRunner("codex"),
-        shell: new HoldingRunner("shell")
+        codex: new HoldingRunner("codex")
       }
     });
     const workspace = await createWorkspace(service, workspaceDir);
     const parentTask = await service.createTask({
       title: "Coordinate rollout",
       workspaceId: workspace.id,
-      column: "todo",
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "echo should-be-overridden"
-      }
+      column: "todo"
     });
     const subtask = await createReviewSubtask(service, {
       workspaceId: workspace.id,
       parentTaskId: parentTask.id,
       title: "Retry task",
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "echo retry"
-      },
       lastRunStatus: "failed"
     });
 
@@ -808,7 +807,7 @@ describe("workhorse runtime", () => {
     });
   });
 
-  it("runs a shell task to completion and persists the log", async () => {
+  it("runs an assigned agent task to completion and persists the log", async () => {
     const { service, workspaceDir } = await createRuntime();
     const workspace = await createWorkspace(service, workspaceDir);
     const task = await createShellTask(service, workspace.id);
@@ -823,7 +822,7 @@ describe("workhorse runtime", () => {
     expect(updatedTask?.column).toBe("review");
 
     const log = await service.getRunLog(completedRun.id);
-    expect(log.some((entry) => entry.text.includes("hello from shell"))).toBe(true);
+    expect(log.some((entry) => entry.text.includes("hello from codex"))).toBe(true);
     expect(log.some((entry) => entry.kind === "text")).toBe(true);
   });
 
@@ -839,19 +838,14 @@ describe("workhorse runtime", () => {
     const task = await service.createTask({
       title: "   ",
       description: "梳理登录报错，确认复现路径并补上基础保护。",
-      workspaceId: workspace.id,
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "true"
-      }
+      workspaceId: workspace.id
     });
 
     expect(task.title).toBe("整理登录错误");
     expect(task.worktree.branchName).toContain("triage-login-errors");
   });
 
-  it("stops an active shell task and marks the run canceled", async () => {
+  it("stops an active assigned agent task and marks the run canceled", async () => {
     const { service, workspaceDir } = await createRuntime();
     const workspace = await createWorkspace(service, workspaceDir);
     const task = await createShellTask(
@@ -871,7 +865,7 @@ describe("workhorse runtime", () => {
     expect(updatedTask?.column).toBe("review");
   });
 
-  it("marks orphaned shell runs as canceled during initialization", async () => {
+  it("marks orphaned non-codex runs as canceled during initialization", async () => {
     const { dataDir, service, workspaceDir } = await createRuntime();
     const workspace = await createWorkspace(service, workspaceDir);
     const task = await createShellTask(service, workspace.id);
@@ -899,8 +893,8 @@ describe("workhorse runtime", () => {
         id: runId,
         taskId: task.id,
         status: "running",
-        runnerType: "shell",
-        command: "node -e \"console.log('orphan')\"",
+        runnerType: "claude",
+        command: "claude (orphan)",
         startedAt: new Date().toISOString(),
         logFile: store.createLogPath(runId)
       }
@@ -1761,12 +1755,7 @@ describe("workhorse runtime", () => {
     const reviewTask = await service.createTask({
       title: "Review task",
       workspaceId: workspace.id,
-      column: "review",
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "true"
-      }
+      column: "review"
     });
 
     const startResult = await service.startTask(reviewTask.id);
@@ -1777,12 +1766,7 @@ describe("workhorse runtime", () => {
     const doneTask = await service.createTask({
       title: "Done task",
       workspaceId: workspace.id,
-      column: "done",
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "true"
-      }
+      column: "done"
     });
 
     await expect(service.startTask(doneTask.id)).rejects.toMatchObject({
@@ -1858,7 +1842,6 @@ describe("workhorse runtime", () => {
     const { service, workspaceDir } = await createRuntime({
       runners: {
         claude: new MockClaudeRunner(),
-        shell: new ShellRunner(),
         codex: codexRunner
       }
     });
@@ -1884,18 +1867,18 @@ describe("workhorse runtime", () => {
   });
 
   it("starts newly unblocked tasks in priority order", async () => {
-    const shellRunner = new HoldingRunner("shell");
+    const codexRunner = new HoldingRunner("codex");
+    const claudeRunner = new HoldingRunner("claude");
     const { service, workspaceDir } = await createRuntime({
       runners: {
-        claude: new MockClaudeRunner(),
-        shell: shellRunner,
-        codex: new HoldingRunner("codex")
+        claude: claudeRunner,
+        codex: codexRunner
       }
     });
     const workspace = await createWorkspace(service, workspaceDir);
     const dependency = await createShellTask(service, workspace.id);
     const highPriority = await createShellTask(service, workspace.id);
-    const lowPriority = await createShellTask(service, workspace.id);
+    const lowPriority = await createClaudeTask(service, workspace.id);
 
     await setTaskDependencies(service, highPriority.id, [dependency.id]);
     await setTaskDependencies(service, lowPriority.id, [dependency.id]);
@@ -1950,12 +1933,7 @@ describe("workhorse runtime", () => {
     const task = await service.createTask({
       title: "Plan me",
       description: "Need a rollout.",
-      workspaceId: workspace.id,
-      runnerType: "codex",
-      runnerConfig: {
-        type: "codex",
-        prompt: "Create a plan"
-      }
+      workspaceId: workspace.id
     });
 
     const response = await app.request(`/api/tasks/${task.id}/plan`, {
@@ -1982,31 +1960,16 @@ describe("workhorse runtime", () => {
     const todoOne = await service.createTask({
       title: "Todo one",
       workspaceId: workspace.id,
-      column: "todo",
-      runnerType: "codex",
-      runnerConfig: {
-        type: "codex",
-        prompt: "Continue the task"
-      }
+      column: "todo"
     });
     const todoTwo = await service.createTask({
       title: "Todo two",
       workspaceId: workspace.id,
-      column: "todo",
-      runnerType: "codex",
-      runnerConfig: {
-        type: "codex",
-        prompt: "Continue the task"
-      }
+      column: "todo"
     });
     const backlogTask = await service.createTask({
       title: "Plan me next",
-      workspaceId: workspace.id,
-      runnerType: "codex",
-      runnerConfig: {
-        type: "codex",
-        prompt: "Continue the task"
-      }
+      workspaceId: workspace.id
     });
 
     await service.planTask(backlogTask.id);
@@ -2030,42 +1993,22 @@ describe("workhorse runtime", () => {
     const runningOne = await service.createTask({
       title: "Running one",
       workspaceId: workspace.id,
-      column: "running",
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "true"
-      }
+      column: "running"
     });
     const runningTwo = await service.createTask({
       title: "Running two",
       workspaceId: workspace.id,
-      column: "running",
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "true"
-      }
+      column: "running"
     });
     const reviewOne = await service.createTask({
       title: "Review one",
       workspaceId: workspace.id,
-      column: "review",
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "true"
-      }
+      column: "review"
     });
     const reviewTwo = await service.createTask({
       title: "Review two",
       workspaceId: workspace.id,
-      column: "review",
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "true"
-      }
+      column: "review"
     });
     const task = await createShellTask(
       service,
@@ -2102,23 +2045,13 @@ describe("workhorse runtime", () => {
       title: "Running one",
       workspaceId: workspace.id,
       column: "running",
-      order: 1_024,
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "true"
-      }
+      order: 1_024
     });
     const runningTwo = await service.createTask({
       title: "Running two",
       workspaceId: workspace.id,
       column: "running",
-      order: 3_072,
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "true"
-      }
+      order: 3_072
     });
     const task = await createShellTask(
       service,
@@ -2155,32 +2088,17 @@ describe("workhorse runtime", () => {
     const doneOne = await service.createTask({
       title: "Done one",
       workspaceId: workspace.id,
-      column: "done",
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "true"
-      }
+      column: "done"
     });
     const doneTwo = await service.createTask({
       title: "Done two",
       workspaceId: workspace.id,
-      column: "done",
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "true"
-      }
+      column: "done"
     });
     const reviewTask = await service.createTask({
       title: "Review me",
       workspaceId: workspace.id,
-      column: "review",
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "true"
-      }
+      column: "review"
     });
 
     const movedTask = await service.updateTask(reviewTask.id, {
@@ -2255,62 +2173,32 @@ describe("workhorse runtime", () => {
     await service.createTask({
       title: "Backlog task",
       workspaceId: workspace.id,
-      column: "backlog",
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "true"
-      }
+      column: "backlog"
     });
     await service.createTask({
       title: "Archived task",
       workspaceId: workspace.id,
-      column: "archived",
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "true"
-      }
+      column: "archived"
     });
     await service.createTask({
       title: "Todo task",
       workspaceId: workspace.id,
-      column: "todo",
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "true"
-      }
+      column: "todo"
     });
     await service.createTask({
       title: "Done task",
       workspaceId: workspace.id,
-      column: "done",
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "true"
-      }
+      column: "done"
     });
     await service.createTask({
       title: "Review task",
       workspaceId: workspace.id,
-      column: "review",
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "true"
-      }
+      column: "review"
     });
     await service.createTask({
       title: "Running task",
       workspaceId: workspace.id,
-      column: "running",
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "true"
-      }
+      column: "running"
     });
 
     expect(service.listTasks({}).map((task) => task.column)).toEqual([
@@ -2464,16 +2352,12 @@ describe("scheduler API", () => {
     await service.createTask({
       title: "Todo task",
       workspaceId: workspace.id,
-      column: "todo",
-      runnerType: "shell",
-      runnerConfig: { type: "shell", command: "true" }
+      column: "todo"
     });
     await service.createTask({
       title: "Blocked task",
       workspaceId: workspace.id,
-      column: "blocked",
-      runnerType: "shell",
-      runnerConfig: { type: "shell", command: "true" }
+      column: "blocked"
     });
 
     const res = await app.request("/api/scheduler/status");
@@ -2657,7 +2541,7 @@ describe("thread API", () => {
     const coordinator = service.createAgent({
       name: "Coordinator",
       description: "Coordinates work",
-      runnerConfig: { type: "shell", command: "true" }
+      runnerConfig: { type: "codex", prompt: "Coordinate the workspace." }
     });
     service.mountAgent(workspace.id, {
       agentId: coordinator.id,

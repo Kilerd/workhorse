@@ -12,12 +12,9 @@ const BUILTIN_CODEX_PROMPT = [
   "Prefer minimal diffs and verify your work before finishing."
 ].join(" ");
 
-const BUILTIN_SHELL_PROMPT = "";
-
 const BUILTIN_PROMPTS: Record<RunnerType, string> = {
   claude: BUILTIN_CLAUDE_PROMPT,
-  codex: BUILTIN_CODEX_PROMPT,
-  shell: BUILTIN_SHELL_PROMPT
+  codex: BUILTIN_CODEX_PROMPT
 };
 
 export function synthesizeAgentPrompt(

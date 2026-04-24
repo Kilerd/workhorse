@@ -8,7 +8,6 @@ import type {
   ModelConfig,
   ReasoningEffort,
   RunnerConfig,
-  ShellRunnerConfig,
   UpdateAgentBody
 } from "@workhorse/contracts";
 import {
@@ -32,8 +31,6 @@ interface Props {
   onSubmit(values: AgentFormPayload): Promise<void> | void;
   onDelete?(): Promise<void> | void;
 }
-
-const DEFAULT_SHELL_COMMAND = "npm test";
 
 const CLAUDE_PERMISSION_OPTIONS: Array<{
   value: ClaudePermissionMode;
@@ -77,8 +74,6 @@ function defaultBuiltinModel(runner: "claude" | "codex"): ModelConfig {
 
 export function createDefaultRunnerConfig(type: RunnerConfig["type"]): RunnerConfig {
   switch (type) {
-    case "shell":
-      return { type: "shell", command: DEFAULT_SHELL_COMMAND };
     case "claude":
       return {
         type: "claude",
@@ -112,22 +107,6 @@ function normalizeModelConfig(model: ModelConfig | undefined): ModelConfig | und
 
 export function normalizeAgentPayload(input: AgentFormPayload): AgentFormPayload {
   const description = input.description?.trim() ?? "";
-
-  if (input.runnerConfig.type === "shell") {
-    const shell = input.runnerConfig;
-    const env = shell.env
-      ? entriesToEnvRecord(envRecordToEntries(shell.env))
-      : undefined;
-    return {
-      name: input.name.trim(),
-      description,
-      runnerConfig: {
-        type: "shell",
-        command: shell.command.trim(),
-        ...(env ? { env } : {})
-      }
-    };
-  }
 
   if (input.runnerConfig.type === "claude") {
     const claude = input.runnerConfig;
@@ -166,9 +145,6 @@ export function normalizeAgentPayload(input: AgentFormPayload): AgentFormPayload
 export function validateAgentPayload(input: AgentFormPayload): string | null {
   if (!input.name.trim()) {
     return "Agent name is required.";
-  }
-  if (input.runnerConfig.type === "shell") {
-    return input.runnerConfig.command.trim() ? null : "Shell runner command is required.";
   }
   return null;
 }
@@ -368,7 +344,7 @@ export function AgentForm({
   const [payload, setPayload] = useState<AgentFormPayload>(() => resolveInitialPayload(agent));
   const [envEntries, setEnvEntries] = useState<EnvEntry[]>(() => {
     const runner = resolveInitialPayload(agent).runnerConfig;
-    if (runner.type === "shell" || runner.type === "claude") {
+    if (runner.type === "claude") {
       return envRecordToEntries(runner.env);
     }
     return [];
@@ -388,10 +364,9 @@ export function AgentForm({
 
   const isClaude = (cfg: RunnerConfig): cfg is ClaudeRunnerConfig => cfg.type === "claude";
   const isCodex = (cfg: RunnerConfig): cfg is CodexRunnerConfig => cfg.type === "codex";
-  const isShell = (cfg: RunnerConfig): cfg is ShellRunnerConfig => cfg.type === "shell";
 
   const runnerType = payload.runnerConfig.type;
-  const supportsEnv = runnerType === "shell" || runnerType === "claude";
+  const supportsEnv = runnerType === "claude";
 
   return (
     <form
@@ -404,9 +379,7 @@ export function AgentForm({
 
         let runnerConfig = payload.runnerConfig;
         const envRecord = entriesToEnvRecord(envEntries);
-        if (runnerConfig.type === "shell") {
-          runnerConfig = { ...runnerConfig, env: envRecord };
-        } else if (runnerConfig.type === "claude") {
+        if (runnerConfig.type === "claude") {
           runnerConfig = { ...runnerConfig, env: envRecord };
         }
         void Promise.resolve(
@@ -455,7 +428,6 @@ export function AgentForm({
             >
               <option value="codex">codex</option>
               <option value="claude">claude</option>
-              <option value="shell">shell</option>
             </NativeSelect>
           </label>
 
@@ -475,21 +447,6 @@ export function AgentForm({
               placeholder="Describe what this agent is optimized for. This text is injected as the agent instruction."
             />
           </label>
-
-          {payload.runnerConfig.type === "shell" ? (
-            <label className="grid gap-1.5 md:col-span-2">
-              <span className="font-mono text-[0.56rem] uppercase tracking-[0.12em] text-[var(--accent)]">
-                Command
-              </span>
-              <Input
-                value={payload.runnerConfig.command}
-                onChange={(event) =>
-                  updateRunner(isShell, (cfg) => ({ ...cfg, command: event.target.value }))
-                }
-                placeholder="npm test"
-              />
-            </label>
-          ) : null}
 
           {payload.runnerConfig.type === "codex" ? (
             <>

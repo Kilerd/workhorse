@@ -18,8 +18,6 @@ export interface CreateTaskInput {
   assigneeAgentId?: string;
   dependencies?: string[];
   column?: Extract<TaskColumn, "backlog" | "todo">;
-  runnerType?: Task["runnerType"];
-  runnerConfig?: Task["runnerConfig"];
 }
 
 export interface ListTasksFilter {
@@ -118,8 +116,6 @@ export class TaskService {
       workspaceId: input.workspaceId,
       column: input.column ?? "todo",
       order: Date.now(),
-      runnerType: input.runnerType ?? "shell",
-      runnerConfig: input.runnerConfig ?? { type: "shell", command: "" },
       dependencies: input.dependencies ?? [],
       worktree: createTaskWorktree(id, input.title, { workspace }),
       taskKind: "user",

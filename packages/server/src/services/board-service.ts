@@ -58,7 +58,6 @@ import { CodexAcpRunner } from "../runners/codex-acp-runner.js";
 import { ClaudeCliRunner } from "../runners/claude-cli-runner.js";
 import { synthesizeAgentPrompt } from "../runners/builtin-prompts.js";
 import type { RunnerAdapter } from "../runners/types.js";
-import { ShellRunner } from "../runners/shell-runner.js";
 import { EventBus } from "../ws/event-bus.js";
 import { DependencyGraph } from "./dependency-graph.js";
 import { GitWorktreeService } from "./git-worktree-service.js";
@@ -97,9 +96,6 @@ function applyAgentPromptSynthesis(
   runnerConfig: RunnerConfig,
   description: string | undefined
 ): RunnerConfig {
-  if (runnerConfig.type === "shell") {
-    return runnerConfig;
-  }
   const synthesized = synthesizeAgentPrompt(runnerConfig.type, description);
   return { ...runnerConfig, prompt: synthesized };
 }
@@ -149,7 +145,6 @@ export class BoardService {
     this.codexAppServer = dependencies.codexAppServer ?? new CodexAppServerManager();
     this.runners = dependencies.runners ?? {
       claude: new ClaudeCliRunner(),
-      shell: new ShellRunner(),
       codex: new CodexAcpRunner(this.codexAppServer)
     };
     this.gitWorktrees = dependencies.gitWorktrees ?? new GitWorktreeService();
@@ -185,6 +180,7 @@ export class BoardService {
       requireTask: (taskId, source) => this.requireTask(taskId, source),
       requireWorkspace: (workspaceId) => this.requireWorkspace(workspaceId),
       requireRun: (runId, source) => this.requireRun(runId, source),
+      resolveRunnerConfig: (task) => this.resolveTaskRunnerConfig(task),
       topOrder: (column, excludingId) => this.topOrder(column, excludingId),
       canTaskStart: (task, source) => this.canTaskStart(task, source),
       evaluateScheduler: () => this.scheduler.evaluate()
@@ -204,7 +200,8 @@ export class BoardService {
           isActive: (taskId) => this.runLifecycle.isActive(taskId),
           activeCount: () => this.runLifecycle.activeCount(),
           activeCountByRunner: (type) => this.runLifecycle.activeCountByRunner(type)
-        }
+        },
+        resolveRunnerType: (task) => this.resolveTaskRunnerConfig(task).type
       }
     );
     this.prMonitor = new PrMonitorService({
@@ -221,6 +218,7 @@ export class BoardService {
       syncPullRequestSnapshot: (taskId, next) =>
         this.syncTaskPullRequestSnapshot(taskId, next),
       isTaskActive: (taskId) => this.runLifecycle.isActive(taskId),
+      resolveRunnerConfig: (task) => this.resolveTaskRunnerConfig(task),
       topOrder: (column, excludingId) => this.topOrder(column, excludingId)
     });
   }
@@ -256,12 +254,70 @@ export class BoardService {
     return this.scheduler.canStart(task, source ?? this.store.listTasks());
   }
 
+  private resolveCreateTaskAssignee(
+    workspaceId: string,
+    requestedAgentId?: string
+  ): string | undefined {
+    const workspaceAgents = this.store.listWorkspaceAgents(workspaceId);
+    const requested = requestedAgentId?.trim();
+    if (requested) {
+      const assigned = workspaceAgents.find((agent) => agent.id === requested);
+      if (!assigned) {
+        throw new AppError(
+          400,
+          "TASK_ASSIGNEE_NOT_FOUND",
+          `Agent ${requested} is not mounted in this workspace`
+        );
+      }
+      return assigned.id;
+    }
+
+    return (
+      workspaceAgents.find((agent) => agent.role === "worker") ??
+      workspaceAgents.find((agent) => agent.role === "coordinator")
+    )?.id;
+  }
+
+  private resolveTaskRunnerConfig(task: Task): RunnerConfig {
+    const workspaceAgents = this.store.listWorkspaceAgents(task.workspaceId);
+    const assigned = task.assigneeAgentId
+      ? workspaceAgents.find((agent) => agent.id === task.assigneeAgentId)
+      : undefined;
+
+    if (task.assigneeAgentId && !assigned) {
+      throw new AppError(
+        400,
+        "TASK_ASSIGNEE_NOT_FOUND",
+        `Task ${task.id} is assigned to an agent that is not mounted in this workspace`
+      );
+    }
+
+    const fallback =
+      assigned ??
+      workspaceAgents.find((agent) => agent.role === "worker") ??
+      workspaceAgents.find((agent) => agent.role === "coordinator");
+
+    if (!fallback) {
+      throw new AppError(
+        400,
+        "TASK_AGENT_NOT_ASSIGNED",
+        "Assign the task to a mounted agent before starting it"
+      );
+    }
+
+    return structuredClone(fallback.runnerConfig);
+  }
+
   private async startTaskInternal(
     taskId: string,
     options: StartTaskOptions = {}
   ): Promise<{ task: Task; run: Run }> {
-    this.requireTask(taskId);
-    return this.runLifecycle.startTask(taskId, options);
+    const task = this.requireTask(taskId);
+    return this.runLifecycle.startTask(taskId, {
+      ...options,
+      runnerConfigOverride:
+        options.runnerConfigOverride ?? this.resolveTaskRunnerConfig(task)
+    });
   }
 
   private async checkAndHandleParentCompletion(parentTaskId: string): Promise<void> {
@@ -558,12 +614,7 @@ export class BoardService {
     if (!title) {
       throw new AppError(400, "INVALID_TASK", "Task title is required");
     }
-    const wsCoordinator = this.store
-      .listWorkspaceAgents(workspace.id)
-      .find((a) => a.role === "coordinator");
-    const runnerType = wsCoordinator?.runnerConfig.type ?? input.runnerType;
-    const runnerConfig = wsCoordinator?.runnerConfig ?? input.runnerConfig;
-    this.ensureRunnerConfig(runnerType, runnerConfig);
+    const assigneeAgentId = this.resolveCreateTaskAssignee(workspace.id, input.assigneeAgentId);
     const existingTasks = this.store.listTasks();
     const taskId = createId();
     const baseRef = workspace.isGitRepo
@@ -600,12 +651,11 @@ export class BoardService {
       workspaceId: workspace.id,
       column,
       order: input.order ?? this.nextOrder(column),
-      runnerType,
-      runnerConfig,
       dependencies: [],
       worktree,
       rejected: false,
       taskKind: "user",
+      assigneeAgentId,
       createdAt: now,
       updatedAt: now
     };
@@ -641,13 +691,6 @@ export class BoardService {
         409,
         "TASK_WORKTREE_ACTIVE",
         "Cleanup the task worktree before moving it to another workspace"
-      );
-    }
-
-    if (input.runnerType || input.runnerConfig) {
-      this.ensureRunnerConfig(
-        input.runnerType ?? task.runnerType,
-        input.runnerConfig ?? task.runnerConfig
       );
     }
 
@@ -691,15 +734,17 @@ export class BoardService {
     }
 
     task.description = input.description?.trim() ?? task.description;
+    if (input.assigneeAgentId !== undefined) {
+      task.assigneeAgentId = input.assigneeAgentId.trim()
+        ? this.resolveCreateTaskAssignee(nextWorkspace.id, input.assigneeAgentId)
+        : undefined;
+    }
     const nextColumn = input.column ?? task.column;
     const columnChanged = nextColumn !== task.column;
     task.column = nextColumn;
     task.order =
       input.order ??
       (columnChanged ? this.nextOrder(nextColumn) : task.order);
-    task.runnerType = input.runnerType ?? task.runnerType;
-    task.runnerConfig = input.runnerConfig ?? task.runnerConfig;
-
     if (
       nextWorkspace.isGitRepo &&
       (nextColumn === "done" || nextColumn === "archived") &&
@@ -1201,42 +1246,6 @@ export class BoardService {
     }
   }
 
-  private ensureRunnerConfig(
-    runnerType: Task["runnerType"],
-    runnerConfig: RunnerConfig
-  ): void {
-    if (runnerConfig.type !== runnerType) {
-      throw new AppError(
-        400,
-        "RUNNER_CONFIG_MISMATCH",
-        "runnerType and runnerConfig.type must match"
-      );
-    }
-
-    if (runnerType === "shell" && runnerConfig.type === "shell") {
-      if (!runnerConfig.command.trim()) {
-        throw new AppError(400, "INVALID_RUNNER_CONFIG", "Shell command is required");
-      }
-      return;
-    }
-
-    if (runnerType === "claude" && runnerConfig.type === "claude") {
-      if (!runnerConfig.prompt.trim()) {
-        throw new AppError(400, "INVALID_RUNNER_CONFIG", "Claude prompt is required");
-      }
-      return;
-    }
-
-    if (runnerType === "codex" && runnerConfig.type === "codex") {
-      if (!runnerConfig.prompt.trim()) {
-        throw new AppError(400, "INVALID_RUNNER_CONFIG", "Codex prompt is required");
-      }
-      return;
-    }
-
-    throw new AppError(400, "INVALID_RUNNER_CONFIG", "Unsupported runner configuration");
-  }
-
   private buildPlanPrompt(task: Task, workspace: Workspace): string {
     return resolveTemplate(
       resolveWorkspacePromptTemplate("plan", workspace.promptTemplates),
@@ -1482,9 +1491,7 @@ export class BoardService {
       body.description !== undefined ? body.description : existing.description;
     const nextRunnerConfig = body.runnerConfig
       ? applyAgentPromptSynthesis(body.runnerConfig, nextDescription)
-      : existing.runnerConfig.type === "shell"
-        ? existing.runnerConfig
-        : applyAgentPromptSynthesis(existing.runnerConfig, nextDescription);
+      : applyAgentPromptSynthesis(existing.runnerConfig, nextDescription);
     const updated = this.store.updateAgent(agentId, {
       ...body,
       runnerConfig: nextRunnerConfig

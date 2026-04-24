@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type {
-  ClaudePermissionMode,
   GlobalSettings,
   Workspace,
   WorkspaceCodexSettings,
@@ -34,10 +33,6 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { useWorkspaceAgents } from "@/hooks/useAgents";
 
-const DEFAULT_CODEX_PROMPT = "请完成用户请求的任务。";
-const DEFAULT_CLAUDE_PROMPT =
-  "Review the current task carefully and summarize concrete risks, regressions, and missing tests.";
-const DEFAULT_SHELL_COMMAND = "npm test";
 const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
   language: DEFAULT_GLOBAL_LANGUAGE,
   openRouter: {
@@ -111,38 +106,6 @@ const SANDBOX_MODE_OPTIONS: Array<{
     value: "danger-full-access",
     label: "danger-full-access",
     description: "Bypass sandbox protections completely."
-  }
-];
-
-const CLAUDE_PERMISSION_MODE_OPTIONS: Array<{
-  value: ClaudePermissionMode;
-  label: string;
-  description: string;
-}> = [
-  {
-    value: "default",
-    label: "default",
-    description: "Use Claude Code's standard permission flow."
-  },
-  {
-    value: "acceptEdits",
-    label: "acceptEdits",
-    description: "Auto-accept edit requests while keeping other checks in place."
-  },
-  {
-    value: "dontAsk",
-    label: "dontAsk",
-    description: "Run without permission prompts when Claude Code supports it."
-  },
-  {
-    value: "plan",
-    label: "plan",
-    description: "Keep Claude in planning mode for review-only workflows."
-  },
-  {
-    value: "bypassPermissions",
-    label: "bypassPermissions",
-    description: "Bypass permission checks. Only use in trusted environments."
   }
 ];
 
@@ -501,29 +464,13 @@ export function TaskModal({
   const [workspaceId, setWorkspaceId] = useState(() =>
     resolveTaskWorkspaceId(workspaces, selectedWorkspaceId)
   );
-  const [runnerType, setRunnerType] = useState<"claude" | "shell" | "codex">("codex");
-  const [shellCommand, setShellCommand] = useState(DEFAULT_SHELL_COMMAND);
-  const [prompt, setPrompt] = useState(DEFAULT_CODEX_PROMPT);
-  const [claudeAgent, setClaudeAgent] = useState("code-reviewer");
-  const [claudeModel, setClaudeModel] = useState("");
-  const [claudePermissionMode, setClaudePermissionMode] =
-    useState<ClaudePermissionMode>("default");
+  const [assigneeAgentId, setAssigneeAgentId] = useState("");
   const [column, setColumn] = useState<TaskFormValues["column"]>("backlog");
   const [worktreeBaseRef, setWorktreeBaseRef] = useState("");
   const [submitLocked, setSubmitLocked] = useState(false);
   const defaultWorkspaceId = resolveTaskWorkspaceId(workspaces, selectedWorkspaceId);
   const resolvedSettings = settings ?? DEFAULT_GLOBAL_SETTINGS;
   const canGenerateTitle = hasCompleteOpenRouterConfig(resolvedSettings);
-  const previousCoordinatorIdRef = useRef("");
-
-  function resetRunnerConfig() {
-    setRunnerType("codex");
-    setShellCommand(DEFAULT_SHELL_COMMAND);
-    setPrompt(DEFAULT_CODEX_PROMPT);
-    setClaudeAgent("code-reviewer");
-    setClaudeModel("");
-    setClaudePermissionMode("default");
-  }
 
   useCloseOnEscape(open, onClose);
 
@@ -533,11 +480,12 @@ export function TaskModal({
   );
   const workspaceAgentsQuery = useWorkspaceAgents(selectedWorkspace?.id ?? null);
   const workspaceAgents = workspaceAgentsQuery.data ?? [];
-  const coordinatorAgent = useMemo(
-    () => getCoordinatorWorkspaceAgent(workspaceAgents),
+  const defaultAssigneeAgent = useMemo(
+    () =>
+      workspaceAgents.find((agent) => agent.role === "worker") ??
+      getCoordinatorWorkspaceAgent(workspaceAgents),
     [workspaceAgents]
   );
-  const usesWorkspaceCoordinator = Boolean(coordinatorAgent);
   const gitRefsQuery = useQuery({
     queryKey: ["workspace-git-refs", selectedWorkspace?.id ?? ""],
     queryFn: async () => {
@@ -555,11 +503,10 @@ export function TaskModal({
       setTitle("");
       setDescription("");
       setWorkspaceId(defaultWorkspaceId);
-      resetRunnerConfig();
+      setAssigneeAgentId("");
       setColumn("backlog");
       setWorktreeBaseRef("");
       setSubmitLocked(false);
-      previousCoordinatorIdRef.current = "";
     }
   }, [defaultWorkspaceId, open]);
 
@@ -581,29 +528,12 @@ export function TaskModal({
   }, [defaultWorkspaceId, workspaceId, workspaces]);
 
   useEffect(() => {
-    if (!coordinatorAgent) {
-      if (previousCoordinatorIdRef.current) {
-        resetRunnerConfig();
-      }
-      previousCoordinatorIdRef.current = "";
+    if (!open) return;
+    if (assigneeAgentId && workspaceAgents.some((agent) => agent.id === assigneeAgentId)) {
       return;
     }
-    setRunnerType(coordinatorAgent.runnerConfig.type);
-    if (coordinatorAgent.runnerConfig.type === "shell") {
-      setShellCommand(coordinatorAgent.runnerConfig.command);
-      previousCoordinatorIdRef.current = coordinatorAgent.id;
-      return;
-    }
-    setPrompt(coordinatorAgent.runnerConfig.prompt);
-    if (coordinatorAgent.runnerConfig.type === "claude") {
-      setClaudeAgent(coordinatorAgent.runnerConfig.agent ?? "");
-      setClaudeModel(coordinatorAgent.runnerConfig.model?.id ?? "");
-      setClaudePermissionMode(coordinatorAgent.runnerConfig.permissionMode ?? "default");
-      previousCoordinatorIdRef.current = coordinatorAgent.id;
-      return;
-    }
-    previousCoordinatorIdRef.current = coordinatorAgent.id;
-  }, [coordinatorAgent]);
+    setAssigneeAgentId(defaultAssigneeAgent?.id ?? "");
+  }, [assigneeAgentId, defaultAssigneeAgent?.id, open, workspaceAgents]);
 
   useEffect(() => {
     if (!selectedWorkspace?.isGitRepo) {
@@ -668,23 +598,7 @@ export function TaskModal({
               title,
               description,
               workspaceId,
-              runnerType,
-              runnerConfig:
-                usesWorkspaceCoordinator && coordinatorAgent
-                  ? coordinatorAgent.runnerConfig
-                  : runnerType === "shell"
-                  ? { type: "shell", command: shellCommand }
-                  : runnerType === "claude"
-                    ? {
-                        type: "claude",
-                        prompt,
-                        agent: claudeAgent.trim() || undefined,
-                        model: claudeModel.trim()
-                          ? { mode: "custom", id: claudeModel.trim() }
-                          : undefined,
-                        permissionMode: claudePermissionMode
-                      }
-                    : { type: "codex", prompt },
+              assigneeAgentId: assigneeAgentId || undefined,
               column,
               worktreeBaseRef:
                 selectedWorkspace?.isGitRepo && worktreeBaseRef
@@ -741,27 +655,18 @@ export function TaskModal({
             </p>
           </div>
           <label className={modalLabelClass}>
-            <span className={modalLabelTextClass}>Runner</span>
+            <span className={modalLabelTextClass}>Assigned agent</span>
             <NativeSelect
-              value={runnerType}
-              disabled={usesWorkspaceCoordinator}
-              onChange={(event) => {
-                const nextRunnerType = event.target.value as "claude" | "shell" | "codex";
-                setRunnerType(nextRunnerType);
-                setPrompt((current) => {
-                  if (nextRunnerType === "claude" && current === DEFAULT_CODEX_PROMPT) {
-                    return DEFAULT_CLAUDE_PROMPT;
-                  }
-                  if (nextRunnerType === "codex" && current === DEFAULT_CLAUDE_PROMPT) {
-                    return DEFAULT_CODEX_PROMPT;
-                  }
-                  return current;
-                });
-              }}
+              value={assigneeAgentId}
+              disabled={workspaceAgentsQuery.isLoading || workspaceAgents.length === 0}
+              onChange={(event) => setAssigneeAgentId(event.target.value)}
             >
-              <option value="codex">codex</option>
-              <option value="claude">claude</option>
-              <option value="shell">shell</option>
+              {workspaceAgents.length === 0 ? <option value="">No mounted agents</option> : null}
+              {workspaceAgents.map((agent) => (
+                <option key={agent.id} value={agent.id}>
+                  {agent.name} · {agent.role} · {agent.runnerConfig.type}
+                </option>
+              ))}
             </NativeSelect>
           </label>
           <label className={modalLabelClass}>
@@ -801,100 +706,13 @@ export function TaskModal({
               </div>
             </>
           ) : null}
-          {usesWorkspaceCoordinator ? (
-            <div className={cn(modalNoteClass, span2Class)}>
-              <span className={modalLabelTextClass}>Workspace coordinator</span>
-              <p>
-                This workspace has a mounted coordinator. The task will inherit{" "}
-                <code>{coordinatorAgent?.runnerConfig.type}</code> from{" "}
-                <code>{coordinatorAgent?.name}</code>.
-              </p>
-            </div>
-          ) : runnerType === "shell" ? (
-            <label className={cn(modalLabelClass, span2Class)}>
-              <span className={modalLabelTextClass}>Command</span>
-              <Input
-                value={shellCommand}
-                onChange={(event) => setShellCommand(event.target.value)}
-                placeholder="npm test"
-              />
-            </label>
-          ) : (
-            <>
-              <label className={cn(modalLabelClass, span2Class)}>
-                <span className={modalLabelTextClass}>Prompt</span>
-                <Textarea
-                  rows={5}
-                  value={prompt}
-                  onChange={(event) => setPrompt(event.target.value)}
-                  placeholder={
-                    runnerType === "claude" ? DEFAULT_CLAUDE_PROMPT : DEFAULT_CODEX_PROMPT
-                  }
-                />
-              </label>
-              {runnerType === "claude" ? (
-                <>
-                  <label className={modalLabelClass}>
-                    <span className={modalLabelTextClass}>Claude agent</span>
-                    <Input
-                      value={claudeAgent}
-                      onChange={(event) => setClaudeAgent(event.target.value)}
-                      placeholder="code-reviewer"
-                    />
-                  </label>
-                  <label className={modalLabelClass}>
-                    <span className={modalLabelTextClass}>Permission mode</span>
-                    <NativeSelect
-                      value={claudePermissionMode}
-                      onChange={(event) =>
-                        setClaudePermissionMode(event.target.value as ClaudePermissionMode)
-                      }
-                    >
-                      {CLAUDE_PERMISSION_MODE_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </NativeSelect>
-                    <p className={fieldHintClass}>
-                      {
-                        CLAUDE_PERMISSION_MODE_OPTIONS.find(
-                          (option) => option.value === claudePermissionMode
-                        )?.description
-                      }
-                    </p>
-                  </label>
-                  <label className={cn(modalLabelClass, span2Class)}>
-                    <span className={modalLabelTextClass}>Model override</span>
-                    <Input
-                      value={claudeModel}
-                      onChange={(event) => setClaudeModel(event.target.value)}
-                      placeholder="claude-sonnet-4-6"
-                    />
-                    <p className={fieldHintClass}>
-                      Leave blank to use the local Claude Code default model.
-                    </p>
-                  </label>
-                  <div className={cn(modalNoteClass, span2Class)}>
-                    <span className={modalLabelTextClass}>Claude CLI runtime</span>
-                    <p>
-                      Workhorse will run <code>claude -p</code> in this workspace and stream
-                      structured JSON events into the task log.
-                    </p>
-                  </div>
-                </>
-              ) : selectedWorkspace ? (
-                <div className={cn(modalNoteClass, span2Class)}>
-                  <span className={modalLabelTextClass}>Workspace Codex settings</span>
-                  <p>
-                    This task will use <code>{selectedWorkspace.codexSettings.approvalPolicy}</code>{" "}
-                    approval with <code>{selectedWorkspace.codexSettings.sandboxMode}</code>{" "}
-                    sandboxing.
-                  </p>
-                </div>
-              ) : null}
-            </>
-          )}
+          <div className={cn(modalNoteClass, span2Class)}>
+            <span className={modalLabelTextClass}>Agent execution</span>
+            <p>
+              The task records its assigned agent only. Workhorse resolves the actual runner from
+              that agent when the task starts.
+            </p>
+          </div>
           {selectedWorkspace?.isGitRepo && gitRefsQuery.isLoading ? (
             <p className={cn("m-0", mutedTextClass, span2Class)}>Loading Git refs…</p>
           ) : null}

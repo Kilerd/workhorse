@@ -377,7 +377,7 @@ export class CodexAcpRunner implements RunnerAdapter {
     context: RunnerStartContext,
     hooks: RunnerLifecycleHooks
   ): Promise<RunnerControl> {
-    const config = context.task.runnerConfig;
+    const config = context.runnerConfig;
     if (config.type !== "codex") {
       throw new AppError(400, "INVALID_RUNNER_CONFIG", "Task is not configured for Codex ACP execution");
     }

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import type { AccountAgent, ServerEvent, Workspace } from "@workhorse/contracts";
+import type { AccountAgent, Run, ServerEvent, Workspace } from "@workhorse/contracts";
 
 import { CoordinatorRunnerRegistry } from "../runners/coordinator-runner-registry.js";
 import type {
@@ -133,16 +133,17 @@ async function setup(): Promise<Harness> {
   await store.load();
   const workspace = makeWorkspace();
   store.setWorkspaces([workspace]);
+  await store.save();
   const agent: AccountAgent = {
     id: "wa-1",
     name: "coordinator-agent",
     description: "fake coordinator",
-    runnerConfig: { type: "shell", command: "/bin/true" },
+    runnerConfig: { type: "codex", prompt: "Coordinate workspace tasks." },
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
   store.createAgent(agent);
-  await store.save();
+  store.mountAgentToWorkspace(workspace.id, agent.id, "coordinator");
 
   const published: ServerEvent[] = [];
   const events = new EventBus();
@@ -510,6 +511,51 @@ describe("Orchestrator — system event injection", () => {
     expect(systemEvents[0]?.payload).toMatchObject({
       kind: "plan.updated",
       planId: plan.id
+    });
+  });
+
+  it("injects a system_event when a worker run finishes", async () => {
+    const { threads, tasks, events, threadId, workspace } = harness;
+    const { task } = await tasks.createTask({
+      workspaceId: workspace.id,
+      title: "Worker task",
+      assigneeAgentId: "wa-1"
+    });
+    const run: Run = {
+      id: "run-worker-1",
+      taskId: task.id,
+      status: "succeeded",
+      runnerType: "codex",
+      command: "codex mock",
+      startedAt: new Date().toISOString(),
+      endedAt: new Date().toISOString()
+    };
+
+    events.publish({
+      type: "run.finished",
+      taskId: task.id,
+      run,
+      task: {
+        ...task,
+        column: "review",
+        lastRunId: run.id,
+        lastRunStatus: "succeeded"
+      }
+    });
+
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const systemEvents = threads
+      .listMessages(threadId)
+      .filter((m) => m.kind === "system_event");
+    expect(systemEvents.at(-1)?.payload).toMatchObject({
+      kind: "run.finished",
+      taskId: task.id,
+      runId: run.id,
+      runStatus: "succeeded",
+      runnerType: "codex",
+      taskColumn: "review"
     });
   });
 });

@@ -20,10 +20,6 @@ describe("AgentForm helpers", () => {
       permissionMode: "default",
       model: { mode: "builtin", reasoningEffort: "medium" }
     });
-    expect(createDefaultRunnerConfig("shell")).toEqual({
-      type: "shell",
-      command: "npm test"
-    });
   });
 
   it("normalizes whitespace and preserves model config + env for claude", () => {
@@ -73,7 +69,7 @@ describe("AgentForm helpers", () => {
     });
   });
 
-  it("validates required names and shell commands; no prompt requirement", () => {
+  it("validates required names without requiring runner prompts", () => {
     expect(
       validateAgentPayload({
         name: "   ",
@@ -81,14 +77,6 @@ describe("AgentForm helpers", () => {
         runnerConfig: { type: "codex", prompt: "", approvalMode: "default" }
       })
     ).toBe("Agent name is required.");
-
-    expect(
-      validateAgentPayload({
-        name: "Shell Agent",
-        description: "",
-        runnerConfig: { type: "shell", command: "   " }
-      })
-    ).toBe("Shell runner command is required.");
 
     expect(
       validateAgentPayload({

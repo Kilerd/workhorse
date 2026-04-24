@@ -36,11 +36,6 @@ function createTask(): Task {
     workspaceId: "workspace-1",
     column: "running",
     order: 1024,
-    runnerType: "codex",
-    runnerConfig: {
-      type: "codex",
-      prompt: "Implement the feature"
-    },
     dependencies: [],
     taskKind: "user",
     worktree: {

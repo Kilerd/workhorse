@@ -665,7 +665,6 @@ export interface components {
         PartialRecordRunnerTypenumber: {
             claude?: number;
             codex?: number;
-            shell?: number;
         };
         Workspace: {
             id: string;
@@ -715,8 +714,6 @@ export interface components {
             workspaceId: string;
             column: components["schemas"]["TaskColumn"];
             order: number;
-            runnerType: components["schemas"]["RunnerType"];
-            runnerConfig: components["schemas"]["RunnerConfig"];
             /** @description Task IDs that must be "done" before this task can start */
             dependencies: string[];
             plan?: string;
@@ -753,60 +750,6 @@ export interface components {
             updatedAt: string;
         };
         TaskColumn: "backlog" | "todo" | "blocked" | "running" | "review" | "done" | "archived";
-        RunnerType: "claude" | "codex" | "shell";
-        RunnerConfig: components["schemas"]["ShellRunnerConfig"] | components["schemas"]["ClaudeRunnerConfig"] | components["schemas"]["CodexRunnerConfig"];
-        ShellRunnerConfig: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "shell";
-            command: string;
-            env?: components["schemas"]["Recordstringstring"];
-        };
-        /** @description Construct a type with a set of properties K of type T */
-        Recordstringstring: {
-            [key: string]: string;
-        };
-        ClaudeRunnerConfig: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "claude";
-            prompt: string;
-            agent?: string;
-            model?: components["schemas"]["BuiltinModelConfig"] | components["schemas"]["CustomModelConfig"];
-            permissionMode?: "plan" | "acceptEdits" | "bypassPermissions" | "default" | "dontAsk";
-            env?: components["schemas"]["Recordstringstring"];
-        };
-        BuiltinModelConfig: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            mode: "builtin";
-            id: string;
-            reasoningEffort?: "low" | "medium" | "high" | "xhigh";
-        };
-        CustomModelConfig: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            mode: "custom";
-            id: string;
-        };
-        CodexRunnerConfig: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "codex";
-            prompt: string;
-            model?: components["schemas"]["BuiltinModelConfig"] | components["schemas"]["CustomModelConfig"];
-            approvalMode?: "default" | "auto";
-        };
         TaskPullRequest: {
             number?: number;
             title?: string;
@@ -852,6 +795,11 @@ export interface components {
             metadata?: components["schemas"]["Recordstringstring"];
         };
         RunStatus: "running" | "queued" | "succeeded" | "failed" | "interrupted" | "canceled";
+        RunnerType: "claude" | "codex";
+        /** @description Construct a type with a set of properties K of type T */
+        Recordstringstring: {
+            [key: string]: string;
+        };
         UpdateSettingsBody: {
             language: string;
             openRouter: {
@@ -899,8 +847,7 @@ export interface components {
             worktreeBaseRef?: string;
             column?: "backlog" | "todo" | "blocked" | "running" | "review" | "done" | "archived";
             order?: number;
-            runnerType: components["schemas"]["RunnerType"];
-            runnerConfig: components["schemas"]["RunnerConfig"];
+            assigneeAgentId?: string;
         };
         ApproveTaskParams: {
             taskId: string;
@@ -924,8 +871,7 @@ export interface components {
             worktreeBaseRef?: string;
             column?: "backlog" | "todo" | "blocked" | "running" | "review" | "done" | "archived";
             order?: number;
-            runnerType?: "claude" | "codex" | "shell";
-            runnerConfig?: components["schemas"]["ShellRunnerConfig"] | components["schemas"]["ClaudeRunnerConfig"] | components["schemas"]["CodexRunnerConfig"];
+            assigneeAgentId?: string;
         };
         DeleteTaskParams: {
             taskId: string;
@@ -1246,6 +1192,46 @@ export interface components {
             createdAt: string;
             updatedAt: string;
         };
+        RunnerConfig: components["schemas"]["ClaudeRunnerConfig"] | components["schemas"]["CodexRunnerConfig"];
+        ClaudeRunnerConfig: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "claude";
+            prompt: string;
+            agent?: string;
+            model?: components["schemas"]["BuiltinModelConfig"] | components["schemas"]["CustomModelConfig"];
+            permissionMode?: "plan" | "acceptEdits" | "bypassPermissions" | "default" | "dontAsk";
+            env?: components["schemas"]["Recordstringstring"];
+        };
+        BuiltinModelConfig: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            mode: "builtin";
+            id: string;
+            reasoningEffort?: "low" | "medium" | "high" | "xhigh";
+        };
+        CustomModelConfig: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            mode: "custom";
+            id: string;
+        };
+        CodexRunnerConfig: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "codex";
+            prompt: string;
+            model?: components["schemas"]["BuiltinModelConfig"] | components["schemas"]["CustomModelConfig"];
+            approvalMode?: "default" | "auto";
+        };
         /**
          * @description An AccountAgent with the role it was assigned when mounted to a workspace.
          *     Returned by listWorkspaceAgents().
@@ -1270,7 +1256,7 @@ export interface components {
         UpdateAgentBody: {
             name?: string;
             description?: string;
-            runnerConfig?: components["schemas"]["ShellRunnerConfig"] | components["schemas"]["ClaudeRunnerConfig"] | components["schemas"]["CodexRunnerConfig"];
+            runnerConfig?: components["schemas"]["ClaudeRunnerConfig"] | components["schemas"]["CodexRunnerConfig"];
         };
         AgentParams: {
             agentId: string;

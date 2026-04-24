@@ -101,7 +101,7 @@ export interface CoordinatorRunInput {
  *
  * Real adapters for claude-cli and codex-acp implement this on top of their
  * existing session machinery (`--resume`, ACP session handle). A no-op stub
- * is provided for tests and for the shell runner (which has no session).
+ * is provided for tests and development fallbacks.
  */
 export interface CoordinatorRunner {
   resumeOrStart(input: CoordinatorRunInput): Promise<CoordinatorRunHandle>;

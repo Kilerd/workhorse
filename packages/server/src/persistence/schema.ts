@@ -27,8 +27,6 @@ export const tasks = sqliteTable("tasks", {
   workspaceId: text("workspace_id").notNull(),
   column: text("column").notNull(),
   taskOrder: real("task_order").notNull(),
-  runnerType: text("runner_type").notNull(),
-  runnerConfig: text("runner_config").notNull(),
   plan: text("plan"),
   worktree: text("worktree").notNull(),
   lastRunId: text("last_run_id"),

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type {
+  AccountAgent,
   PlanDraft,
   ServerEvent,
   Workspace
@@ -37,6 +38,18 @@ function makeWorkspace(id = "ws-1"): Workspace {
   };
 }
 
+function makeAgent(id: string): AccountAgent {
+  const now = new Date().toISOString();
+  return {
+    id,
+    name: `Agent ${id}`,
+    description: "Test worker",
+    runnerConfig: { type: "codex", prompt: "Do the assigned work." },
+    createdAt: now,
+    updatedAt: now
+  };
+}
+
 async function setup(): Promise<{
   store: StateStore;
   events: RecordingEventBus;
@@ -50,6 +63,8 @@ async function setup(): Promise<{
   const workspace = makeWorkspace();
   store.setWorkspaces([workspace]);
   await store.save();
+  store.createAgent(makeAgent("wa-1"));
+  store.mountAgentToWorkspace(workspace.id, "wa-1", "worker");
 
   const events = new RecordingEventBus();
   const threads = new ThreadService(store, events);

@@ -12,11 +12,6 @@ function createTask(overrides: Partial<Task>): Task {
     workspaceId: overrides.workspaceId ?? "workspace-1",
     column: overrides.column ?? "backlog",
     order: overrides.order ?? 1_024,
-    runnerType: overrides.runnerType ?? "shell",
-    runnerConfig: overrides.runnerConfig ?? {
-      type: "shell",
-      command: "true"
-    },
     worktree: overrides.worktree ?? {
       baseRef: "origin/main",
       branchName: "task-1",

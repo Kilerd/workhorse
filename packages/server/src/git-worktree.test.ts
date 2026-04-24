@@ -17,7 +17,6 @@ import type {
 } from "./lib/github.js";
 import { StateStore } from "./persistence/state-store.js";
 import type { RunnerAdapter, RunnerControl, RunnerLifecycleHooks, RunnerStartContext } from "./runners/types.js";
-import { ShellRunner } from "./runners/shell-runner.js";
 import { BoardService } from "./services/board-service.js";
 import type { TaskIdentityGenerator } from "./services/openrouter-task-naming-service.js";
 import { EventBus } from "./ws/event-bus.js";
@@ -42,6 +41,110 @@ class MockClaudeRunner implements RunnerAdapter {
     return {
       command: "claude (mock)",
       metadata: { claudeSessionId: "mock-session" },
+      async stop() {}
+    };
+  }
+}
+
+class MockCodexRunner implements RunnerAdapter {
+  public readonly type = "codex" as const;
+
+  public async start(
+    context: RunnerStartContext,
+    hooks: RunnerLifecycleHooks
+  ): Promise<RunnerControl> {
+    const command = context.task.description.trim();
+    const metadata = context.run.metadata ?? {};
+    setTimeout(async () => {
+      if (!command || metadata.trigger === "plan_generation") {
+        await hooks.onOutput({
+          kind: "agent",
+          text: "# Plan\n\nMock plan for testing.",
+          stream: "stdout",
+          title: "Codex response",
+          source: "Codex"
+        });
+        await hooks.onExit({
+          status: "succeeded",
+          exitCode: 0,
+          metadata: { threadId: "mock-thread" }
+        });
+        return;
+      }
+
+      try {
+        if (metadata.trigger === "gh_pr_monitor") {
+          const baseRef = context.task.worktree.baseRef || "origin/main";
+          const rebase = await execFileAsync("git", ["rebase", baseRef], {
+            cwd: context.workspace.rootPath,
+            encoding: "utf8"
+          });
+          if (rebase.stdout) {
+            await hooks.onOutput({
+              kind: "text",
+              text: rebase.stdout,
+              stream: "stdout"
+            });
+          }
+          if (rebase.stderr) {
+            await hooks.onOutput({
+              kind: "text",
+              text: rebase.stderr,
+              stream: "stderr"
+            });
+          }
+        }
+
+        const result = await execFileAsync("/bin/zsh", ["-lc", command], {
+          cwd: context.workspace.rootPath,
+          encoding: "utf8"
+        });
+        if (result.stdout) {
+          await hooks.onOutput({
+            kind: "text",
+            text: result.stdout,
+            stream: "stdout"
+          });
+        }
+        if (result.stderr) {
+          await hooks.onOutput({
+            kind: "text",
+            text: result.stderr,
+            stream: "stderr"
+          });
+        }
+        await hooks.onExit({
+          status: "succeeded",
+          exitCode: 0,
+          metadata: { threadId: "mock-thread" }
+        });
+      } catch (error) {
+        const failed = error as { stdout?: string; stderr?: string; code?: number };
+        if (failed.stdout) {
+          await hooks.onOutput({
+            kind: "text",
+            text: failed.stdout,
+            stream: "stdout"
+          });
+        }
+        if (failed.stderr) {
+          await hooks.onOutput({
+            kind: "text",
+            text: failed.stderr,
+            stream: "stderr"
+          });
+        }
+        await hooks.onExit({
+          status: "failed",
+          exitCode: typeof failed.code === "number" ? failed.code : 1,
+          metadata: { threadId: "mock-thread" }
+        });
+      }
+    }, 10);
+
+    return {
+      command: command || "codex mock",
+      metadata: { threadId: "mock-thread" },
       async stop() {}
     };
   }
@@ -113,7 +216,7 @@ async function createGitRuntimeWithOptions(options: {
     taskIdentityGenerator: options.taskIdentityGenerator,
     runners: {
       claude: new MockClaudeRunner(),
-      shell: new ShellRunner()
+      codex: new MockCodexRunner()
     }
   });
   await service.initialize();
@@ -133,7 +236,7 @@ async function createGitRuntimeWithProvider(githubPullRequests: GitHubPullReques
     githubPullRequests,
     runners: {
       claude: new MockClaudeRunner(),
-      shell: new ShellRunner()
+      codex: new MockCodexRunner()
     }
   });
   await service.initialize();
@@ -160,10 +263,21 @@ function createTaskIdentityGeneratorStub(
 }
 
 async function createGitWorkspace(service: BoardService, workspaceDir: string, name = "Repo") {
-  return service.createWorkspace({
+  const workspace = await service.createWorkspace({
     name,
     rootPath: workspaceDir
   });
+  const agent = service.createAgent({
+    name: `${name} Worker`,
+    description: "Runs worktree-backed test tasks.",
+    runnerConfig: {
+      type: "codex",
+      prompt: "Run the assigned worktree task.",
+      approvalMode: "default"
+    }
+  });
+  service.mountAgent(workspace.id, { agentId: agent.id, role: "worker" });
+  return workspace;
 }
 
 async function createGitTask(
@@ -178,13 +292,9 @@ async function createGitTask(
   return service.createTask({
     title: overrides.title ?? "Git task",
     workspaceId,
-    runnerType: "shell",
-    runnerConfig: {
-      type: "shell",
-      command:
-        overrides.command ??
-        "node -e \"const fs=require('fs'); console.log(process.cwd()); console.log(fs.readFileSync('marker.txt','utf8').trim())\""
-    },
+    description:
+      overrides.command ??
+      "node -e \"const fs=require('fs'); console.log(process.cwd()); console.log(fs.readFileSync('marker.txt','utf8').trim())\"",
     worktreeBaseRef: overrides.worktreeBaseRef
   });
 }
@@ -205,6 +315,87 @@ async function waitForRunToFinish(
   }
 
   throw new Error(`Timed out waiting for run ${taskId} to finish`);
+}
+
+async function waitForRunIdToFinish(
+  service: BoardService,
+  taskId: string,
+  runId: string,
+  timeoutMs = 5_000
+): Promise<Run> {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const run = service.listRuns(taskId).find((entry) => entry.id === runId);
+    if (run?.endedAt) {
+      return run;
+    }
+    await sleep(25);
+  }
+
+  throw new Error(`Timed out waiting for run ${runId} to finish`);
+}
+
+async function waitForTriggeredRunToFinish(
+  service: BoardService,
+  taskId: string,
+  trigger: string,
+  previousStartedAt?: string,
+  timeoutMs = 5_000
+): Promise<Run> {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const run = service
+      .listRuns(taskId)
+      .find(
+        (entry) =>
+          entry.metadata?.trigger === trigger &&
+          (!previousStartedAt || entry.startedAt !== previousStartedAt)
+      );
+    if (run?.endedAt) {
+      return run;
+    }
+    await sleep(25);
+  }
+
+  throw new Error(`Timed out waiting for ${trigger} run on task ${taskId}`);
+}
+
+async function waitForTaskColumn(
+  service: BoardService,
+  taskId: string,
+  column: string,
+  timeoutMs = 5_000
+): Promise<void> {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const task = service.listTasks({}).find((entry) => entry.id === taskId);
+    if (task?.column === column) {
+      return;
+    }
+    await sleep(25);
+  }
+
+  throw new Error(`Timed out waiting for task ${taskId} to reach ${column}`);
+}
+
+async function waitForCondition(
+  predicate: () => boolean,
+  message: string,
+  timeoutMs = 5_000
+): Promise<void> {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    if (predicate()) {
+      return;
+    }
+    await sleep(25);
+  }
+
+  throw new Error(message);
 }
 
 async function commitAndPushTaskBranch(
@@ -327,11 +518,6 @@ describe("git worktree lifecycle", () => {
           workspaceId: "workspace-1",
           column: "backlog",
           order: 1024,
-          runnerType: "shell",
-          runnerConfig: {
-            type: "shell",
-            command: "true"
-          },
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         }
@@ -345,7 +531,7 @@ describe("git worktree lifecycle", () => {
     await store.load();
     const snapshot = store.snapshot();
 
-    expect(snapshot.schemaVersion).toBe(8);
+    expect(snapshot.schemaVersion).toBe(9);
     expect(snapshot.settings).toEqual({
       language: "中文",
       openRouter: {
@@ -460,22 +646,12 @@ describe("git worktree lifecycle", () => {
     const firstTask = await service.createTask({
       title: "   ",
       description: "Review the onboarding flow and identify the regressions.",
-      workspaceId: workspace.id,
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "true"
-      }
+      workspaceId: workspace.id
     });
     const secondTask = await service.createTask({
       title: "   ",
       description: "Review the onboarding flow and patch the regressions.",
-      workspaceId: workspace.id,
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "true"
-      }
+      workspaceId: workspace.id
     });
 
     expect(firstTask.worktree.branchName).toBe("task/fix-onboarding-flow");
@@ -508,12 +684,7 @@ describe("git worktree lifecycle", () => {
     const task = await service.createTask({
       title: "   ",
       description: "Review the onboarding flow and identify the regressions.",
-      workspaceId: workspace.id,
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "true"
-      }
+      workspaceId: workspace.id
     });
     const fallbackBranchName = `task/${task.id}-fix-onboarding-flow`;
 
@@ -647,6 +818,7 @@ describe("git worktree lifecycle", () => {
 
     await service.startTask(task.id);
     await waitForRunToFinish(service, task.id);
+    await waitForTaskColumn(service, task.id, "review");
 
     const taskWorktree = service.listTasks({}).find((entry) => entry.id === task.id)?.worktree.path;
     if (!taskWorktree) {
@@ -771,6 +943,7 @@ describe("git worktree lifecycle", () => {
     await service.startTask(task.id);
     const initialRun = await waitForRunToFinish(service, task.id);
     expect(initialRun.status).toBe("succeeded");
+    await waitForTaskColumn(service, task.id, "review");
 
     const taskWorktree = service.listTasks({}).find((entry) => entry.id === task.id)?.worktree.path;
     if (!taskWorktree) {
@@ -967,7 +1140,18 @@ describe("git worktree lifecycle", () => {
     };
 
     const reviewStart = await service.requestTaskReview(task.id);
-    const reviewRun = await waitForRunToFinish(service, task.id);
+    const finishedReviewRun = await waitForRunIdToFinish(
+      service,
+      task.id,
+      reviewStart.run.id
+    );
+    await waitForCondition(
+      () => github.reviews.length === 1,
+      "Timed out waiting for GitHub review publication"
+    );
+    const reviewRun = service
+      .listRuns(task.id)
+      .find((run) => run.id === finishedReviewRun.id)!;
     const reviewLog = await service.getRunLog(reviewStart.run.id);
 
     expect(reviewRun.status).toBe("succeeded");
@@ -1001,12 +1185,7 @@ describe("git worktree lifecycle", () => {
     const doneTask = await service.createTask({
       title: "Already done",
       workspaceId: workspace.id,
-      column: "done",
-      runnerType: "shell",
-      runnerConfig: {
-        type: "shell",
-        command: "true"
-      }
+      column: "done"
     });
     const taskA = await createGitTask(service, workspace.id, {
       title: "Feature A",
@@ -1019,8 +1198,10 @@ describe("git worktree lifecycle", () => {
 
     await service.startTask(taskA.id);
     await waitForRunToFinish(service, taskA.id);
+    await waitForTaskColumn(service, taskA.id, "review");
     await service.startTask(taskB.id);
     await waitForRunToFinish(service, taskB.id);
+    await waitForTaskColumn(service, taskB.id, "review");
 
     const taskAWorktree = service.listTasks({}).find((entry) => entry.id === taskA.id)?.worktree.path;
     const taskBWorktree = service.listTasks({}).find((entry) => entry.id === taskB.id)?.worktree.path;
@@ -1082,7 +1263,11 @@ describe("git worktree lifecycle", () => {
     const firstPolledAt = service.getReviewMonitorLastPolledAt();
     expect(firstPolledAt).toBeDefined();
 
-    const rerun = await waitForRunToFinish(service, taskB.id);
+    const rerun = await waitForTriggeredRunToFinish(
+      service,
+      taskB.id,
+      "gh_pr_monitor"
+    );
     const updatedTaskA = service.listTasks({}).find((entry) => entry.id === taskA.id);
     const updatedTaskB = service.listTasks({}).find((entry) => entry.id === taskB.id);
     const doneTasks = service.listTasks({}).filter((entry) => entry.column === "done");
@@ -1103,7 +1288,7 @@ describe("git worktree lifecycle", () => {
     expect(Date.parse(service.getReviewMonitorLastPolledAt() ?? "")).toBeGreaterThanOrEqual(
       Date.parse(firstPolledAt ?? "")
     );
-  });
+  }, 15_000);
 
   it("restarts review tasks when required CI checks fail on the PR", async () => {
     const github = createFakeGitHubProvider();
@@ -1366,7 +1551,12 @@ describe("git worktree lifecycle", () => {
     const firstPoll = await service.pollGitReviewTasksForBaseUpdates();
     expect(firstPoll.resumedTaskIds).toEqual([task.id]);
 
-    const firstMonitorRun = await waitForRunToFinish(service, task.id);
+    const firstMonitorRun = await waitForTriggeredRunToFinish(
+      service,
+      task.id,
+      "gh_pr_monitor"
+    );
+    const firstMonitorStartedAt = firstMonitorRun.startedAt;
     expect(firstMonitorRun.status).toBe("failed");
     expect(firstMonitorRun.metadata?.trigger).toBe("gh_pr_monitor");
 
@@ -1376,9 +1566,14 @@ describe("git worktree lifecycle", () => {
     const secondPoll = await service.pollGitReviewTasksForBaseUpdates();
     expect(secondPoll.resumedTaskIds).toEqual([task.id]);
 
-    const secondMonitorRun = await waitForRunToFinish(service, task.id);
-    expect(secondMonitorRun.id).not.toBe(firstMonitorRun.id);
+    const secondMonitorRun = await waitForTriggeredRunToFinish(
+      service,
+      task.id,
+      "gh_pr_monitor",
+      firstMonitorStartedAt
+    );
+    expect(secondMonitorRun.startedAt).not.toBe(firstMonitorStartedAt);
     expect(secondMonitorRun.status).toBe("failed");
     expect(secondMonitorRun.metadata?.trigger).toBe("gh_pr_monitor");
-  });
+  }, 15_000);
 });

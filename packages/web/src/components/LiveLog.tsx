@@ -564,7 +564,9 @@ export function LiveLog({
               <strong>{activeRun ? activeRun.status : "idle"}</strong>
               <p className="m-0 text-[var(--muted)]">{activeRun ? activeRun.id : "No active run"}</p>
             </div>
-            <div className="text-[var(--muted)]">{task.runnerType}</div>
+            <div className="text-[var(--muted)]">
+              {activeRun?.runnerType ?? viewedRun?.runnerType ?? "no run"}
+            </div>
           </div>
           {viewedRun ? (
             <p className="m-0 text-[var(--muted)]">
@@ -578,7 +580,7 @@ export function LiveLog({
           ) : null}
           {viewedRun?.status === "interrupted" && !activeRun ? (
             <p className="m-0 text-[var(--muted)]">
-              {task.runnerType === "codex"
+              {viewedRun?.runnerType === "codex"
                 ? "This run was interrupted while Workhorse was offline. Starting the task again will resume the previous Codex session when possible."
                 : "This run was interrupted while Workhorse was offline. Start the task again to continue the work."}
             </p>

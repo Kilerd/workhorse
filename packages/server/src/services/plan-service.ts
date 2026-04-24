@@ -137,7 +137,11 @@ export class PlanService {
 
     // Pre-build tasks (ids + dependency resolution) before the transaction so
     // draft typos surface as a 400 before we start writing.
-    const tasks = buildTasksFromDrafts(current, thread.workspaceId);
+    const tasks = buildTasksFromDrafts(
+      current,
+      thread.workspaceId,
+      this.store.listWorkspaceAgents(thread.workspaceId)
+    );
     const decisionMessage: Message = {
       id: createId(),
       threadId: current.threadId,
@@ -268,7 +272,11 @@ function planAlreadyDecided(plan: Plan): AppError {
  * matching `draft.dependsOn` entries against sibling draft titles inside the
  * same plan — a typo (unresolved title) aborts the entire approval.
  */
-function buildTasksFromDrafts(plan: Plan, workspaceId: string): Task[] {
+function buildTasksFromDrafts(
+  plan: Plan,
+  workspaceId: string,
+  workspaceAgents: Array<{ id: string; role: string }>
+): Task[] {
   const now = new Date().toISOString();
 
   // Pre-assign IDs so dependsOn can map title → taskId in one pass.
@@ -299,6 +307,7 @@ function buildTasksFromDrafts(plan: Plan, workspaceId: string): Task[] {
       return depId;
     });
 
+    const assigneeAgentId = resolveDraftAssigneeId(draft, workspaceAgents);
     const task: Task = {
       id,
       title: draft.title,
@@ -306,21 +315,46 @@ function buildTasksFromDrafts(plan: Plan, workspaceId: string): Task[] {
       workspaceId,
       column: "todo",
       order: index,
-      runnerType: "shell",
-      // Placeholder runner config — the Orchestrator replaces this before the
-      // task actually runs, based on the assignee agent's runnerConfig.
-      runnerConfig: { type: "shell", command: "" },
       dependencies,
       worktree: createTaskWorktree(id, draft.title),
       taskKind: "user",
       source: "agent_plan",
       planId: plan.id,
-      assigneeAgentId: draft.assigneeAgentId,
+      assigneeAgentId,
       createdAt: now,
       updatedAt: now
     };
     return task;
   });
+}
+
+function resolveDraftAssigneeId(
+  draft: PlanDraft,
+  workspaceAgents: Array<{ id: string; role: string }>
+): string {
+  if (draft.assigneeAgentId) {
+    const assigned = workspaceAgents.find((agent) => agent.id === draft.assigneeAgentId);
+    if (!assigned) {
+      throw new AppError(
+        400,
+        "PLAN_ASSIGNEE_NOT_FOUND",
+        `Draft "${draft.title}" references unknown workspace agent "${draft.assigneeAgentId}"`
+      );
+    }
+    return assigned.id;
+  }
+
+  const fallback =
+    workspaceAgents.find((agent) => agent.role === "worker") ??
+    workspaceAgents.find((agent) => agent.role === "coordinator");
+  if (!fallback) {
+    throw new AppError(
+      400,
+      "PLAN_NO_RUNNER_AGENT",
+      `Draft "${draft.title}" has no mounted agent runner`
+    );
+  }
+  return fallback.id;
 }
 
 function normalizeTitle(title: string): string {

@@ -23,7 +23,6 @@ import {
   formatMonitorFeedback,
   formatMonitorUnresolvedConversations,
   joinMonitorReasonDescriptions,
-  quoteShell,
   summarizeRequiredChecks,
   summarizeTaskPullRequestChecks,
   type MonitorCiStatus,
@@ -57,6 +56,7 @@ export interface PrMonitorDependencies {
     next: { pullRequestUrl?: string | null; pullRequest?: TaskPullRequest | null }
   ): Promise<void>;
   isTaskActive(taskId: string): boolean;
+  resolveRunnerConfig(task: Task): RunnerConfig;
   topOrder(column: Task["column"], excludingTaskId?: string): number;
 }
 
@@ -302,24 +302,13 @@ export class PrMonitorService {
     ciStatus: MonitorCiStatus,
     reasons: MonitorReason[]
   ): RunnerConfig {
-    if (task.runnerConfig.type === "shell") {
-      return {
-        ...task.runnerConfig,
-        command: [
-          "set -eu",
-          `git fetch ${quoteShell(extractRemoteName(task.worktree.baseRef))} --prune`,
-          `git rebase ${quoteShell(task.worktree.baseRef)}`,
-          task.runnerConfig.command.trim()
-        ].join("\n")
-      };
-    }
-
+    const runnerConfig = this.deps.resolveRunnerConfig(task);
     const feedbackLines = formatMonitorFeedback(pullRequest);
     const unresolvedConversationLines = formatMonitorUnresolvedConversations(pullRequest);
     return {
-      ...task.runnerConfig,
+      ...runnerConfig,
       prompt: [
-        task.runnerConfig.prompt.trim(),
+        runnerConfig.prompt.trim(),
         "GitHub PR monitor update:",
         `- PR #${pullRequest.number} (${pullRequest.url}) needs attention because ${joinMonitorReasonDescriptions(reasons)}.`,
         `- Required CI status is currently \`${ciStatus}\`.`,

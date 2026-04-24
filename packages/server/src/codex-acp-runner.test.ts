@@ -25,11 +25,6 @@ function createCodexContext(overrides: Partial<RunnerStartContext> = {}): Runner
       workspaceId: "workspace-1",
       column: "todo",
       order: 1024,
-      runnerType: "codex",
-      runnerConfig: {
-        type: "codex",
-        prompt: "Implement the feature"
-      },
       dependencies: [],
       taskKind: "user",
       worktree: {
@@ -40,6 +35,10 @@ function createCodexContext(overrides: Partial<RunnerStartContext> = {}): Runner
       },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
+    },
+    runnerConfig: {
+      type: "codex",
+      prompt: "Implement the feature"
     },
     workspace: {
       id: "workspace-1",
@@ -300,8 +299,8 @@ describe("CodexAcpRunner prompt", () => {
           id: "run-previous",
           taskId: "task-1",
           status: "succeeded",
-          runnerType: "shell",
-          command: "true",
+          runnerType: "claude",
+          command: "claude -p",
           startedAt: new Date().toISOString(),
           endedAt: new Date().toISOString(),
           logFile: "/tmp/run-previous.log",

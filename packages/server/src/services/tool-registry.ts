@@ -1,4 +1,4 @@
-import type { Plan, PlanDraft, Task, TaskColumn } from "@workhorse/contracts";
+import type { Plan, PlanDraft, Run, Task, TaskColumn } from "@workhorse/contracts";
 
 import { AppError } from "../lib/errors.js";
 import { createId } from "../lib/id.js";
@@ -183,6 +183,7 @@ export interface ToolRegistryDeps {
   tasks: TaskService;
   plans: PlanService;
   threads: ThreadService;
+  requestTaskReview?(taskId: string): Promise<{ task: Task; run: Run }>;
 }
 
 /**
@@ -193,7 +194,7 @@ export interface ToolRegistryDeps {
 export function buildDefaultToolRegistry(
   deps: ToolRegistryDeps
 ): ToolRegistry {
-  const { store, tasks, plans, threads } = deps;
+  const { store, tasks, plans, threads, requestTaskReview } = deps;
   const registry = new ToolRegistry({
     onToolStarted: ({ toolUseId, name, input, ctx }) => {
       threads.appendMessage({
@@ -273,8 +274,6 @@ export function buildDefaultToolRegistry(
             "backlog",
             "todo",
             "blocked",
-            "running",
-            "review",
             "done",
             "archived"
           ]
@@ -286,6 +285,13 @@ export function buildDefaultToolRegistry(
       const obj = asRecord(input, "move_task");
       const taskId = requireString(obj, "taskId", "move_task");
       const column = requireString(obj, "column", "move_task") as TaskColumn;
+      if (column === "running" || column === "review") {
+        throw new AppError(
+          400,
+          "TOOL_INVALID_INPUT",
+          "Tool move_task cannot move tasks into running or review; those columns are owned by the run lifecycle"
+        );
+      }
       const task = await tasks.updateColumn(taskId, column, "system");
       return { task };
     }
@@ -361,6 +367,26 @@ export function buildDefaultToolRegistry(
       );
     }
   });
+
+  if (requestTaskReview) {
+    registry.register<Record<string, unknown>, { task: Task; run: Run }>({
+      name: "request_task_review",
+      description:
+        "Start a Claude review run for a task currently in the review column. Use this after inspecting a completed worker run when an independent reviewer should check the result.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          taskId: { type: "string" }
+        },
+        required: ["taskId"]
+      },
+      handler: async (input) => {
+        const obj = asRecord(input, "request_task_review");
+        const taskId = requireString(obj, "taskId", "request_task_review");
+        return requestTaskReview(taskId);
+      }
+    });
+  }
 
   registry.register<Record<string, unknown>, { plan: Plan }>({
     name: "propose_plan",
