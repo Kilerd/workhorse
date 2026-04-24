@@ -410,7 +410,7 @@ function ReactAppShell() {
       <main
         className={
           isTaskDetailView || isThreadView
-            ? "relative z-[1] min-h-screen min-w-0 overflow-hidden lg:min-h-0"
+            ? "relative z-[1] h-full min-h-screen min-w-0 overflow-hidden lg:min-h-0"
             : "relative z-[1] grid min-h-screen min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden lg:min-h-0"
         }
       >

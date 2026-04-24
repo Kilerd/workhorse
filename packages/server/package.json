@@ -9,7 +9,7 @@
     "predev": "npm run build --workspace @workhorse/contracts",
     "prestart": "npm run build --workspace @workhorse/contracts",
     "pretest": "npm run build --workspace @workhorse/contracts",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -b tsconfig.json --force",
     "dev": "WORKHORSE_DEV_SERVER=1 tsx watch --exclude ../web/node_modules/.vite-temp --exclude ../web/dist src/index.ts",
     "start": "node dist/index.js",
     "test": "vitest run"

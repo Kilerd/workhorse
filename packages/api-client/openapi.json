@@ -2678,11 +2678,6 @@
         "oneOf": [
           {
             "enum": [
-              "review"
-            ]
-          },
-          {
-            "enum": [
               "backlog"
             ]
           },
@@ -2699,6 +2694,11 @@
           {
             "enum": [
               "running"
+            ]
+          },
+          {
+            "enum": [
+              "review"
             ]
           },
           {
@@ -3299,11 +3299,6 @@
             "oneOf": [
               {
                 "enum": [
-                  "review"
-                ]
-              },
-              {
-                "enum": [
                   "backlog"
                 ]
               },
@@ -3320,6 +3315,11 @@
               {
                 "enum": [
                   "running"
+                ]
+              },
+              {
+                "enum": [
+                  "review"
                 ]
               },
               {
@@ -3424,11 +3424,6 @@
             "oneOf": [
               {
                 "enum": [
-                  "review"
-                ]
-              },
-              {
-                "enum": [
                   "backlog"
                 ]
               },
@@ -3445,6 +3440,11 @@
               {
                 "enum": [
                   "running"
+                ]
+              },
+              {
+                "enum": [
+                  "review"
                 ]
               },
               {
@@ -4397,11 +4397,6 @@
         "oneOf": [
           {
             "enum": [
-              "plan"
-            ]
-          },
-          {
-            "enum": [
               "system"
             ]
           },
@@ -4428,6 +4423,11 @@
           {
             "enum": [
               "tool_output"
+            ]
+          },
+          {
+            "enum": [
+              "plan"
             ]
           },
           {

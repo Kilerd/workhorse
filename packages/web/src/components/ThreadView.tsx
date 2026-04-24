@@ -58,12 +58,7 @@ export function ThreadView({ threadId, thread, className }: Props) {
   }
 
   return (
-    <section
-      className={cn(
-        "grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-3",
-        className
-      )}
-    >
+    <section className={cn("flex min-h-0 flex-col gap-3", className)}>
       {thread ? <CoordinatorHint thread={thread} pending={pendingCount} /> : null}
 
       {messagesQuery.isLoading ? (
@@ -77,7 +72,7 @@ export function ThreadView({ threadId, thread, className }: Props) {
           No messages yet. Start the conversation below.
         </div>
       ) : (
-        <div className="grid auto-rows-max content-start gap-2 overflow-y-auto pr-1">
+        <div className="grid min-h-0 flex-1 auto-rows-max content-start gap-2 overflow-y-auto pr-1">
           {ordered.map((msg) => (
             <MessageRow key={msg.id} message={msg} threadId={threadId} />
           ))}
@@ -85,7 +80,7 @@ export function ThreadView({ threadId, thread, className }: Props) {
       )}
 
       <form
-        className="grid gap-2"
+        className="shrink-0 grid gap-2 pb-2"
         onSubmit={(e) => {
           e.preventDefault();
           void handleSend();
@@ -178,11 +173,11 @@ function senderLabel(message: Message): string {
 function senderTone(message: Message): string {
   switch (message.sender.type) {
     case "user":
-      return "border-amber-400/40 bg-amber-400/10 text-amber-100";
+      return "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-400/40 dark:bg-amber-400/10 dark:text-amber-100";
     case "agent":
-      return "border-indigo-400/40 bg-indigo-400/10 text-indigo-100";
+      return "border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-400/40 dark:bg-indigo-400/10 dark:text-indigo-100";
     default:
-      return "border-slate-400/40 bg-slate-400/10 text-slate-100";
+      return "border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-400/40 dark:bg-slate-400/10 dark:text-slate-100";
   }
 }
 

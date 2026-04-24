@@ -21,7 +21,7 @@ export function ThreadPage() {
   const thread = threadsQuery.data?.find((t) => t.id === threadId) ?? null;
 
   return (
-    <section className="flex h-full min-h-0 w-full flex-col gap-3 p-4">
+    <section className="flex h-full min-h-0 w-full flex-col gap-3 overflow-hidden p-4">
       <header className="flex items-center justify-between gap-2">
         <div>
           <p className="section-kicker m-0">Thread</p>

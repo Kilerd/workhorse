@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "postinstall": "ts-patch install -s",
-    "clean": "rimraf packages/*/dist packages/api-client/openapi.json packages/api-client/src/generated/openapi.ts",
+    "clean": "rimraf packages/*/dist packages/*/tsconfig.tsbuildinfo packages/api-client/openapi.json packages/api-client/src/generated/openapi.ts",
     "build:contracts": "npm run build --workspace @workhorse/contracts",
     "generate:openapi": "npm run build:contracts && node packages/contracts/dist/scripts/generate-openapi.js",
     "generate:client": "npm run generate:openapi && openapi-typescript packages/api-client/openapi.json -o packages/api-client/src/generated/openapi.ts",
