@@ -340,6 +340,8 @@ export interface Thread {
 export type MessageKind =
   | "chat"
   | "status"
+  | "tool_call"
+  | "tool_output"
   | "artifact"
   | "plan_draft"
   | "plan_decision"

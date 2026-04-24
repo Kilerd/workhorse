@@ -313,6 +313,24 @@ describe("Orchestrator — tool routing", () => {
     };
     expect(result.plan.status).toBe("pending");
     expect(plans.listPlansByThread(threadId)).toHaveLength(1);
+
+    const toolMessages = threads
+      .listMessages(threadId)
+      .filter((message) => message.kind === "tool_call" || message.kind === "tool_output");
+    expect(toolMessages.map((message) => message.kind)).toEqual([
+      "tool_call",
+      "tool_output"
+    ]);
+    expect(toolMessages[0]?.payload).toMatchObject({
+      toolUseId: "tu-1",
+      name: "propose_plan",
+      status: "started"
+    });
+    expect(toolMessages[1]?.payload).toMatchObject({
+      toolUseId: "tu-1",
+      name: "propose_plan",
+      status: "completed"
+    });
   });
 
   it("streams assistant text chunks into a single kind='chat' message", async () => {
@@ -370,6 +388,43 @@ describe("Orchestrator — tool routing", () => {
       { text: "checking the renderer", outputId: "turn-1:item-1" },
       { text: "root cause confirmed", outputId: "turn-1:item-2" }
     ]);
+  });
+
+  it("surfaces runner activity chunks as thread messages", async () => {
+    const { threads, runner, orchestrator, threadId } = harness;
+    threads.appendMessage({
+      threadId,
+      sender: { type: "user" },
+      kind: "chat",
+      payload: { text: "run a command" }
+    });
+    await orchestrator.onThreadMessage(threadId);
+    const handle = runner.handles[0]!;
+
+    handle.emitChunk({
+      type: "activity",
+      kind: "tool_call",
+      text: "npm test",
+      title: "Command Execution started",
+      stream: "system",
+      source: "item/started",
+      metadata: {
+        groupId: "item:turn-1:cmd-1",
+        itemType: "commandExecution",
+        phase: "started"
+      }
+    });
+
+    const toolMessages = threads
+      .listMessages(threadId)
+      .filter((message) => message.kind === "tool_call");
+    expect(toolMessages).toHaveLength(1);
+    expect(toolMessages[0]?.payload).toMatchObject({
+      text: "npm test",
+      title: "Command Execution started",
+      status: "started",
+      toolUseId: "item:turn-1:cmd-1"
+    });
   });
 
   it("persists the runner session key on session_key chunks", async () => {

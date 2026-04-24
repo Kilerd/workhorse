@@ -168,7 +168,22 @@ describe("ToolRegistry — post_message / annotate_task", () => {
     const { tools, ctx, threads, threadId } = await setup();
     await tools.invoke("post_message", { text: "hello" }, ctx);
     const msgs = threads.listMessages(threadId);
-    expect(msgs.at(-1)?.payload).toEqual({ text: "hello" });
+    expect(msgs.map((message) => message.kind)).toEqual([
+      "tool_call",
+      "chat",
+      "tool_output"
+    ]);
+    expect(msgs.find((message) => message.kind === "chat")?.payload).toEqual({
+      text: "hello"
+    });
+    expect(msgs.find((message) => message.kind === "tool_call")?.payload).toMatchObject({
+      name: "post_message",
+      status: "started"
+    });
+    expect(msgs.find((message) => message.kind === "tool_output")?.payload).toMatchObject({
+      name: "post_message",
+      status: "completed"
+    });
   });
 
   it("annotate_task writes to the paired task thread", async () => {

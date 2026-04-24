@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Message, Thread } from "@workhorse/contracts";
+import {
+  CheckCircle2,
+  ChevronDown,
+  Loader2,
+  XCircle
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,7 +19,11 @@ import { readErrorMessage } from "@/lib/error-message";
 import { formatRelativeTime } from "@/lib/format";
 import { renderMarkdownBlock } from "@/lib/markdown";
 import { isScrolledNearBottom } from "@/lib/scroll-position";
-import { mergeAdjacentAgentChatMessages } from "@/lib/thread-messages";
+import {
+  buildThreadDisplayItems,
+  mergeAdjacentAgentChatMessages,
+  type ThreadDisplayItem
+} from "@/lib/thread-messages";
 import { cn } from "@/lib/utils";
 
 import { PlanDraftCard } from "./PlanDraftCard";
@@ -45,11 +55,15 @@ export function ThreadView({ threadId, thread, className }: Props) {
     () => mergeAdjacentAgentChatMessages(ordered),
     [ordered]
   );
+  const displayItems = useMemo(
+    () => buildThreadDisplayItems(displayMessages),
+    [displayMessages]
+  );
   const messageTailKey = useMemo(() => {
-    const lastMessage = displayMessages.at(-1);
+    const lastMessage = ordered.at(-1);
     if (!lastMessage) return "empty";
-    return `${displayMessages.length}:${lastMessage.id}:${lastMessage.createdAt}:${readText(lastMessage.payload).length}`;
-  }, [displayMessages]);
+    return `${ordered.length}:${lastMessage.id}:${lastMessage.createdAt}:${readText(lastMessage.payload).length}`;
+  }, [ordered]);
 
   const pendingCount = useMemo(
     () => ordered.filter((m) => isUserFacing(m) && !m.consumedByRunId).length,
@@ -113,8 +127,8 @@ export function ThreadView({ threadId, thread, className }: Props) {
           onScroll={handleMessageListScroll}
           className="grid min-h-0 flex-1 auto-rows-max content-start gap-2 overflow-y-auto pr-1"
         >
-          {displayMessages.map((msg) => (
-            <MessageRow key={msg.id} message={msg} threadId={threadId} />
+          {displayItems.map((item) => (
+            <DisplayItemRow key={item.id} item={item} threadId={threadId} />
           ))}
         </div>
       )}
@@ -185,10 +199,27 @@ function CoordinatorHint({
   );
 }
 
+function DisplayItemRow({
+  item,
+  threadId
+}: {
+  item: ThreadDisplayItem;
+  threadId: string;
+}) {
+  if (item.type === "tool") {
+    return <ToolEventGroup messages={item.messages} />;
+  }
+
+  return <MessageRow message={item.message} threadId={threadId} />;
+}
+
 function MessageRow({ message, threadId }: { message: Message; threadId: string }) {
   switch (message.kind) {
     case "chat":
       return <ChatRow message={message} />;
+    case "tool_call":
+    case "tool_output":
+      return <ToolEventRow message={message} />;
     case "status":
       return <StatusRow message={message} />;
     case "artifact":
@@ -207,7 +238,7 @@ function MessageRow({ message, threadId }: { message: Message; threadId: string 
 function senderLabel(message: Message): string {
   if (message.sender.type === "user") return "you";
   if (message.sender.type === "system") return "system";
-  return `@${message.sender.agentId}`;
+  return "agent";
 }
 
 function senderTone(message: Message): string {
@@ -254,6 +285,89 @@ function readText(payload: unknown): string {
   return "";
 }
 
+function readObject(payload: unknown): Record<string, unknown> {
+  return payload && typeof payload === "object" && !Array.isArray(payload)
+    ? (payload as Record<string, unknown>)
+    : {};
+}
+
+function readStringField(
+  payload: Record<string, unknown>,
+  key: string
+): string | undefined {
+  const value = payload[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function humanizeToolName(value: string): string {
+  const cleaned = value
+    .replace(/\s+(started|completed)$/i, "")
+    .replace(/^mcp__[^_]+__/, "")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_/.-]+/g, " ")
+    .trim();
+  if (cleaned.toLowerCase() === "command execution") {
+    return "Command";
+  }
+  return cleaned ? cleaned.replace(/\b\w/g, (char) => char.toUpperCase()) : "Tool";
+}
+
+function humanizeStatus(value: string): string {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_/.-]+/g, " ")
+    .trim()
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function stringifyValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2) ?? String(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function summarizeValue(value: unknown): string {
+  const text = stringifyValue(value).replace(/\s+/g, " ").trim();
+  return text.length > 140 ? `${text.slice(0, 137)}...` : text;
+}
+
+function toolStatusTone(status: string, isFailure: boolean): string {
+  const normalized = status.toLowerCase();
+  if (isFailure || normalized.includes("fail") || normalized.includes("error")) {
+    return "border-[rgba(239,98,108,0.28)] bg-[rgba(239,98,108,0.08)] text-[var(--danger)]";
+  }
+  if (normalized.includes("complete") || normalized.includes("success")) {
+    return "border-[rgba(39,166,68,0.24)] bg-[rgba(39,166,68,0.08)] text-[var(--success)]";
+  }
+  return "border-[rgba(214,164,73,0.24)] bg-[rgba(214,164,73,0.08)] text-[var(--warning)]";
+}
+
+function isCompletedToolStatus(status: string): boolean {
+  const normalized = status.toLowerCase();
+  return normalized.includes("complete") || normalized.includes("success");
+}
+
+function ToolStatusIcon({
+  status,
+  isFailure
+}: {
+  status: string;
+  isFailure: boolean;
+}) {
+  const normalized = status.toLowerCase();
+  if (isFailure || normalized.includes("fail") || normalized.includes("error")) {
+    return <XCircle className="size-3" aria-hidden="true" />;
+  }
+  if (isCompletedToolStatus(status)) {
+    return <CheckCircle2 className="size-3" aria-hidden="true" />;
+  }
+  return <Loader2 className="size-3 animate-spin" aria-hidden="true" />;
+}
+
 export function ChatRow({ message }: { message: Message }) {
   const text = readText(message.payload);
   const isUser = message.sender.type === "user";
@@ -277,6 +391,135 @@ export function ChatRow({ message }: { message: Message }) {
         {renderMarkdownBlock(text, { className: "gap-2" })}
       </div>
     </article>
+  );
+}
+
+export function ToolEventRow({ message }: { message: Message }) {
+  return <ToolEventGroup messages={[message]} />;
+}
+
+function ToolEventGroup({ messages }: { messages: Message[] }) {
+  const toolCalls = messages.filter((message) => message.kind === "tool_call");
+  const toolOutputs = messages.filter((message) => message.kind === "tool_output");
+  const firstCall = toolCalls.at(0) ?? messages.at(0);
+  const lastCall = toolCalls.at(-1) ?? firstCall;
+  const lastOutput = toolOutputs.at(-1);
+  const lastMessage = lastOutput ?? lastCall ?? messages.at(-1);
+  const firstCallPayload = readObject(firstCall?.payload);
+  const lastCallPayload = readObject(lastCall?.payload);
+  const outputPayload = readObject(lastOutput?.payload);
+  const lastPayload = readObject(lastMessage?.payload);
+  const metadata = readObject(lastPayload.metadata);
+  const callMetadata = readObject(lastCallPayload.metadata);
+  const name =
+    readStringField(callMetadata, "itemType") ??
+    readStringField(metadata, "itemType") ??
+    readStringField(firstCallPayload, "name") ??
+    readStringField(firstCallPayload, "title") ??
+    readStringField(lastPayload, "name") ??
+    readStringField(lastPayload, "title") ??
+    "tool";
+  const status =
+    readStringField(outputPayload, "status") ??
+    readStringField(lastCallPayload, "status") ??
+    readStringField(metadata, "status") ??
+    readStringField(metadata, "phase") ??
+    "started";
+  const input = firstCallPayload.input ?? outputPayload.input;
+  const result = outputPayload.result;
+  const error = readStringField(outputPayload, "error") ?? readStringField(lastPayload, "error");
+  const callText =
+    readStringField(firstCallPayload, "text") ?? readStringField(lastCallPayload, "text");
+  const outputText = readStringField(outputPayload, "text");
+  const body = error ?? result ?? outputText ?? callText ?? input;
+  const preview = body === undefined ? "" : summarizeValue(body);
+  const isFailure = status === "failed" || Boolean(error);
+  const statusLabel = humanizeStatus(status);
+  const toneClass = toolStatusTone(status, isFailure);
+  const showStatusBadge = !isCompletedToolStatus(status) || isFailure;
+
+  return (
+    <article className="w-full max-w-[min(44rem,96%)] px-1 py-0.5">
+      <details
+        open={isFailure}
+        className={cn(
+          "group rounded-[var(--radius)] border bg-[var(--surface-faint)] transition-colors",
+          isFailure
+            ? "border-[rgba(239,98,108,0.28)]"
+            : "border-border hover:border-[var(--border-strong)] hover:bg-[var(--surface-soft)]"
+        )}
+      >
+        <summary className="grid min-w-0 cursor-pointer list-none grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-1.5 px-2 py-1 text-muted-foreground">
+          <span
+            className={cn(
+              "grid size-5 shrink-0 place-items-center rounded-[var(--radius)] border",
+              toneClass
+            )}
+          >
+            <ToolStatusIcon status={status} isFailure={isFailure} />
+          </span>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="inline-flex max-w-[8rem] shrink-0 items-center truncate rounded-full border border-border bg-[var(--surface-soft)] px-1.5 py-0.5 text-[0.6rem] font-[510] leading-none text-[var(--muted-strong)]">
+              {humanizeToolName(name)}
+            </span>
+            {preview ? (
+              <span className="min-w-0 truncate font-mono text-[0.68rem] leading-[1.35] text-[var(--muted)]">
+                {preview}
+              </span>
+            ) : null}
+            {showStatusBadge ? (
+              <span
+                className={cn(
+                  "inline-flex min-h-4 shrink-0 items-center rounded-full border px-1.5 text-[0.56rem] font-medium leading-none",
+                  toneClass
+                )}
+              >
+                {statusLabel}
+              </span>
+            ) : null}
+          </span>
+          <span className="grid size-5 place-items-center rounded-[var(--radius)] text-[var(--muted)] transition-colors group-hover:bg-[var(--surface-hover)] group-hover:text-foreground">
+            <ChevronDown
+              className="size-3 transition-transform group-open:rotate-180"
+              aria-hidden="true"
+            />
+          </span>
+        </summary>
+        <div className="grid gap-2 border-t border-border px-2 py-2">
+          {callText ? <ToolJsonBlock label="Command" value={callText} /> : null}
+          {input !== undefined ? <ToolJsonBlock label="Input" value={input} /> : null}
+          {result !== undefined ? <ToolJsonBlock label="Result" value={result} /> : null}
+          {outputText ? <ToolJsonBlock label="Output" value={outputText} /> : null}
+          {error ? <ToolJsonBlock label="Error" value={error} tone="danger" /> : null}
+        </div>
+      </details>
+    </article>
+  );
+}
+
+function ToolJsonBlock({
+  label,
+  value,
+  tone = "default"
+}: {
+  label: string;
+  value: unknown;
+  tone?: "default" | "danger";
+}) {
+  return (
+    <div className="grid gap-1">
+      <span className="font-mono text-[0.58rem] uppercase tracking-[0.12em] text-muted-foreground">
+        {label}
+      </span>
+      <pre
+        className={cn(
+          "m-0 overflow-x-auto rounded-[var(--radius)] border border-border bg-[var(--panel)] px-2 py-1.5 font-mono text-[0.68rem] leading-[1.6] whitespace-pre-wrap break-words",
+          tone === "danger" && "text-[var(--danger)]"
+        )}
+      >
+        {stringifyValue(value)}
+      </pre>
+    </div>
   );
 }
 

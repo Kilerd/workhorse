@@ -341,6 +341,20 @@ export class Orchestrator {
       }
       return;
     }
+    if (chunk.type === "activity") {
+      const active = this.activeRuns.get(threadId);
+      if (active?.runId !== handle.runId) {
+        return;
+      }
+
+      this.threads.appendMessage({
+        threadId,
+        sender: { type: "agent", agentId: session.agentId },
+        kind: chunk.kind,
+        payload: activityPayload(chunk)
+      });
+      return;
+    }
     if (chunk.type === "session_key") {
       try {
         this.threads.updateSessionRunnerKey(session.id, chunk.key);
@@ -357,7 +371,8 @@ export class Orchestrator {
       const result = await this.tools.invoke(chunk.name, chunk.input, {
         workspaceId: session.workspaceId,
         threadId,
-        agentId: session.agentId
+        agentId: session.agentId,
+        toolUseId: chunk.toolUseId
       });
       await handle.submitToolResult({
         toolUseId: chunk.toolUseId,
@@ -470,6 +485,30 @@ function chatPayload(chunk: Extract<CoordinatorOutputChunk, { type: "text" }>): 
   return {
     text: chunk.text,
     ...(chunk.outputId ? { outputId: chunk.outputId } : {})
+  };
+}
+
+function activityPayload(
+  chunk: Extract<CoordinatorOutputChunk, { type: "activity" }>
+): {
+  text: string;
+  title?: string;
+  name?: string;
+  stream?: string;
+  source?: string;
+  metadata?: Record<string, string>;
+  status?: string;
+  toolUseId?: string;
+} {
+  const status = chunk.metadata?.status ?? chunk.metadata?.phase;
+  return {
+    text: chunk.text,
+    ...(chunk.title ? { title: chunk.title, name: chunk.title } : {}),
+    ...(chunk.stream ? { stream: chunk.stream } : {}),
+    ...(chunk.source ? { source: chunk.source } : {}),
+    ...(chunk.metadata ? { metadata: chunk.metadata } : {}),
+    ...(status ? { status } : {}),
+    ...(chunk.metadata?.groupId ? { toolUseId: chunk.metadata.groupId } : {})
   };
 }
 

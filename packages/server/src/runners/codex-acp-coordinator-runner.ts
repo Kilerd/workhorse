@@ -3,6 +3,7 @@ import WebSocket from "ws";
 import type { CodexRunnerConfig, RunStatus } from "@workhorse/contracts";
 
 import { resolveWorkspaceCodexSettings } from "../lib/codex-settings.js";
+import { classifyItemLifecycle } from "./codex-acp-runner.js";
 import {
   CodexAppServerManager,
   type CodexAppServer
@@ -57,6 +58,15 @@ interface AgentMessageDeltaNotification {
   delta: string;
 }
 
+interface CommandExecOutputDeltaNotification {
+  stream?: "stdout" | "stderr";
+  delta: string;
+}
+
+interface CommandExecutionOutputDeltaNotification {
+  delta: string;
+}
+
 interface ItemLifecycleNotification {
   threadId: string;
   turnId: string;
@@ -70,6 +80,13 @@ interface ItemLifecycleNotification {
 interface PendingRequest {
   resolve: (value: any) => void;
   reject: (reason?: unknown) => void;
+}
+
+interface ActiveCommandOutputContext {
+  groupId: string;
+  itemId?: string;
+  turnId?: string;
+  threadId?: string;
 }
 
 function resolveCodexEffortConfig(
@@ -118,6 +135,10 @@ function flattenItemText(value: unknown): string[] {
     ...flattenItemText(record.output),
     ...flattenItemText(record.message)
   ];
+}
+
+function isCommandLikeItemType(type: string | undefined): boolean {
+  return Boolean(type?.toLowerCase().includes("command"));
 }
 
 function buildThreadStartParams(input: CoordinatorRunInput, config: CodexRunnerConfig) {
@@ -179,6 +200,21 @@ export class CodexAcpCoordinatorRunner implements CoordinatorRunner {
     let acpThreadId = "";
     let turnId = "";
     const streamedItems = new Set<string>();
+    const activeCommandOutputContexts: ActiveCommandOutputContext[] = [];
+
+    const currentCommandOutputMetadata = (): Record<string, string> | undefined => {
+      const current = activeCommandOutputContexts.at(-1);
+      if (!current) {
+        return undefined;
+      }
+
+      return {
+        groupId: current.groupId,
+        ...(current.itemId ? { itemId: current.itemId } : {}),
+        ...(current.turnId ? { turnId: current.turnId } : {}),
+        ...(current.threadId ? { threadId: current.threadId } : {})
+      };
+    };
 
     const emitChunk = (chunk: CoordinatorOutputChunk) => {
       if (chunkHandlers.size === 0) {
@@ -279,12 +315,74 @@ export class CodexAcpCoordinatorRunner implements CoordinatorRunner {
           }
           break;
         }
+        case "command/exec/outputDelta": {
+          const params = notification.params as CommandExecOutputDeltaNotification;
+          if (params.delta) {
+            emitChunk({
+              type: "activity",
+              kind: "tool_output",
+              text: params.delta,
+              stream: params.stream ?? "stdout",
+              title: "Tool output",
+              source: notification.method,
+              metadata: currentCommandOutputMetadata()
+            });
+          }
+          break;
+        }
+        case "item/commandExecution/outputDelta": {
+          const params = notification.params as CommandExecutionOutputDeltaNotification;
+          if (params.delta) {
+            emitChunk({
+              type: "activity",
+              kind: "tool_output",
+              text: params.delta,
+              stream: "stdout",
+              title: "Tool output",
+              source: notification.method,
+              metadata: currentCommandOutputMetadata()
+            });
+          }
+          break;
+        }
+        case "item/started": {
+          const params = notification.params as ItemLifecycleNotification;
+          const output = classifyItemLifecycle(params.item, "started", {
+            threadId: params.threadId,
+            turnId: params.turnId
+          });
+          if (
+            output?.kind === "tool_call" &&
+            isCommandLikeItemType(output.metadata?.itemType) &&
+            output.metadata?.groupId
+          ) {
+            activeCommandOutputContexts.push({
+              groupId: output.metadata.groupId,
+              itemId: output.metadata.itemId,
+              turnId: output.metadata.turnId,
+              threadId: output.metadata.threadId
+            });
+          }
+          if (output && output.kind !== "agent" && output.kind !== "plan") {
+            emitChunk({
+              type: "activity",
+              kind: output.kind === "tool_call" ? "tool_call" : "status",
+              text: output.text,
+              stream: output.stream,
+              title: output.title,
+              source: output.source,
+              metadata: output.metadata
+            });
+          }
+          break;
+        }
         case "item/completed": {
           const params = notification.params as ItemLifecycleNotification;
           const itemId =
             typeof params.item.id === "string" ? params.item.id : undefined;
           const streamKey = itemId ? `${params.turnId}:${itemId}` : "";
-          if (streamKey && streamedItems.has(streamKey)) {
+          const wasStreamedAgent = Boolean(streamKey && streamedItems.has(streamKey));
+          if (wasStreamedAgent) {
             streamedItems.delete(streamKey);
             break;
           }
@@ -301,6 +399,42 @@ export class CodexAcpCoordinatorRunner implements CoordinatorRunner {
                 outputId: streamKey || undefined
               });
             }
+            if (streamKey) {
+              streamedItems.delete(streamKey);
+            }
+            break;
+          }
+
+          const output = classifyItemLifecycle(params.item, "completed", {
+            threadId: params.threadId,
+            turnId: params.turnId
+          });
+          if (output && output.kind !== "agent" && output.kind !== "plan") {
+            emitChunk({
+              type: "activity",
+              kind: output.kind === "tool_call" ? "tool_call" : "status",
+              text: output.text,
+              stream: output.stream,
+              title: output.title,
+              source: output.source,
+              metadata: output.metadata
+            });
+          }
+          if (output?.kind === "tool_call" && output.metadata?.groupId) {
+            let contextIndex = -1;
+            for (let index = activeCommandOutputContexts.length - 1; index >= 0; index -= 1) {
+              const context = activeCommandOutputContexts[index];
+              if (context?.groupId === output.metadata.groupId) {
+                contextIndex = index;
+                break;
+              }
+            }
+            if (contextIndex >= 0) {
+              activeCommandOutputContexts.splice(contextIndex, 1);
+            }
+          }
+          if (streamKey) {
+            streamedItems.delete(streamKey);
           }
           break;
         }

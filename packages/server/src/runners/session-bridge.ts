@@ -33,6 +33,15 @@ export type CoordinatorOutputChunk =
       outputId?: string;
     }
   | {
+      type: "activity";
+      kind: "status" | "tool_call" | "tool_output";
+      text: string;
+      title?: string;
+      stream?: "stdout" | "stderr" | "system";
+      source?: string;
+      metadata?: Record<string, string>;
+    }
+  | {
       type: "tool_use";
       toolUseId: string;
       name: string;

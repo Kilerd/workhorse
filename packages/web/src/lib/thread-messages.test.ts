@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Message } from "@workhorse/contracts";
 
 import {
+  buildThreadDisplayItems,
   mergeAdjacentAgentChatMessages,
   upsertThreadMessage
 } from "./thread-messages";
@@ -232,5 +233,78 @@ describe("upsertThreadMessage", () => {
     );
 
     expect(next.map((message) => message.id)).toEqual(["m-1", "m-2"]);
+  });
+});
+
+describe("buildThreadDisplayItems", () => {
+  it("hides internal planning status rows", () => {
+    const items = buildThreadDisplayItems([
+      makeMessage({
+        id: "status-1",
+        sender: { type: "agent", agentId: "agent-a" },
+        kind: "status",
+        payload: {
+          text: "Planning started.",
+          metadata: { itemType: "reasoning" }
+        }
+      }),
+      makeMessage({
+        id: "chat-1",
+        sender: { type: "agent", agentId: "agent-a" },
+        payload: { text: "Visible reply" }
+      })
+    ]);
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      type: "message",
+      id: "chat-1"
+    });
+  });
+
+  it("groups tool lifecycle rows and places them before the same-turn agent text", () => {
+    const turnId = "turn-1";
+    const groupId = `item:${turnId}:call-1`;
+    const items = buildThreadDisplayItems([
+      makeMessage({
+        id: "chat-1",
+        sender: { type: "agent", agentId: "agent-a" },
+        payload: { text: "I checked it.", outputId: `${turnId}:msg-1` }
+      }),
+      makeMessage({
+        id: "tool-start",
+        sender: { type: "agent", agentId: "agent-a" },
+        kind: "tool_call",
+        payload: {
+          text: "git status --short",
+          toolUseId: groupId,
+          metadata: { turnId, groupId, phase: "started" }
+        }
+      }),
+      makeMessage({
+        id: "tool-complete",
+        sender: { type: "agent", agentId: "agent-a" },
+        kind: "tool_call",
+        payload: {
+          text: "git status --short",
+          toolUseId: groupId,
+          metadata: { turnId, groupId, phase: "completed" }
+        }
+      })
+    ]);
+
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({
+      type: "tool",
+      id: groupId
+    });
+    expect(items[0]?.type === "tool" ? items[0].messages.map((m) => m.id) : []).toEqual([
+      "tool-start",
+      "tool-complete"
+    ]);
+    expect(items[1]).toMatchObject({
+      type: "message",
+      id: "chat-1"
+    });
   });
 });

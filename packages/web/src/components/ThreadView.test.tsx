@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Message } from "@workhorse/contracts";
 
-import { ChatRow } from "./ThreadView";
+import { ChatRow, ToolEventRow } from "./ThreadView";
 
 function makeChatMessage(overrides: Partial<Message>): Message {
   return {
@@ -52,5 +52,30 @@ describe("ChatRow", () => {
     expect(html).toContain("Please fix the thread view.");
     expect(html).not.toContain(">you<");
     expect(html).not.toContain(">chat<");
+  });
+});
+
+describe("ToolEventRow", () => {
+  it("renders tool use messages without exposing the agent id", () => {
+    const html = renderToStaticMarkup(
+      <ToolEventRow
+        message={makeChatMessage({
+          sender: {
+            type: "agent",
+            agentId: "b93d17f1-5dca-438b-bf6b-2429708ba8b5"
+          },
+          kind: "tool_call",
+          payload: {
+            toolUseId: "tu-1",
+            name: "get_workspace_state",
+            input: {},
+            status: "started"
+          }
+        })}
+      />
+    );
+
+    expect(html).toContain("Get Workspace State");
+    expect(html).not.toContain("b93d17f1-5dca-438b-bf6b-2429708ba8b5");
   });
 });
