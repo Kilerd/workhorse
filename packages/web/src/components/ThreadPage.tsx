@@ -1,5 +1,8 @@
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { RefreshCw } from "lucide-react";
+import type { Task, Workspace } from "@workhorse/contracts";
 
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
@@ -7,11 +10,18 @@ import {
   useRestartCoordinatorThread,
   useWorkspaceThreads
 } from "@/hooks/useThreads";
+import { api } from "@/lib/api";
 import { readErrorMessage } from "@/lib/error-message";
+import { resolveThreadSessionContext } from "@/lib/thread-session";
 
 import { ThreadView } from "./ThreadView";
 
-export function ThreadPage() {
+interface Props {
+  tasks: Task[];
+  workspaces: Workspace[];
+}
+
+export function ThreadPage({ tasks, workspaces }: Props) {
   const navigate = useNavigate();
   const { workspaceId, threadId } = useParams<{
     workspaceId: string;
@@ -25,7 +35,55 @@ export function ThreadPage() {
   }
 
   const thread = threadsQuery.data?.find((t) => t.id === threadId) ?? null;
+  const workspace = useMemo(
+    () => workspaces.find((entry) => entry.id === workspaceId) ?? null,
+    [workspaceId, workspaces]
+  );
+  const task = useMemo(
+    () =>
+      thread?.taskId
+        ? tasks.find((entry) => entry.id === thread.taskId) ?? null
+        : null,
+    [tasks, thread?.taskId]
+  );
   const restartCoordinator = useRestartCoordinatorThread(threadId);
+  const workspaceGitStatusQuery = useQuery({
+    queryKey: ["workspace-git-status", "thread-page", workspace?.id ?? ""],
+    queryFn: async () => {
+      if (!workspace?.id || !workspace.isGitRepo) {
+        return null;
+      }
+      return api.getWorkspaceGitStatus(workspace.id);
+    },
+    enabled: Boolean(workspace?.id && workspace.isGitRepo)
+  });
+  const sessionContext = useMemo(
+    () =>
+      resolveThreadSessionContext({
+        thread,
+        workspace,
+        task,
+        workspaceGitStatus: workspaceGitStatusQuery.data ?? null
+      }),
+    [task, thread, workspace, workspaceGitStatusQuery.data]
+  );
+  const branchLabel = useMemo(() => {
+    if (!workspace?.isGitRepo) {
+      return null;
+    }
+    if (thread?.kind === "coordinator" && workspaceGitStatusQuery.isLoading) {
+      return "Loading…";
+    }
+    return sessionContext?.branchName ?? "Unavailable";
+  }, [
+    sessionContext?.branchName,
+    thread?.kind,
+    workspace?.isGitRepo,
+    workspaceGitStatusQuery.isLoading
+  ]);
+  const worktreeLabel =
+    sessionContext?.worktreePath ??
+    (thread?.kind === "task" ? "Pending creation" : workspace?.rootPath ?? "Unavailable");
 
   async function handleRestartCoordinator() {
     try {
@@ -81,6 +139,8 @@ export function ThreadPage() {
       <ThreadView
         threadId={threadId}
         thread={thread}
+        sessionWorktree={sessionContext ? worktreeLabel : null}
+        sessionBranch={branchLabel}
         className="min-h-0 flex-1"
       />
     </section>

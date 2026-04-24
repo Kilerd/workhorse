@@ -3,6 +3,8 @@ import type { Message, Thread } from "@workhorse/contracts";
 import {
   CheckCircle2,
   ChevronDown,
+  Folder,
+  GitBranch,
   Loader2,
   XCircle
 } from "lucide-react";
@@ -32,12 +34,20 @@ interface Props {
   threadId: string;
   /** Optional; when provided enables the coordinator-state hint. */
   thread?: Thread | null;
+  sessionWorktree?: string | null;
+  sessionBranch?: string | null;
   className?: string;
 }
 
 const MAX_CHAT_LENGTH = 10_240;
 
-export function ThreadView({ threadId, thread, className }: Props) {
+export function ThreadView({
+  threadId,
+  thread,
+  sessionWorktree,
+  sessionBranch,
+  className
+}: Props) {
   const messagesQuery = useThreadMessages(threadId);
   const postMessage = usePostThreadMessage(threadId);
 
@@ -133,6 +143,15 @@ export function ThreadView({ threadId, thread, className }: Props) {
         </div>
       )}
 
+      {sessionWorktree || sessionBranch ? (
+        <div className="shrink-0 flex flex-wrap gap-2">
+          {sessionWorktree ? (
+            <SessionMeta kind="worktree" value={sessionWorktree} />
+          ) : null}
+          {sessionBranch ? <SessionMeta kind="branch" value={sessionBranch} /> : null}
+        </div>
+      ) : null}
+
       <form
         className="shrink-0 grid gap-2 pb-2"
         onSubmit={(e) => {
@@ -195,6 +214,32 @@ function CoordinatorHint({
   return (
     <div className="rounded-md border border-border bg-[var(--panel)] px-3 py-1.5 text-xs text-muted-foreground">
       {label}
+    </div>
+  );
+}
+
+function SessionMeta({
+  kind,
+  value
+}: {
+  kind: "worktree" | "branch";
+  value: string;
+}) {
+  const label = kind === "worktree" ? "Session worktree" : "Git branch";
+  const Icon = kind === "worktree" ? Folder : GitBranch;
+
+  return (
+    <div
+      className="flex min-w-0 items-center gap-2 rounded-md border border-border bg-[var(--panel)] px-2.5 py-2 text-xs"
+      title={label}
+    >
+      <span className="grid size-5 shrink-0 place-items-center text-muted-foreground">
+        <Icon className="size-4" aria-hidden="true" />
+      </span>
+      <code className="min-w-0 break-all font-mono text-[0.72rem] text-foreground">
+        {value}
+      </code>
+      <span className="sr-only">{label}</span>
     </div>
   );
 }

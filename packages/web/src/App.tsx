@@ -492,7 +492,12 @@ function ReactAppShell() {
           />
           <Route
             path="/workspaces/:workspaceId/threads/:threadId"
-            element={<ThreadPage />}
+            element={
+              <ThreadPage
+                tasks={allTasks}
+                workspaces={workspaces}
+              />
+            }
           />
           <Route path="/teams/*" element={<Navigate to="/agents" replace />} />
           <Route

@@ -40,7 +40,7 @@ function readPayloadMetadata(payload: unknown): Record<string, unknown> {
   return readObjectPayload(object.metadata);
 }
 
-function isInternalPlanningStatus(message: Message): boolean {
+function isInternalStatus(message: Message): boolean {
   if (message.kind !== "status") {
     return false;
   }
@@ -54,6 +54,10 @@ function isInternalPlanningStatus(message: Message): boolean {
 
   const text = readText(message.payload).trim().toLowerCase();
   const title = readStringField(payload, "title")?.trim().toLowerCase();
+  if (/^status:\s*(in\s*progress|inprogress|completed|failed|interrupted)$/.test(text)) {
+    return true;
+  }
+
   return (
     text === "planning started." ||
     text === "planning updated." ||
@@ -90,29 +94,12 @@ function readToolGroupKey(message: Message): string | undefined {
   return readStringField(payload, "toolUseId") ?? readStringField(metadata, "groupId");
 }
 
-function findFirstAgentChatForTurn(
-  items: ThreadDisplayItem[],
-  turnId: string | undefined
-): number {
-  if (!turnId) {
-    return -1;
-  }
-
-  return items.findIndex(
-    (item) =>
-      item.type === "message" &&
-      item.turnId === turnId &&
-      item.message.kind === "chat" &&
-      item.message.sender.type === "agent"
-  );
-}
-
 export function buildThreadDisplayItems(messages: Message[]): ThreadDisplayItem[] {
   const items: ThreadDisplayItem[] = [];
   const toolGroups = new Map<string, Extract<ThreadDisplayItem, { type: "tool" }>>();
 
   for (const message of messages) {
-    if (isInternalPlanningStatus(message)) {
+    if (isInternalStatus(message)) {
       continue;
     }
 
@@ -136,19 +123,112 @@ export function buildThreadDisplayItems(messages: Message[]): ThreadDisplayItem[
         turnId: readTurnId(message)
       };
       toolGroups.set(groupKey, group);
-
-      const insertIndex = findFirstAgentChatForTurn(items, group.turnId);
-      if (insertIndex >= 0) {
-        items.splice(insertIndex, 0, group);
-      } else {
-        items.push(group);
-      }
+      items.push(group);
     }
 
     group.messages.push(message);
   }
 
-  return items;
+  return interleaveFollowingTurnTools(items);
+}
+
+function canSplitAroundTools(
+  item: ThreadDisplayItem
+): item is Extract<ThreadDisplayItem, { type: "message" }> {
+  return (
+    item.type === "message" &&
+    item.message.kind === "chat" &&
+    item.message.sender.type === "agent" &&
+    Boolean(item.turnId)
+  );
+}
+
+function splitIntroText(text: string): { lead: string; rest: string } | undefined {
+  const paragraphBreak = /\n{2,}/.exec(text);
+  if (paragraphBreak) {
+    const lead = text.slice(0, paragraphBreak.index).trimEnd();
+    const rest = text.slice(paragraphBreak.index + paragraphBreak[0].length).trimStart();
+    return lead && rest ? { lead, rest } : undefined;
+  }
+
+  const sentenceEndPattern = /[.!?。！？…]+[)"'`」』】）\]]*/gu;
+  for (const match of text.matchAll(sentenceEndPattern)) {
+    const splitIndex = match.index + match[0].length;
+    const lead = text.slice(0, splitIndex).trimEnd();
+    const rest = text.slice(splitIndex).trimStart();
+    if (lead && rest) {
+      return { lead, rest };
+    }
+  }
+
+  return undefined;
+}
+
+function cloneMessageWithText(message: Message, id: string, text: string): Message {
+  return {
+    ...message,
+    id,
+    payload: {
+      ...readObjectPayload(message.payload),
+      text
+    }
+  };
+}
+
+function interleaveFollowingTurnTools(items: ThreadDisplayItem[]): ThreadDisplayItem[] {
+  const interleaved: ThreadDisplayItem[] = [];
+
+  for (let index = 0; index < items.length; index += 1) {
+    const rawItem = items[index];
+    if (!rawItem) {
+      continue;
+    }
+    const item: ThreadDisplayItem = rawItem;
+
+    if (!canSplitAroundTools(item)) {
+      interleaved.push(item);
+      continue;
+    }
+
+    const followingTools: Extract<ThreadDisplayItem, { type: "tool" }>[] = [];
+    let scanIndex = index + 1;
+    while (scanIndex < items.length) {
+      const rawCandidate = items[scanIndex];
+      if (!rawCandidate) {
+        break;
+      }
+      if (rawCandidate.type !== "tool" || rawCandidate.turnId !== item.turnId) {
+        break;
+      }
+
+      const candidate: Extract<ThreadDisplayItem, { type: "tool" }> = rawCandidate;
+      followingTools.push(candidate);
+      scanIndex += 1;
+    }
+
+    const split = followingTools.length
+      ? splitIntroText(readText(item.message.payload))
+      : undefined;
+    if (!split) {
+      interleaved.push(item);
+      continue;
+    }
+
+    interleaved.push({
+      ...item,
+      id: `${item.id}:lead`,
+      message: cloneMessageWithText(item.message, `${item.message.id}:lead`, split.lead)
+    });
+    interleaved.push(...followingTools);
+    interleaved.push({
+      ...item,
+      id: `${item.id}:rest`,
+      message: cloneMessageWithText(item.message, `${item.message.id}:rest`, split.rest)
+    });
+    index = scanIndex - 1;
+  }
+
+  return interleaved;
 }
 
 function isCjkCharacter(value: string): boolean {

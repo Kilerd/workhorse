@@ -262,7 +262,41 @@ describe("buildThreadDisplayItems", () => {
     });
   });
 
-  it("groups tool lifecycle rows and places them before the same-turn agent text", () => {
+  it("hides internal lifecycle status rows", () => {
+    const items = buildThreadDisplayItems([
+      makeMessage({
+        id: "status-started",
+        sender: { type: "agent", agentId: "agent-a" },
+        kind: "status",
+        payload: {
+          text: "status: inProgress",
+          metadata: { itemType: "fileChange", phase: "started" }
+        }
+      }),
+      makeMessage({
+        id: "status-completed",
+        sender: { type: "agent", agentId: "agent-a" },
+        kind: "status",
+        payload: {
+          text: "status: completed",
+          metadata: { itemType: "fileChange", phase: "completed" }
+        }
+      }),
+      makeMessage({
+        id: "chat-1",
+        sender: { type: "agent", agentId: "agent-a" },
+        payload: { text: "Visible reply" }
+      })
+    ]);
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      type: "message",
+      id: "chat-1"
+    });
+  });
+
+  it("groups tool lifecycle rows without moving them ahead of earlier text", () => {
     const turnId = "turn-1";
     const groupId = `item:${turnId}:call-1`;
     const items = buildThreadDisplayItems([
@@ -295,16 +329,67 @@ describe("buildThreadDisplayItems", () => {
 
     expect(items).toHaveLength(2);
     expect(items[0]).toMatchObject({
+      type: "message",
+      id: "chat-1"
+    });
+    expect(items[1]).toMatchObject({
       type: "tool",
       id: groupId
     });
-    expect(items[0]?.type === "tool" ? items[0].messages.map((m) => m.id) : []).toEqual([
+    expect(items[1]?.type === "tool" ? items[1].messages.map((m) => m.id) : []).toEqual([
       "tool-start",
       "tool-complete"
     ]);
-    expect(items[1]).toMatchObject({
+  });
+
+  it("keeps same-turn tools between an intro paragraph and the remaining agent text", () => {
+    const turnId = "turn-1";
+    const groupId = `item:${turnId}:call-1`;
+    const items = buildThreadDisplayItems([
+      makeMessage({
+        id: "chat-1",
+        sender: { type: "agent", agentId: "agent-a" },
+        payload: {
+          text: "我先看一下当前状态。结果看起来是 tool 顺序的问题。",
+          outputId: `${turnId}:msg-1`
+        }
+      }),
+      makeMessage({
+        id: "tool-start",
+        sender: { type: "agent", agentId: "agent-a" },
+        kind: "tool_call",
+        payload: {
+          text: "git status --short",
+          toolUseId: groupId,
+          metadata: { turnId, groupId, phase: "started" }
+        }
+      }),
+      makeMessage({
+        id: "tool-complete",
+        sender: { type: "agent", agentId: "agent-a" },
+        kind: "tool_call",
+        payload: {
+          text: "git status --short",
+          toolUseId: groupId,
+          metadata: { turnId, groupId, phase: "completed" }
+        }
+      })
+    ]);
+
+    expect(items.map((item) => item.type)).toEqual(["message", "tool", "message"]);
+    expect(items[0]).toMatchObject({
       type: "message",
-      id: "chat-1"
+      id: "chat-1:lead",
+      message: { payload: { text: "我先看一下当前状态。" } }
+    });
+    expect(items[1]).toMatchObject({
+      type: "tool",
+      id: groupId
+    });
+    expect(items[2]).toMatchObject({
+      type: "message",
+      id: "chat-1:rest",
+      message: { payload: { text: "结果看起来是 tool 顺序的问题。" } }
     });
   });
 });
