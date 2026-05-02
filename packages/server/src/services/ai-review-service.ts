@@ -7,10 +7,7 @@ import type {
   Workspace,
   WorkspaceAgent
 } from "@workhorse/contracts";
-import {
-  resolveTemplate,
-  resolveWorkspacePromptTemplate
-} from "@workhorse/contracts";
+import { resolveTemplate } from "@workhorse/contracts";
 
 import type { GitHubPullRequestProvider, GitHubPullRequestReviewAction } from "../lib/github.js";
 import { createRunLogEntry } from "../lib/run-log.js";
@@ -18,6 +15,50 @@ import { stripStructuredReviewBlocks } from "../lib/review-parser.js";
 import type { StateStore } from "../persistence/state-store.js";
 import type { EventBus } from "../ws/event-bus.js";
 import type { GitWorktreeService } from "./git-worktree-service.js";
+
+const REVIEW_PROMPT_TEMPLATE = [
+  "You are the reviewer agent for this engineering task.",
+  "",
+  'Review task "{{taskTitle}}" for concrete correctness issues, regressions, risky edge cases, and missing test coverage.',
+  "",
+  "{{taskDescriptionBlock}}",
+  "",
+  "This is a read-only review. Do not edit files, write code, create commits, or change git state.",
+  "",
+  'Review the current branch against `{{baseRef}}` from worktree branch `{{branchName}}`.',
+  "",
+  "{{pullRequestUrlLine}}",
+  "",
+  "{{pullRequestTitleLine}}",
+  "",
+  "{{pullRequestReviewDecisionLine}}",
+  "",
+  "{{pullRequestStatusRollupLine}}",
+  "",
+  "{{pullRequestMergeStateLine}}",
+  "",
+  "{{unresolvedConversationCountLine}}",
+  "",
+  "{{changedFilesBlock}}",
+  "",
+  "Only call out issues when you can tie them to a concrete risk in the current diff or surrounding code.",
+  "",
+  "Prefer a short list of the most important findings over exhaustive nitpicks.",
+  "",
+  "Write the human-readable review in {{language}} unless code, identifiers, or error messages are clearer in English.",
+  "",
+  'End your response with a fenced ```json block containing exactly {"verdict":"approve"|"comment"|"request_changes","summary":"..."} .',
+  "",
+  'Use "request_changes" when you have any concrete warnings or suggested fixes - even if they are not strictly blocking, the author should address them before merging. Use "comment" only when you have minor stylistic notes or open questions with no clear fix. Use "approve" only when you found no issues worth flagging.',
+  "",
+  "Keep the JSON summary concise and actionable."
+].join("\n");
+
+const REVIEW_FOLLOW_UP_TEMPLATE = [
+  "The reviewer requested changes.",
+  "",
+  "{{reviewFollowUpInstruction}}"
+].join("\n");
 
 function formatOptionalLine(
   value: string | undefined,
@@ -62,21 +103,15 @@ export class AiReviewService {
 
   public async triggerReworkFromReview(task: Task, reviewRun: Run): Promise<void> {
     try {
-      const workspace = this.deps.store
-        .listWorkspaces()
-        .find((entry) => entry.id === task.workspaceId);
       const summary = reviewRun.metadata?.reviewSummary?.trim();
-      const reworkPrompt = resolveTemplate(
-        resolveWorkspacePromptTemplate("reviewFollowUp", workspace?.promptTemplates),
-        {
-          taskTitle: task.title,
-          reviewSummary: summary ?? "",
-          reviewRunId: reviewRun.id,
-          reviewFollowUpInstruction: summary
-            ? `Address the following feedback:\n\n${summary}`
-            : "Review the latest review log and address the issues found."
-        }
-      );
+      const reworkPrompt = resolveTemplate(REVIEW_FOLLOW_UP_TEMPLATE, {
+        taskTitle: task.title,
+        reviewSummary: summary ?? "",
+        reviewRunId: reviewRun.id,
+        reviewFollowUpInstruction: summary
+          ? `Address the following feedback:\n\n${summary}`
+          : "Review the latest review log and address the issues found."
+      });
       await this.deps.startTask(task.id, {
         allowedColumns: ["running"],
         initialInputText: reworkPrompt,
@@ -237,9 +272,7 @@ export class AiReviewService {
       });
 
     const description = task.description.trim();
-    const prompt = resolveTemplate(
-      resolveWorkspacePromptTemplate("review", workspace?.promptTemplates),
-      {
+    const prompt = resolveTemplate(REVIEW_PROMPT_TEMPLATE, {
         taskTitle: task.title,
         taskDescription: description,
         taskDescriptionBlock: description
@@ -280,8 +313,7 @@ export class AiReviewService {
             ? ["Changed files snapshot:", ...changedFiles].join("\n")
             : "",
         language
-      }
-    );
+      });
     const reviewFocus = focus?.trim();
     return reviewFocus
       ? [

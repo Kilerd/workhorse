@@ -33,10 +33,7 @@ import type {
   WorkspaceGitRef,
   Workspace
 } from "@workhorse/contracts";
-import {
-  resolveTemplate,
-  resolveWorkspacePromptTemplate
-} from "@workhorse/contracts";
+import { resolveTemplate } from "@workhorse/contracts";
 
 import { AppError, ensure } from "../lib/errors.js";
 import {
@@ -96,6 +93,47 @@ export interface RequestTaskReviewOptions extends RequestTaskReviewBody {
 }
 
 export type { GitReviewMonitorResult } from "./pr-monitor-service.js";
+
+const PLAN_PROMPT_TEMPLATE = [
+  "Task: {{taskTitle}}",
+  "",
+  "{{taskDescriptionBlock}}",
+  "",
+  "Working directory: {{workingDirectory}}",
+  "",
+  "Base ref: {{baseRef}}",
+  "Task branch: {{branchName}}",
+  "",
+  "You are a planning assistant. Thoroughly explore the codebase, understand existing patterns and architecture, then create a detailed implementation plan.",
+  "Do NOT implement anything or modify any files. Only output the plan.",
+  "",
+  "Your plan MUST include the following sections in markdown format:",
+  "",
+  "## Motivation",
+  "Why this change is needed. What problem does it solve or what value does it add.",
+  "",
+  "## Current State",
+  "How the relevant code works today. Key files, functions, data flows involved.",
+  "",
+  "## Proposed Changes",
+  "Detailed list of every file and function to modify or create, with a clear description of what changes and why.",
+  "For each change, specify:",
+  "- File path",
+  "- What to add / modify / remove",
+  "- The reasoning behind the change",
+  "",
+  "## Impact & Scope",
+  "Which modules, APIs, tests, or downstream consumers are affected by this change.",
+  "",
+  "## Risks & Edge Cases",
+  "Potential pitfalls, race conditions, backward compatibility concerns, or tricky edge cases to watch for.",
+  "",
+  "## Verification",
+  "How to verify the change works: which tests to add or update, manual checks, commands to run.",
+  "",
+  "## Exit Criteria",
+  "Concrete definition of done - what must be true for this task to be considered complete."
+].join("\n");
 
 function applyAgentPromptSynthesis(
   runnerConfig: RunnerConfig,
@@ -1419,19 +1457,16 @@ export class BoardService {
   }
 
   private buildPlanPrompt(task: Task, workspace: Workspace): string {
-    return resolveTemplate(
-      resolveWorkspacePromptTemplate("plan", workspace.promptTemplates),
-      {
-        taskTitle: task.title,
-        taskDescription: task.description.trim(),
-        taskDescriptionBlock: task.description.trim()
-          ? `Task description:\n${task.description.trim()}`
-          : "",
-        workingDirectory: workspace.rootPath,
-        baseRef: task.worktree.baseRef,
-        branchName: task.worktree.branchName
-      }
-    );
+    return resolveTemplate(PLAN_PROMPT_TEMPLATE, {
+      taskTitle: task.title,
+      taskDescription: task.description.trim(),
+      taskDescriptionBlock: task.description.trim()
+        ? `Task description:\n${task.description.trim()}`
+        : "",
+      workingDirectory: workspace.rootPath,
+      baseRef: task.worktree.baseRef,
+      branchName: task.worktree.branchName
+    });
   }
 
   public async approveTask(taskId: string): Promise<Task> {

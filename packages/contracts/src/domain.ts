@@ -102,17 +102,10 @@ export interface WorkspaceCodexSettings {
   sandboxMode: CodexSandboxMode;
 }
 
-export type WorkspacePromptTemplateId =
-  | "plan"
-  | "coding"
-  | "review"
-  | "reviewFollowUp";
+export type WorkspacePromptTemplateId = "coding";
 
 export interface WorkspacePromptTemplates {
-  plan?: string;
   coding?: string;
-  review?: string;
-  reviewFollowUp?: string;
 }
 
 export const DEFAULT_GLOBAL_LANGUAGE = "中文";
