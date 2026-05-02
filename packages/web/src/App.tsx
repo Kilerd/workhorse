@@ -342,7 +342,6 @@ function ReactAppShell() {
 
   function openTask(taskId: string) {
     board.setTaskSelection(taskId);
-    board.setSidebarCollapsed(true);
     navigate(`/tasks/${taskId}`);
   }
 
@@ -676,7 +675,7 @@ function TaskDetailsRoute({
         workspaceAgents={workspaceAgents}
         selectedRunId={board.selectedRunId}
         runLogLoading={runLogQuery.isLoading}
-        onBack={() => navigate("/")}
+        onBack={() => navigate(workspaceBoardPath(task.workspaceId))}
         onSelectRun={board.setSelectedRunId}
         liveLog={liveLog}
         runLog={runLog}
@@ -721,7 +720,7 @@ function TaskDetailsRoute({
             await board.cleanupTaskWorktree(task.id);
           }
           await board.deleteTask(task.id);
-          navigate("/");
+          navigate(workspaceBoardPath(task.workspaceId));
         }}
         onSetDependencies={(ids) => board.setTaskDependencies({ taskId: task.id, dependencies: ids })}
       />
