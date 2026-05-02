@@ -29,8 +29,6 @@ interface Props {
   visibleColumnIds: DisplayTaskColumn[];
   selectedTaskId: string | null;
   onTaskOpen(taskId: string): void;
-  onPlan(taskId: string): void;
-  onTaskStart(taskId: string): void;
   onTaskStop(taskId: string): void;
   onMoveToTodo(taskId: string): void;
   onMarkDone(taskId: string): void;
@@ -235,8 +233,6 @@ export function Board({
   visibleColumnIds,
   selectedTaskId,
   onTaskOpen,
-  onPlan,
-  onTaskStart,
   onTaskStop,
   onMoveToTodo,
   onMarkDone,
@@ -552,8 +548,6 @@ export function Board({
                                   column={task.column}
                                   task={task}
                                   compact
-                                  onPlan={() => onPlan(task.id)}
-                                  onStart={() => onTaskStart(task.id)}
                                   onStop={() => onTaskStop(task.id)}
                                   onMoveToTodo={() => onMoveToTodo(task.id)}
                                   onMarkDone={() => onMarkDone(task.id)}

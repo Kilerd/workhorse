@@ -53,6 +53,12 @@ interface Props {
   sessionWorktree?: string | null;
   sessionBranch?: string | null;
   className?: string;
+  /** Optional message filter applied before merging/clustering. */
+  messageFilter?: (message: Message) => boolean;
+  /** Optional placeholder shown when the (filtered) message list is empty. */
+  emptyState?: ReactNode;
+  /** Optional override for the composer placeholder. */
+  composerPlaceholder?: string;
 }
 
 const MAX_CHAT_LENGTH = 10_240;
@@ -63,7 +69,10 @@ export function ThreadView({
   thread,
   sessionWorktree,
   sessionBranch,
-  className
+  className,
+  messageFilter,
+  emptyState,
+  composerPlaceholder: composerPlaceholderOverride
 }: Props) {
   const messagesQuery = useThreadMessages(threadId);
   const postMessage = usePostThreadMessage(threadId);
@@ -76,10 +85,11 @@ export function ThreadView({
 
   const ordered = useMemo(() => {
     const items = messagesQuery.data ?? [];
-    return [...items].sort(
+    const sorted = [...items].sort(
       (a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt)
     );
-  }, [messagesQuery.data]);
+    return messageFilter ? sorted.filter(messageFilter) : sorted;
+  }, [messagesQuery.data, messageFilter]);
   const displayMessages = useMemo(
     () => mergeAdjacentAgentChatMessages(ordered),
     [ordered]
@@ -106,9 +116,10 @@ export function ThreadView({
     [workspaceAgentsQuery.data]
   );
   const composerPlaceholder =
-    thread?.kind === "task"
+    composerPlaceholderOverride ??
+    (thread?.kind === "task"
       ? "Message this task thread… use @coordinator, @worker, or @agentName to notify an agent."
-      : "Message this thread…";
+      : "Message this thread…");
 
   useEffect(() => {
     setIsPinnedToBottom(true);
@@ -174,7 +185,7 @@ export function ThreadView({
           </div>
         ) : ordered.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-            No messages yet. Start the conversation below.
+            {emptyState ?? "No messages yet. Start the conversation below."}
           </div>
         ) : (
           <div

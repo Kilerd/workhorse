@@ -7,8 +7,6 @@ interface Props {
   column: DisplayTaskColumn;
   task?: DisplayTask;
   compact?: boolean;
-  onPlan(): void;
-  onStart(): void;
   onStop(): void;
   onMoveToTodo(): void;
   onMarkDone(): void;
@@ -19,8 +17,6 @@ export function TaskActionBar({
   column,
   task,
   compact = false,
-  onPlan,
-  onStart,
   onStop,
   onMoveToTodo,
   onMarkDone,
@@ -57,12 +53,6 @@ export function TaskActionBar({
             onClick={(event) => {
               event.stopPropagation();
               switch (action.id) {
-                case "plan":
-                  onPlan();
-                  break;
-                case "start":
-                  onStart();
-                  break;
                 case "stop":
                   onStop();
                   break;

@@ -6,13 +6,7 @@ export type DisplayTask = Task;
 
 export type TaskFormValues = CreateTaskBody;
 
-export type TaskActionId =
-  | "plan"
-  | "start"
-  | "stop"
-  | "move-to-todo"
-  | "mark-done"
-  | "archive";
+export type TaskActionId = "stop" | "move-to-todo" | "mark-done" | "archive";
 
 export interface TaskActionDescriptor {
   id: TaskActionId;
@@ -40,31 +34,21 @@ export function isBoardVisibleColumn(column: TaskColumn): boolean {
 
 export function getTaskActions(
   column: DisplayTaskColumn,
-  task?: DisplayTask
+  _task?: DisplayTask
 ): TaskActionDescriptor[] {
   switch (column) {
-    case "backlog":
-      return [
-        { id: "plan", label: "Plan", kind: "secondary" },
-        { id: "start", label: "Start", kind: "primary" }
-      ];
-    case "todo":
-      return [
-        ...(task?.plan ? [] : [{ id: "plan" as const, label: "Plan", kind: "secondary" as const }]),
-        { id: "start", label: "Start", kind: "primary" }
-      ];
     case "running":
       return [{ id: "stop", label: "Stop", kind: "secondary" }];
     case "review":
       return [
-        { id: "start", label: "Run Again", shortLabel: "Run", kind: "secondary" },
         { id: "move-to-todo", label: "Move to Todo", shortLabel: "Todo", kind: "secondary" },
         { id: "mark-done", label: "Mark Done", shortLabel: "Done", kind: "primary" }
       ];
-    case "blocked":
-      return [];
     case "done":
-      return [];
+      return [{ id: "archive", label: "Archive", kind: "secondary" }];
+    case "backlog":
+    case "todo":
+    case "blocked":
     case "archived":
       return [];
   }

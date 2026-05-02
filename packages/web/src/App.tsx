@@ -12,7 +12,6 @@ import {
 } from "react-router-dom";
 import type {
   Message,
-  RunLogEntry,
   ServerEvent,
   Thread,
   Workspace,
@@ -42,7 +41,6 @@ import { upsertThreadMessage } from "@/lib/thread-messages";
 import { queryClient } from "@/lib/query";
 import { applyTheme, getPreferredTheme, type ThemeMode } from "@/lib/theme";
 import { Button } from "@/components/ui/button";
-import { prepareLiveLogEntries } from "@/components/live-log-entries";
 import { useAgents, workspaceAgentQueryKeys } from "@/hooks/useAgents";
 import { threadQueryKeys } from "@/hooks/useThreads";
 
@@ -92,7 +90,6 @@ function ReactAppShell() {
 
   const handleEvent = useCallback(
     (event: ServerEvent) => {
-      board.recordLiveOutput(event);
       setSyncedAt(new Date().toISOString());
 
       switch (event.type) {
@@ -118,18 +115,6 @@ function ReactAppShell() {
           queryClient.invalidateQueries({ queryKey: ["health"] });
           break;
         case "run.finished":
-          if (board.viewedRunId === event.run.id) {
-            queryClient.setQueryData<RunLogEntry[]>(["run-log", event.run.id], (current) => {
-              const liveEntries = board.liveLogByRunId[event.run.id] ?? [];
-              if (liveEntries.length === 0) {
-                return current;
-              }
-
-              return prepareLiveLogEntries([...(current ?? []), ...liveEntries]);
-            });
-          }
-          board.clearLiveOutput(event.run.id);
-          queryClient.invalidateQueries({ queryKey: ["run-log", event.run.id] });
           queryClient.invalidateQueries({ queryKey: ["tasks"] });
           queryClient.invalidateQueries({ queryKey: ["runs"] });
           queryClient.invalidateQueries({ queryKey: ["health"] });
@@ -357,8 +342,6 @@ function ReactAppShell() {
           visibleColumnIds={columnVisibility.visibleColumnIds}
           selectedTaskId={board.selectedTask?.id ?? null}
           onTaskOpen={openTask}
-          onPlan={(taskId) => board.planTask(taskId)}
-          onTaskStart={(taskId) => board.startTask(taskId)}
           onTaskStop={(taskId) => board.stopTask(taskId)}
           onMoveToTodo={(taskId) => board.moveToTodo(taskId)}
           onMarkDone={(taskId) => board.markDone(taskId)}
@@ -597,38 +580,14 @@ function TaskDetailsRoute({
     : [];
   const isSelectedTaskActive = task ? board.selectedTask?.id === task.id : false;
   const runs = isSelectedTaskActive ? board.selectedTaskRunsQuery.data ?? [] : [];
-  const activeRunId = isSelectedTaskActive ? board.activeRunId : null;
-  const viewedRunId = isSelectedTaskActive ? board.viewedRunId : null;
-  const liveLog =
-    activeRunId && viewedRunId === activeRunId ? board.liveLogByRunId[activeRunId] ?? [] : [];
-  const runLogQuery = useQuery({
-    queryKey: ["run-log", viewedRunId ?? ""],
-    queryFn: async (): Promise<RunLogEntry[]> => {
-      if (!viewedRunId) {
-        return [];
-      }
-
-      return (await api.getRunLog(viewedRunId)).items;
-    },
-    enabled: isSelectedTaskActive && Boolean(viewedRunId)
-  });
-  const runLog = runLogQuery.data ?? [];
-
-  async function requestCoordinatorReview() {
-    if (!task) return;
-    const thread = workspaceThreadsByWorkspaceId
-      .get(task.workspaceId)
-      ?.find((entry) => entry.kind === "task" && entry.taskId === task.id && !entry.archivedAt);
-    if (!thread) {
-      return;
-    }
-
-    await api.postThreadMessage(thread.id, {
-      content: `@coordinator Please choose the appropriate review agent(s) for "${task.title}" based on workspace agent descriptions, then run the needed review(s).`,
-      kind: "chat"
-    });
-    navigate(workspaceThreadPath(task.workspaceId, thread.id));
-  }
+  const taskThread = task
+    ? workspaceThreadsByWorkspaceId
+        .get(task.workspaceId)
+        ?.find(
+          (entry) =>
+            entry.kind === "task" && entry.taskId === task.id && !entry.archivedAt
+        ) ?? null
+    : null;
 
   if (!taskId) {
     return <Navigate to="/" replace />;
@@ -673,14 +632,8 @@ function TaskDetailsRoute({
         runs={runs}
         workspaces={workspaces}
         workspaceAgents={workspaceAgents}
-        selectedRunId={board.selectedRunId}
-        runLogLoading={runLogQuery.isLoading}
+        thread={taskThread}
         onBack={() => navigate(workspaceBoardPath(task.workspaceId))}
-        onSelectRun={board.setSelectedRunId}
-        liveLog={liveLog}
-        runLog={runLog}
-        onPlan={() => board.planTask(task.id)}
-        onSendPlanFeedback={(text) => board.sendPlanFeedback({ taskId: task.id, text })}
         onApproveSubtask={
           isSubtask ? () => board.approveTask({ taskId: task.id }) : undefined
         }
@@ -702,12 +655,7 @@ function TaskDetailsRoute({
             : undefined
         }
         reviewActionBusy={board.isBusy}
-        onStart={() => board.startTask(task.id)}
-        onRequestReview={() => {
-          void requestCoordinatorReview();
-        }}
         onStop={() => board.stopTask(task.id)}
-        onSendInput={(text) => board.sendTaskInput({ taskId: task.id, text })}
         onMoveToTodo={() => board.moveToTodo(task.id)}
         onMarkDone={() => board.markDone(task.id)}
         onArchive={() => board.archiveTask(task.id)}

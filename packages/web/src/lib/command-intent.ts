@@ -1,7 +1,3 @@
-import type { RunLogEntry } from "@workhorse/contracts";
-import type { LiveLogCommandExecutionGroupStreamItem } from "@/components/live-log-entries";
-import { normalizeToolTitle } from "@/components/live-log-entries";
-
 export type CommandIntent = "build" | "command" | "git" | "read" | "search" | "test";
 
 export function getCommandIntent(text: string): CommandIntent {
@@ -55,52 +51,4 @@ export function getCommandIntent(text: string): CommandIntent {
   }
 
   return "command";
-}
-
-export function getIntentLabel(intent: CommandIntent, count: number): string {
-  switch (intent) {
-    case "read":
-      return count === 1 ? "Read a file" : `Read ${count} files`;
-    case "search":
-      return count === 1 ? "Searched code" : `Searched code ${count} times`;
-    case "test":
-      return count === 1 ? "Ran tests" : `Ran ${count} test commands`;
-    case "build":
-      return count === 1 ? "Built the project" : `Ran ${count} build commands`;
-    case "git":
-      return count === 1 ? "Checked git state" : `Checked git state ${count} times`;
-    default:
-      return count === 1 ? "Ran a command" : `Ran ${count} commands`;
-  }
-}
-
-export function getToolActivityLabel(entry: RunLogEntry, count = 1): string {
-  const itemType = entry.metadata?.itemType?.toLowerCase() ?? "";
-
-  if (itemType.includes("filesearch")) {
-    return count === 1 ? "Searched code" : `Searched code ${count} times`;
-  }
-
-  if (itemType.includes("filechange")) {
-    return count === 1 ? "Edited a file" : `Edited ${count} files`;
-  }
-
-  if (itemType.includes("command")) {
-    return getIntentLabel(getCommandIntent(entry.text), count);
-  }
-
-  const title = normalizeToolTitle(entry);
-  if (count === 1) {
-    return title;
-  }
-
-  return `${count} ${title.toLowerCase()} actions`;
-}
-
-export function getCommandGroupLabel(item: LiveLogCommandExecutionGroupStreamItem): string {
-  const intents = item.items.map(({ entry }) => getCommandIntent(entry.text));
-  const [firstIntent] = intents;
-  const sameIntent = Boolean(firstIntent) && intents.every((intent) => intent === firstIntent);
-
-  return getIntentLabel(sameIntent && firstIntent ? firstIntent : "command", item.items.length);
 }

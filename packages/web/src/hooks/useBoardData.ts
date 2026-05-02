@@ -28,7 +28,6 @@ import { applyOptimisticStartTask } from "@/lib/start-task";
 import { type DisplayTask, type TaskFormValues } from "@/lib/task-view";
 import { toast } from "@/hooks/use-toast";
 
-import { useLiveLog } from "./useLiveLog";
 import { useModalState } from "./useModalState";
 import { useSelectionState } from "./useSelectionState";
 
@@ -40,7 +39,6 @@ function queryKey(name: string, extra?: string) {
 export function useBoardData() {
   const queryClient = useQueryClient();
   const modals = useModalState();
-  const liveLog = useLiveLog();
   const selection = useSelectionState();
   const notifyMutationError = useCallback(
     (title: string, error: unknown, fallback: string) => {
@@ -642,7 +640,6 @@ export function useBoardData() {
     activeRunId,
     viewedRunId,
     selectedRunId: selection.selectedRunId,
-    liveLogByRunId: liveLog.liveLogByRunId,
     workspaceModalOpen: modals.workspaceModalOpen,
     globalSettingsModalOpen: modals.globalSettingsModalOpen,
     taskModalOpen: modals.taskModalOpen,
@@ -655,8 +652,6 @@ export function useBoardData() {
     setWorkspaceSelection: selection.setWorkspaceSelection,
     setTaskSelection: selection.setTaskSelection,
     setSelectedRunId: selection.setSelectedRunId,
-    recordLiveOutput: liveLog.recordLiveOutput,
-    clearLiveOutput: liveLog.clearLiveOutput,
     createWorkspace: createWorkspaceMutation.mutateAsync,
     updateSettings: updateSettingsMutation.mutateAsync,
     updateWorkspace: updateWorkspaceMutation.mutateAsync,
