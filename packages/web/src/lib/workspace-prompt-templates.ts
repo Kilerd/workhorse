@@ -7,20 +7,14 @@ import { WORKSPACE_PROMPT_TEMPLATE_IDS } from "@workhorse/contracts";
 export const EMPTY_WORKSPACE_PROMPT_TEMPLATES = Object.freeze<
   Record<WorkspacePromptTemplateId, string>
 >({
-  plan: "",
-  coding: "",
-  review: "",
-  reviewFollowUp: ""
+  coding: ""
 });
 
 export function createWorkspacePromptTemplateState(
   templates?: WorkspacePromptTemplates
 ): Record<WorkspacePromptTemplateId, string> {
   return {
-    plan: templates?.plan ?? "",
-    coding: templates?.coding ?? "",
-    review: templates?.review ?? "",
-    reviewFollowUp: templates?.reviewFollowUp ?? ""
+    coding: templates?.coding ?? ""
   };
 }
 

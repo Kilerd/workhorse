@@ -13,31 +13,20 @@ describe("createWorkspacePromptTemplateState", () => {
       coding: "Prompt: {{taskPrompt}}"
     });
   });
+
+  it("falls back to empty strings when no templates are provided", () => {
+    expect(createWorkspacePromptTemplateState()).toEqual({ coding: "" });
+  });
 });
 
 describe("serializeWorkspacePromptTemplates", () => {
-  it("returns an empty object when all templates are blank so updates can clear saved templates", () => {
-    expect(
-      serializeWorkspacePromptTemplates({
-        plan: "   ",
-        coding: "\n\t",
-        review: "",
-        reviewFollowUp: "   "
-      })
-    ).toEqual({});
+  it("returns an empty object when the coding template is blank", () => {
+    expect(serializeWorkspacePromptTemplates({ coding: "   " })).toEqual({});
   });
 
-  it("keeps only non-blank template values", () => {
+  it("keeps the coding template when set", () => {
     expect(
-      serializeWorkspacePromptTemplates({
-        plan: "",
-        coding: "Task: {{taskTitle}}",
-        review: " \n",
-        reviewFollowUp: "Address {{reviewSummary}}"
-      })
-    ).toEqual({
-      coding: "Task: {{taskTitle}}",
-      reviewFollowUp: "Address {{reviewSummary}}"
-    });
+      serializeWorkspacePromptTemplates({ coding: "Task: {{taskTitle}}" })
+    ).toEqual({ coding: "Task: {{taskTitle}}" });
   });
 });
