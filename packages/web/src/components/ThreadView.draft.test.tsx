@@ -88,6 +88,40 @@ describe("ThreadView draft persistence", () => {
     expect(getTextarea().value).toBe("Draft for thread 1");
   });
 
+  it("persists the latest draft even when leaving immediately after typing", async () => {
+    await renderThread("thread-1");
+
+    act(() => {
+      setDraftValueSync("Last-second draft");
+      root.unmount();
+    });
+
+    root = createRoot(container);
+    await renderThread("thread-1");
+
+    expect(window.localStorage.getItem(getThreadDraftStorageKey("thread-1"))).toBe(
+      JSON.stringify("Last-second draft")
+    );
+    expect(getTextarea().value).toBe("Last-second draft");
+  });
+
+  it("keeps the composer usable when localStorage writes fail", async () => {
+    const setItemSpy = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(() => {
+        throw new DOMException("QuotaExceededError");
+      });
+
+    try {
+      await renderThread("thread-1");
+      await setDraftValue("Draft without storage");
+
+      expect(getTextarea().value).toBe("Draft without storage");
+    } finally {
+      setItemSpy.mockRestore();
+    }
+  });
+
   it("clears the current thread draft after a successful send", async () => {
     await renderThread("thread-1");
     await setDraftValue("  Keep the trim behavior  ");
@@ -102,6 +136,31 @@ describe("ThreadView draft persistence", () => {
     });
     expect(window.localStorage.getItem(getThreadDraftStorageKey("thread-1"))).toBeNull();
     expect(getTextarea().value).toBe("");
+  });
+
+  it("keeps the send flow working when localStorage cleanup fails", async () => {
+    await renderThread("thread-1");
+    await setDraftValue("Send despite cleanup failure");
+
+    const removeItemSpy = vi
+      .spyOn(Storage.prototype, "removeItem")
+      .mockImplementation(() => {
+        throw new DOMException("SecurityError");
+      });
+
+    try {
+      await act(async () => {
+        getSendButton().click();
+      });
+
+      expect(mutateAsync).toHaveBeenCalledWith({
+        content: "Send despite cleanup failure",
+        kind: "chat"
+      });
+      expect(getTextarea().value).toBe("");
+    } finally {
+      removeItemSpy.mockRestore();
+    }
   });
 
   async function renderThread(threadId: string) {
@@ -119,15 +178,19 @@ describe("ThreadView draft persistence", () => {
   }
 
   async function setDraftValue(value: string) {
-    const textarea = getTextarea();
     await act(async () => {
-      const valueSetter = Object.getOwnPropertyDescriptor(
-        HTMLTextAreaElement.prototype,
-        "value"
-      )?.set;
-      valueSetter?.call(textarea, value);
-      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      setDraftValueSync(value);
     });
+  }
+
+  function setDraftValueSync(value: string) {
+    const textarea = getTextarea();
+    const valueSetter = Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value"
+    )?.set;
+    valueSetter?.call(textarea, value);
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
   }
 
   function getTextarea() {

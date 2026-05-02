@@ -20,7 +20,11 @@ export function writeStoredValue<T>(key: string, value: T): void {
     return;
   }
 
-  window.localStorage.setItem(key, JSON.stringify(value));
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Storage writes should never block the main flow.
+  }
 }
 
 export function removeStoredValue(key: string): void {
@@ -28,5 +32,9 @@ export function removeStoredValue(key: string): void {
     return;
   }
 
-  window.localStorage.removeItem(key);
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // Storage cleanup should never block the main flow.
+  }
 }

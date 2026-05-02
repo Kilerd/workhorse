@@ -59,7 +59,6 @@ export function ThreadView({
   const postMessage = usePostThreadMessage(threadId);
 
   const messageListRef = useRef<HTMLDivElement>(null);
-  const isRestoringDraftRef = useRef(false);
   const [isPinnedToBottom, setIsPinnedToBottom] = useState(true);
   const [draft, setDraft] = useState(() => readThreadDraft(threadId));
 
@@ -93,18 +92,8 @@ export function ThreadView({
   }, [threadId]);
 
   useEffect(() => {
-    isRestoringDraftRef.current = true;
     setDraft(readThreadDraft(threadId));
   }, [threadId]);
-
-  useEffect(() => {
-    if (isRestoringDraftRef.current) {
-      isRestoringDraftRef.current = false;
-      return;
-    }
-
-    writeThreadDraft(threadId, draft);
-  }, [draft, threadId]);
 
   useEffect(() => {
     const node = messageListRef.current;
@@ -122,6 +111,11 @@ export function ThreadView({
     }
 
     setIsPinnedToBottom(isScrolledNearBottom(node));
+  }
+
+  function handleDraftChange(nextDraft: string) {
+    setDraft(nextDraft);
+    writeThreadDraft(threadId, nextDraft);
   }
 
   async function handleSend() {
@@ -177,7 +171,7 @@ export function ThreadView({
           rows={3}
           value={draft}
           maxLength={MAX_CHAT_LENGTH}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => handleDraftChange(e.target.value)}
           onKeyDown={(e) => {
             if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
               e.preventDefault();
