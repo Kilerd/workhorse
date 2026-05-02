@@ -33,6 +33,7 @@ import {
 import { WorkspaceSettingsPage } from "@/components/WorkspaceSettingsPage";
 import { TopBar } from "@/components/TopBar";
 import { useBoardData } from "@/hooks/useBoardData";
+import { useColumnVisibility } from "@/hooks/useColumnVisibility";
 import { api } from "@/lib/api";
 import { useWorkspaceSocket } from "@/hooks/useWorkspaceSocket";
 import { resolveRunSelectionAfterStart } from "@/lib/run-selection";
@@ -261,6 +262,7 @@ function ReactAppShell() {
 
     return workspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? null;
   }, [activeWorkspaceId, workspaces]);
+  const columnVisibility = useColumnVisibility(activeWorkspaceId ?? "all");
   const selectedWorkspaceTaskCount = useMemo(() => {
     if (!selectedWorkspace) {
       return 0;
@@ -345,7 +347,7 @@ function ReactAppShell() {
   }
 
   const boardPage = (
-    <section className="min-h-0 overflow-hidden px-3 pb-3 pt-2.5 sm:px-4 sm:pb-4 lg:px-5 lg:pb-5 lg:pt-3.5">
+    <section className="min-h-0 overflow-hidden">
       <DragDropContext onDragEnd={handleDrop}>
         <Board
           tasks={boardTasks}
@@ -353,6 +355,7 @@ function ReactAppShell() {
           workspaceAgentsByWorkspaceId={workspaceAgentsByWorkspaceId}
           workspaces={workspaces}
           reviewMonitor={reviewMonitor}
+          visibleColumnIds={columnVisibility.visibleColumnIds}
           selectedTaskId={board.selectedTask?.id ?? null}
           onTaskOpen={openTask}
           onPlan={(taskId) => board.planTask(taskId)}
@@ -452,6 +455,9 @@ function ReactAppShell() {
             isPulling={board.isPulling}
             selectedWorkspaceName={selectedWorkspaceName}
             schedulerStatus={board.schedulerStatus}
+            visibleColumnIds={columnVisibility.visibleColumnIds}
+            onToggleColumn={columnVisibility.toggle}
+            onResetColumns={columnVisibility.reset}
           />
         )}
 
@@ -708,6 +714,12 @@ function TaskDetailsRoute({
         onArchive={() => board.archiveTask(task.id)}
         onCleanupWorktree={() => board.cleanupTaskWorktree(task.id)}
         onDelete={async () => {
+          if (
+            task.worktree.status === "ready" ||
+            task.worktree.status === "cleanup_pending"
+          ) {
+            await board.cleanupTaskWorktree(task.id);
+          }
           await board.deleteTask(task.id);
           navigate("/");
         }}

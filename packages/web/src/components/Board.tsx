@@ -26,6 +26,7 @@ interface Props {
   workspaceAgentsByWorkspaceId: Map<string, WorkspaceAgent[]>;
   workspaces: Workspace[];
   reviewMonitor: ReviewMonitor;
+  visibleColumnIds: DisplayTaskColumn[];
   selectedTaskId: string | null;
   onTaskOpen(taskId: string): void;
   onPlan(taskId: string): void;
@@ -42,15 +43,15 @@ interface Props {
 }
 
 const boardClass =
-  "grid h-full min-h-0 auto-cols-[minmax(300px,1fr)] grid-flow-col gap-3 overflow-x-auto overflow-y-hidden bg-transparent pb-1 pr-2 max-[820px]:auto-cols-[minmax(280px,90vw)]";
+  "grid h-full min-h-0 grid-flow-col auto-cols-fr overflow-hidden bg-transparent pb-1";
 const columnClass =
-  "surface-card-faint grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden";
+  "grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-r border-border bg-[var(--surface-faint)] last:border-r-0";
 const columnHeaderClass =
   "flex min-h-0 items-center justify-between gap-3 border-b border-border px-3.5 py-2.5";
 const columnListClass =
-  "grid min-h-0 content-start gap-2.5 overflow-x-hidden overflow-y-auto overscroll-contain p-3";
+  "grid min-h-0 content-start gap-1 overflow-x-hidden overflow-y-auto overscroll-contain p-1.5";
 const taskCardClass =
-  "grid gap-0 rounded-[12px] border bg-[var(--surface-faint)] p-3.5 text-left transition-[border-color,transform,background-color] hover:-translate-y-px hover:bg-[var(--surface-hover)] focus:outline-none";
+  "grid gap-0 rounded-[6px] border bg-[var(--surface-faint)] px-2.5 py-2 text-left transition-[border-color,transform,background-color] hover:-translate-y-px hover:bg-[var(--surface-hover)] focus:outline-none";
 function groupTasks(): Record<DisplayTaskColumn, DisplayTask[]> {
   return {
     backlog: [],
@@ -231,6 +232,7 @@ export function Board({
   workspaceAgentsByWorkspaceId,
   workspaces,
   reviewMonitor,
+  visibleColumnIds,
   selectedTaskId,
   onTaskOpen,
   onPlan,
@@ -245,6 +247,11 @@ export function Board({
   onCancelSubtask,
   reviewActionBusy = false
 }: Props) {
+  const visibleColumnSet = useMemo(() => new Set(visibleColumnIds), [visibleColumnIds]);
+  const visibleColumns = useMemo(
+    () => BOARD_COLUMNS.filter((column) => visibleColumnSet.has(column.id)),
+    [visibleColumnSet]
+  );
   const grouped = BOARD_COLUMNS.reduce((acc, column) => {
     acc[column.id] = tasks
       .filter((task) => task.column === column.id)
@@ -291,7 +298,7 @@ export function Board({
 
   return (
     <section className={boardClass}>
-      {BOARD_COLUMNS.map((column) => (
+      {visibleColumns.map((column) => (
         <Droppable droppableId={column.id} key={column.id}>
           {(provided, snapshot) => (
             <article
@@ -308,7 +315,6 @@ export function Board({
                   </span>
                   {column.title}
                 </h2>
-                <span className="section-kicker m-0">{column.id}</span>
               </div>
 
               <div
@@ -348,7 +354,7 @@ export function Board({
                           className={cn(
                             taskCardClass,
                             getTaskCardToneClass(task.column),
-                            isActive && "border-[rgba(255,255,255,0.16)]",
+                            isActive && "border-[var(--accent)] ring-1 ring-[var(--accent-soft)]",
                             dragSnapshot.isDragging && "rotate-1"
                           )}
                           ref={dragProvided.innerRef}
@@ -379,13 +385,13 @@ export function Board({
                           </div>
 
                           {task.description ? (
-                            <p className="mt-2.5 m-0 overflow-hidden text-[0.78rem] leading-[1.55] text-[var(--muted)] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+                            <p className="mt-1.5 m-0 overflow-hidden text-[0.78rem] leading-[1.45] text-[var(--muted)] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
                               {task.description}
                             </p>
                           ) : null}
 
                           {hasCoordination ? (
-                            <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                            <div className="mt-1.5 flex flex-wrap items-center gap-1">
                               <span className="inline-flex min-h-7 items-center rounded-full border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] tone-accent">
                                 {`Agents · ${workspaceAgents.length} mounted`}
                               </span>
@@ -398,7 +404,7 @@ export function Board({
                           ) : null}
 
                           {!task.parentTaskId && childTasks.length > 0 ? (
-                            <div className="mt-3 grid gap-2.5 border-t border-border pt-3">
+                            <div className="mt-2 grid gap-1.5 border-t border-border pt-2">
                               <div className="flex items-center justify-between gap-2">
                                 <span className="section-kicker">
                                   Coordination subtasks
@@ -499,7 +505,7 @@ export function Board({
                           ) : null}
 
                           {showBlockedBy && blockedByEntries.length > 0 ? (
-                            <div className="mt-3 flex flex-wrap gap-2">
+                            <div className="mt-1.5 flex flex-wrap gap-1.5">
                               {blockedByEntries.map(({ id, title }) => (
                                 <span
                                   key={id}
@@ -512,7 +518,7 @@ export function Board({
                           ) : null}
 
                           {task.pullRequestUrl && task.pullRequest ? (
-                            <div className="mt-3 border-t border-border pt-3">
+                            <div className="mt-2 border-t border-border pt-2">
                               <CompactPullRequestStatus
                                 task={task}
                                 reviewCountdown={reviewCountdown}
@@ -520,7 +526,7 @@ export function Board({
                             </div>
                           ) : null}
 
-                          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[0.625rem]">
+                          <div className="mt-1.5 flex flex-wrap items-center justify-between gap-1.5 text-[0.625rem]">
                             <div className="flex min-w-0 flex-wrap items-center gap-2">
                               <span className="min-w-0 truncate text-[0.72rem] leading-[1.3] text-[var(--muted)]">
                                 {workspaceName}

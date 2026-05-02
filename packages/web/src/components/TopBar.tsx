@@ -9,7 +9,9 @@ import { formatCount, formatRelativeTime } from "@/lib/format";
 import type { ThemeMode } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { ColumnVisibilityMenu } from "./ColumnVisibilityMenu";
 import { ThemeToggle } from "./ThemeToggle";
+import type { DisplayTaskColumn } from "@/lib/task-view";
 
 interface SchedulerStatus {
   running: number;
@@ -31,6 +33,9 @@ interface Props {
   onPull(): void;
   isPulling: boolean;
   schedulerStatus?: SchedulerStatus | null;
+  visibleColumnIds: DisplayTaskColumn[];
+  onToggleColumn(id: DisplayTaskColumn): void;
+  onResetColumns(): void;
 }
 
 function formatRuntimeStatus(runtimeStatus: string) {
@@ -153,7 +158,10 @@ export function TopBar({
   gitStatus,
   onPull,
   isPulling,
-  schedulerStatus
+  schedulerStatus,
+  visibleColumnIds,
+  onToggleColumn,
+  onResetColumns
 }: Props) {
   const quotaWindows = [
     codexQuota?.primary
@@ -182,7 +190,7 @@ export function TopBar({
     (schedulerStatus.running > 0 || schedulerStatus.queued > 0 || schedulerStatus.blocked > 0);
 
   return (
-    <header className="border-b border-border bg-background backdrop-blur-xl">
+    <header className="border-b border-border bg-background">
       <div className="grid gap-3 px-3.5 py-3 sm:px-4 sm:py-3.5 lg:px-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="section-kicker">{selectedWorkspaceName}</span>
@@ -195,6 +203,11 @@ export function TopBar({
                 {isPulling ? "Pulling…" : "Pull"}
               </Button>
             ) : null}
+            <ColumnVisibilityMenu
+              visibleColumnIds={visibleColumnIds}
+              onToggle={onToggleColumn}
+              onReset={onResetColumns}
+            />
             <Button type="button" size="sm" className="px-3" onClick={onCreateTask}>
               New task
             </Button>
