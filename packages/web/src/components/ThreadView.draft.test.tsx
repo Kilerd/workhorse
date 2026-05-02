@@ -2,6 +2,7 @@
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { flushSync } from "react-dom";
 import {
   afterEach,
   beforeEach,
@@ -86,6 +87,30 @@ describe("ThreadView draft persistence", () => {
 
     await renderThread("thread-1");
     expect(getTextarea().value).toBe("Draft for thread 1");
+  });
+
+  it("does not show the previous draft during a same-instance thread switch", () => {
+    window.localStorage.setItem(
+      getThreadDraftStorageKey("thread-1"),
+      JSON.stringify("Draft for thread 1")
+    );
+
+    const previousActEnvironment = reactActEnvironment.IS_REACT_ACT_ENVIRONMENT;
+    reactActEnvironment.IS_REACT_ACT_ENVIRONMENT = false;
+
+    try {
+      flushSync(() => {
+        root.render(<ThreadView threadId="thread-1" />);
+      });
+      expect(getTextarea().value).toBe("Draft for thread 1");
+
+      flushSync(() => {
+        root.render(<ThreadView threadId="thread-2" />);
+      });
+      expect(getTextarea().value).toBe("");
+    } finally {
+      reactActEnvironment.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+    }
   });
 
   it("persists the latest draft even when leaving immediately after typing", async () => {

@@ -1,4 +1,11 @@
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 import type { Message, Thread } from "@workhorse/contracts";
 import {
   CheckCircle2,
@@ -91,7 +98,7 @@ export function ThreadView({
     setIsPinnedToBottom(true);
   }, [threadId]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setDraft(readThreadDraft(threadId));
   }, [threadId]);
 
