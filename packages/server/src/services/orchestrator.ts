@@ -344,6 +344,7 @@ export class Orchestrator {
         return;
       }
 
+      active.streamingMessageId = undefined;
       this.threads.appendMessage({
         threadId,
         sender: { type: "agent", agentId: session.agentId },
