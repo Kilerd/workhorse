@@ -433,7 +433,7 @@ export function useBoardData() {
       notifyMutationError(
         "Couldn't request review",
         error,
-        "Unable to move the task into review."
+        "Unable to start an agent review."
       );
     }
   });

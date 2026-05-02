@@ -17,6 +17,7 @@ import { BoardService } from "./services/board-service.js";
 import { Orchestrator } from "./services/orchestrator.js";
 import { PlanService } from "./services/plan-service.js";
 import { TaskService } from "./services/task-service.js";
+import { TaskThreadBridge } from "./services/task-thread-bridge.js";
 import { ThreadService } from "./services/thread-service.js";
 import { buildDefaultToolRegistry } from "./services/tool-registry.js";
 import { EventBus } from "./ws/event-bus.js";
@@ -35,7 +36,7 @@ async function main(): Promise<void> {
     plans,
     threads,
     startTask: (taskId) => service.startTask(taskId),
-    requestTaskReview: (taskId) => service.requestTaskReview(taskId)
+    requestTaskReview: (taskId, options) => service.requestTaskReview(taskId, options)
   });
   const mcpNonces = new McpNonceRegistry();
   const mcpHandler = createMcpHttpHandler(tools, mcpNonces);
@@ -63,6 +64,14 @@ async function main(): Promise<void> {
     runners
   });
   orchestrator.start();
+  const taskThreadBridge = new TaskThreadBridge({
+    store,
+    events,
+    threads,
+    sendTaskInput: (taskId, input) => service.sendTaskInput(taskId, input),
+    triggerCoordinator: (threadId) => orchestrator.onThreadMessage(threadId)
+  });
+  taskThreadBridge.start();
   await service.initialize();
   await service.warmCodexAppServer().catch((error) => {
     console.error("Initial Codex app-server startup failed");
@@ -78,7 +87,8 @@ async function main(): Promise<void> {
     reviewMonitorIntervalMs,
     threads,
     plans,
-    orchestrator
+    orchestrator,
+    taskThreadBridge
   });
   const honoListener = getRequestListener(app.fetch);
   const server = createServer();

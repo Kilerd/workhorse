@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { AccountAgent, Run, Task, Workspace } from "@workhorse/contracts";
 
@@ -219,6 +219,39 @@ describe("ToolRegistry — start_task", () => {
       taskId: task.id,
       status: "running",
       runnerType: "codex"
+    });
+  });
+});
+
+describe("ToolRegistry — request_task_review", () => {
+  it("delegates one explicit selected agent review with requester and focus", async () => {
+    const { store, tasks, plans, threads, ctx } = await setup();
+    const requestTaskReview = vi.fn(async () => ({
+      task: { id: "task-1" } as Task,
+      run: { id: "run-1" } as Run
+    }));
+    const tools = buildDefaultToolRegistry({
+      store,
+      tasks,
+      plans,
+      threads,
+      requestTaskReview
+    });
+
+    await tools.invoke(
+      "request_task_review",
+      {
+        taskId: "task-1",
+        reviewerAgentId: "agent-business",
+        focus: "business review"
+      },
+      ctx
+    );
+
+    expect(requestTaskReview).toHaveBeenCalledWith("task-1", {
+      reviewerAgentId: "agent-business",
+      requesterAgentId: ctx.agentId,
+      focus: "business review"
     });
   });
 });

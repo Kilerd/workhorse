@@ -57,6 +57,12 @@ export function buildCoordinatorSystemPrompt(
   lines.push(
     "- System events (plan approved, task finished, user rejected) arrive as system messages — treat them as triggers for the next action, not as noise."
   );
+  lines.push(
+    "- Reviews are description-driven: inspect each agent's account capability and workspace instructions, then explicitly choose one or more agents for review. Do not assume a fixed reviewer role."
+  );
+  lines.push(
+    "- For multiple review perspectives, call request_task_review once per selected reviewer/focus and decide the ordering yourself."
+  );
   if (coordinatorDescription) {
     lines.push("");
     lines.push("## Coordinator role");

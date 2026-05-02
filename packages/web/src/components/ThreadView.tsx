@@ -1,4 +1,12 @@
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 import type { Message, Thread } from "@workhorse/contracts";
 import {
   CheckCircle2,
@@ -13,6 +21,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
+import { useWorkspaceAgents } from "@/hooks/useAgents";
 import { usePlan } from "@/hooks/usePlans";
 import {
   useThreadMessages,
@@ -42,6 +51,7 @@ interface Props {
 }
 
 const MAX_CHAT_LENGTH = 10_240;
+const AgentNamesContext = createContext<Map<string, string>>(new Map());
 
 export function ThreadView({
   threadId,
@@ -52,6 +62,7 @@ export function ThreadView({
 }: Props) {
   const messagesQuery = useThreadMessages(threadId);
   const postMessage = usePostThreadMessage(threadId);
+  const workspaceAgentsQuery = useWorkspaceAgents(thread?.workspaceId ?? null);
 
   const messageListRef = useRef<HTMLDivElement>(null);
   const [isPinnedToBottom, setIsPinnedToBottom] = useState(true);
@@ -81,6 +92,17 @@ export function ThreadView({
     () => ordered.filter((m) => isUserFacing(m) && !m.consumedByRunId).length,
     [ordered]
   );
+  const agentNames = useMemo(
+    () =>
+      new Map(
+        (workspaceAgentsQuery.data ?? []).map((agent) => [agent.id, agent.name] as const)
+      ),
+    [workspaceAgentsQuery.data]
+  );
+  const composerPlaceholder =
+    thread?.kind === "task"
+      ? "Message this task thread… use @coordinator, @worker, or @agentName to notify an agent."
+      : "Message this thread…";
 
   useEffect(() => {
     setIsPinnedToBottom(true);
@@ -120,73 +142,75 @@ export function ThreadView({
   }
 
   return (
-    <section className={cn("flex min-h-0 flex-col gap-3", className)}>
-      {thread ? <CoordinatorHint thread={thread} pending={pendingCount} /> : null}
+    <AgentNamesContext.Provider value={agentNames}>
+      <section className={cn("flex min-h-0 flex-col gap-3", className)}>
+        {thread ? <CoordinatorHint thread={thread} pending={pendingCount} /> : null}
 
-      {messagesQuery.isLoading ? (
-        <div className="text-sm text-muted-foreground">Loading thread…</div>
-      ) : messagesQuery.isError ? (
-        <div className="text-sm text-destructive">
-          {readErrorMessage(messagesQuery.error, "Failed to load messages.")}
-        </div>
-      ) : ordered.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-          No messages yet. Start the conversation below.
-        </div>
-      ) : (
-        <div
-          ref={messageListRef}
-          onScroll={handleMessageListScroll}
-          className="grid min-h-0 flex-1 auto-rows-max content-start gap-2 overflow-y-auto pr-1"
-        >
-          {displayItems.map((item) => (
-            <DisplayItemRow key={item.id} item={item} threadId={threadId} />
-          ))}
-        </div>
-      )}
+        {messagesQuery.isLoading ? (
+          <div className="text-sm text-muted-foreground">Loading thread…</div>
+        ) : messagesQuery.isError ? (
+          <div className="text-sm text-destructive">
+            {readErrorMessage(messagesQuery.error, "Failed to load messages.")}
+          </div>
+        ) : ordered.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+            No messages yet. Start the conversation below.
+          </div>
+        ) : (
+          <div
+            ref={messageListRef}
+            onScroll={handleMessageListScroll}
+            className="grid min-h-0 flex-1 auto-rows-max content-start gap-2 overflow-y-auto pr-1"
+          >
+            {displayItems.map((item) => (
+              <DisplayItemRow key={item.id} item={item} threadId={threadId} />
+            ))}
+          </div>
+        )}
 
-      <form
-        className="shrink-0 grid gap-2 pb-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void handleSend();
-        }}
-      >
-        <Textarea
-          rows={3}
-          value={draft}
-          maxLength={MAX_CHAT_LENGTH}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-              e.preventDefault();
-              void handleSend();
-            }
+        <form
+          className="shrink-0 grid gap-2 pb-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void handleSend();
           }}
-          placeholder="Message this thread…"
-          disabled={postMessage.isPending}
-          className="min-h-20 resize-y"
-        />
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-          <div className="min-w-0 flex flex-wrap items-center gap-2">
-            {sessionWorktree ? (
-              <SessionMeta kind="worktree" value={sessionWorktree} />
-            ) : null}
-            {sessionBranch ? <SessionMeta kind="branch" value={sessionBranch} /> : null}
+        >
+          <Textarea
+            rows={3}
+            value={draft}
+            maxLength={MAX_CHAT_LENGTH}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                e.preventDefault();
+                void handleSend();
+              }
+            }}
+            placeholder={composerPlaceholder}
+            disabled={postMessage.isPending}
+            className="min-h-20 resize-y"
+          />
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+            <div className="min-w-0 flex flex-wrap items-center gap-2">
+              {sessionWorktree ? (
+                <SessionMeta kind="worktree" value={sessionWorktree} />
+              ) : null}
+              {sessionBranch ? <SessionMeta kind="branch" value={sessionBranch} /> : null}
+            </div>
+            <div className="ml-auto flex items-center gap-3">
+              <span>{draft.length}/{MAX_CHAT_LENGTH}</span>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={postMessage.isPending || draft.trim().length === 0}
+              >
+                {postMessage.isPending ? "Sending…" : "Send"}
+              </Button>
+            </div>
           </div>
-          <div className="ml-auto flex items-center gap-3">
-            <span>{draft.length}/{MAX_CHAT_LENGTH}</span>
-            <Button
-              type="submit"
-              size="sm"
-              disabled={postMessage.isPending || draft.trim().length === 0}
-            >
-              {postMessage.isPending ? "Sending…" : "Send"}
-            </Button>
-          </div>
-        </div>
-      </form>
-    </section>
+        </form>
+      </section>
+    </AgentNamesContext.Provider>
   );
 }
 
@@ -288,10 +312,10 @@ function MessageRow({ message, threadId }: { message: Message; threadId: string 
   }
 }
 
-function senderLabel(message: Message): string {
+function senderLabel(message: Message, agentNames: Map<string, string>): string {
   if (message.sender.type === "user") return "you";
   if (message.sender.type === "system") return "system";
-  return "agent";
+  return agentNames.get(message.sender.agentId) ?? "agent";
 }
 
 function senderTone(message: Message): string {
@@ -306,6 +330,7 @@ function senderTone(message: Message): string {
 }
 
 function Meta({ message, align }: { message: Message; align?: "end" }) {
+  const agentNames = useContext(AgentNamesContext);
   return (
     <div
       className={cn(
@@ -319,7 +344,7 @@ function Meta({ message, align }: { message: Message; align?: "end" }) {
           senderTone(message)
         )}
       >
-        {senderLabel(message)}
+        {senderLabel(message, agentNames)}
       </span>
       <span className="rounded border border-border px-1.5 py-0.5 font-mono uppercase tracking-wide">
         {message.kind}
@@ -447,10 +472,17 @@ function ToolStatusIcon({
 export function ChatRow({ message }: { message: Message }) {
   const text = readText(message.payload);
   const isUser = message.sender.type === "user";
+  const agentNames = useContext(AgentNamesContext);
 
   if (!isUser) {
+    const label = message.sender.type === "agent" ? senderLabel(message, agentNames) : undefined;
     return (
       <article className="w-full max-w-[min(54rem,96%)] px-1 py-1 text-sm leading-[1.55]">
+        {label ? (
+          <div className="mb-1 text-[0.68rem] font-medium uppercase tracking-wide text-muted-foreground">
+            {label}
+          </div>
+        ) : null}
         {renderMarkdownBlock(text, { className: "gap-2" })}
       </article>
     );

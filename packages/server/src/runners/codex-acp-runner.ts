@@ -771,7 +771,7 @@ export class CodexAcpRunner implements RunnerAdapter {
   private buildPrompt(context: RunnerStartContext, config: CodexRunnerConfig): string {
     const description = context.task.description.trim();
     const plan = context.task.plan?.trim();
-    return resolveTemplate(
+    const prompt = resolveTemplate(
       resolveWorkspacePromptTemplate("coding", context.workspace.promptTemplates),
       {
         taskPrompt: config.prompt.trim(),
@@ -792,6 +792,11 @@ export class CodexAcpRunner implements RunnerAdapter {
           : ""
       }
     );
+    return [
+      prompt,
+      "Thread handoff:",
+      "When you finish this task run, include `@coordinator` in your final response and briefly summarize the result so the task thread can notify the coordinator."
+    ].join("\n\n");
   }
 
   private buildFreshThreadFollowUpPrompt(

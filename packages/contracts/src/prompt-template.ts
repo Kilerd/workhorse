@@ -116,7 +116,7 @@ const DEFAULT_REVIEW_TEMPLATE = [
 ].join("\n");
 
 const DEFAULT_REVIEW_FOLLOW_UP_TEMPLATE = [
-  "The AI reviewer requested changes.",
+  "The reviewer requested changes.",
   "",
   "{{reviewFollowUpInstruction}}"
 ].join("\n");
@@ -254,7 +254,7 @@ export const WORKSPACE_PROMPT_TEMPLATE_DEFINITIONS = {
   review: {
     label: "Review Prompt",
     description:
-      "Used by the built-in Claude reviewer for explicitly requested review runs.",
+      "Used by the selected reviewer agent for explicitly requested review runs.",
     defaultTemplate: DEFAULT_REVIEW_TEMPLATE,
     variables: [
       {

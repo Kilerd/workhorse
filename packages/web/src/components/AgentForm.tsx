@@ -526,7 +526,7 @@ export function AgentForm({
           <p className="mr-auto m-0 text-[0.72rem] text-[var(--danger)]">{validationError}</p>
         ) : (
           <p className="mr-auto m-0 text-[0.72rem] text-[var(--muted)]">
-            Account agents can be mounted into any workspace with a coordinator or worker role.
+            Account agents can be mounted into any workspace as coordinators or workers; workspace instructions describe coding, planning, or review responsibilities.
           </p>
         )}
         {mode === "edit" && onDelete ? (

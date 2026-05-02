@@ -117,6 +117,7 @@ function classifyRunPhase(run: Run): RunPhase {
   if (trigger === "plan_generation") return "plan";
   if (
     trigger === "auto_ai_review" ||
+    trigger === "manual_agent_review" ||
     trigger === "manual_claude_review" ||
     run.runnerType === "claude"
   ) {
@@ -140,7 +141,7 @@ function buildPhaseTabs(runs: Run[]): PhaseTab[] {
   const labels: Record<RunPhase, string> = {
     plan: "Plan",
     running: "Running",
-    "ai-review": "AI Review"
+    "ai-review": "Agent Review"
   };
 
   return order
@@ -471,7 +472,7 @@ export function TaskDetailsPanel({
                 )}
                 onClick={onRequestReview}
               >
-                <span>Request Review</span>
+                <span>Ask Coordinator for Review</span>
               </button>
             ) : null}
             <button

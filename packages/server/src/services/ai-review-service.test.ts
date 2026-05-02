@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { GlobalSettings, Run, Task, Workspace } from "@workhorse/contracts";
+import type { GlobalSettings, Run, Task, Workspace, WorkspaceAgent } from "@workhorse/contracts";
 
 import { AiReviewService } from "./ai-review-service.js";
 
@@ -46,6 +46,23 @@ function createTask(): Task {
     },
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
+  };
+}
+
+function createReviewerAgent(): WorkspaceAgent {
+  const now = new Date().toISOString();
+  return {
+    id: "agent-reviewer-1",
+    name: "Technical Reviewer",
+    description: "Reviews engineering changes for correctness and test coverage.",
+    role: "worker",
+    runnerConfig: {
+      type: "claude",
+      prompt: "Review the current changes.",
+      agent: "technical-reviewer"
+    },
+    createdAt: now,
+    updatedAt: now
   };
 }
 
@@ -144,11 +161,19 @@ describe("AiReviewService", () => {
     } satisfies Workspace;
     const { service } = createService({ workspace });
 
-    const config = service.buildManualReviewRunnerConfig(task, workspace);
+    const config = service.buildManualReviewRunnerConfig(
+      task,
+      workspace,
+      createReviewerAgent(),
+      "technical correctness"
+    );
     if (config.type !== "claude") {
       throw new Error("Expected Claude config");
     }
 
+    expect(config.permissionMode).toBe("plan");
+    expect(config.agent).toBe("technical-reviewer");
+    expect(config.prompt).toContain("Review focus: technical correctness");
     expect(config.prompt).toContain("Custom review for Implement feature");
     expect(config.prompt).toContain("GitHub PR: https://github.com/acme/workhorse/pull/42");
     expect(config.prompt).toContain("Changed files snapshot:");

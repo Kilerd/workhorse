@@ -17,6 +17,7 @@ import {
   validateApproveTaskParams,
   validateRejectTaskBody,
   validateRejectTaskParams,
+  validateRequestTaskReviewBody,
   validateRequestTaskReviewParams,
   validateRetryTaskParams,
   validateSetTaskDependenciesBody,
@@ -60,6 +61,7 @@ import { errorStatus, ok, toApiError, validateOrThrow } from "./lib/http.js";
 import type { BoardService } from "./services/board-service.js";
 import type { Orchestrator } from "./services/orchestrator.js";
 import type { PlanService } from "./services/plan-service.js";
+import type { TaskThreadBridge } from "./services/task-thread-bridge.js";
 import type { ThreadService } from "./services/thread-service.js";
 
 function queryObject(url: string): Record<string, string> {
@@ -87,6 +89,7 @@ interface CreateAppOptions {
   reviewMonitorIntervalMs?: number;
   threads?: ThreadService;
   plans?: PlanService;
+  taskThreadBridge?: TaskThreadBridge;
   orchestrator?: Pick<Orchestrator, "restartCoordinatorThread"> &
     Partial<Pick<Orchestrator, "onThreadMessage">>;
 }
@@ -97,6 +100,7 @@ export function createApp(
 ): Hono {
   const threads = options.threads;
   const plans = options.plans;
+  const taskThreadBridge = options.taskThreadBridge;
   const orchestrator = options.orchestrator;
   const app = new Hono();
   const openApiDocument = buildOpenApiDocument();
@@ -369,7 +373,12 @@ export function createApp(
       validateRequestTaskReviewParams,
       "Invalid task params"
     );
-    const result = await service.requestTaskReview(params.taskId);
+    const body = validateOrThrow(
+      await readOptionalJsonBody(c.req, "Invalid review request body"),
+      validateRequestTaskReviewBody,
+      "Invalid review request body"
+    );
+    const result = await service.requestTaskReview(params.taskId, body);
     return c.json(ok(result));
   });
 
@@ -624,17 +633,27 @@ export function createApp(
         validatePostThreadMessageBody,
         "Invalid post thread message body"
       );
+      const thread = threads.requireThread(params.threadId);
       const message = threads.appendMessage({
         threadId: params.threadId,
         sender: { type: "user" },
         kind: body.kind ?? "chat",
-        payload: { text: body.content }
+        payload:
+          body.kind === undefined || body.kind === "chat"
+            ? taskThreadBridge?.buildUserPayload(thread, body.content) ?? { text: body.content }
+            : { text: body.content }
       });
-      const thread = threads.requireThread(params.threadId);
       if (thread.kind === "coordinator" && orchestrator?.onThreadMessage) {
         void orchestrator.onThreadMessage(params.threadId).catch((error) => {
           console.error(
             `[thread-api] failed to trigger coordinator thread ${params.threadId}`,
+            error
+          );
+        });
+      } else if (thread.kind === "task" && taskThreadBridge) {
+        void taskThreadBridge.routeUserMessage(thread, message).catch((error) => {
+          console.error(
+            `[thread-api] failed to route task thread message ${message.id}`,
             error
           );
         });

@@ -33,6 +33,7 @@ import type {
   PlanTaskParams,
   PlanTaskResponse,
   RequestTaskReviewParams,
+  RequestTaskReviewBody,
   CreateThreadBody,
   ListThreadsParams,
   ListThreadsResponse,
@@ -141,6 +142,8 @@ export const validatePlanFeedbackParams = typia.createValidate<PlanFeedbackParam
 export const validatePlanFeedbackBody = typia.createValidate<PlanFeedbackBody>();
 export const validateRequestTaskReviewParams =
   typia.createValidate<RequestTaskReviewParams>();
+export const validateRequestTaskReviewBody =
+  typia.createValidate<RequestTaskReviewBody>();
 export const validateCleanupTaskWorktreeParams =
   typia.createValidate<CleanupTaskWorktreeParams>();
 export const validateTaskDiffParams = typia.createValidate<TaskDiffParams>();
@@ -219,6 +222,7 @@ export const schemaRegistry = {
   PlanFeedbackParams: () => typia.json.schema<PlanFeedbackParams>(),
   PlanFeedbackBody: () => typia.json.schema<PlanFeedbackBody>(),
   RequestTaskReviewParams: () => typia.json.schema<RequestTaskReviewParams>(),
+  RequestTaskReviewBody: () => typia.json.schema<RequestTaskReviewBody>(),
   CleanupTaskWorktreeParams: () => typia.json.schema<CleanupTaskWorktreeParams>(),
   TaskDiffParams: () => typia.json.schema<TaskDiffParams>(),
   ListRunsParams: () => typia.json.schema<ListRunsParams>(),

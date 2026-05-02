@@ -209,6 +209,13 @@ export interface RequestTaskReviewParams {
   taskId: string;
 }
 
+export interface RequestTaskReviewBody {
+  /** Workspace agent id selected by the coordinator for this review. */
+  reviewerAgentId?: string;
+  /** Optional review focus, e.g. "technical review" or "business review". */
+  focus?: string;
+}
+
 export interface StartTaskData {
   task: Task;
   run: Run;
@@ -564,6 +571,7 @@ export type SchemaName =
   | "PlanFeedbackParams"
   | "PlanFeedbackBody"
   | "RequestTaskReviewParams"
+  | "RequestTaskReviewBody"
   | "CleanupTaskWorktreeParams"
   | "TaskDiffParams"
   | "ListRunsParams"
@@ -1158,9 +1166,10 @@ export const endpointRegistry: EndpointSpec[] = [
     operationId: "requestTaskReview",
     method: "post",
     path: "/api/tasks/{taskId}/review-request",
-    summary: "Request a Claude review for a task in review",
+    summary: "Request an agent review for a task in review",
     tag: "Runs",
     paramsSchema: "RequestTaskReviewParams",
+    bodySchema: "RequestTaskReviewBody",
     responses: [
       {
         status: 200,

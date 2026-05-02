@@ -25,6 +25,7 @@ import type {
   PlanFeedbackData,
   PlanTaskData,
   RejectTaskBody,
+  RequestTaskReviewBody,
   RequestTaskReviewData,
   RunLogData,
   SettingsData,
@@ -132,10 +133,6 @@ export function createApiClient(baseUrl: string) {
     .create();
   const sendPlanFeedback = fetcher
     .path("/api/tasks/{taskId}/plan-feedback")
-    .method("post")
-    .create();
-  const requestTaskReview = fetcher
-    .path("/api/tasks/{taskId}/review-request")
     .method("post")
     .create();
   const cleanupTaskWorktree = fetcher
@@ -260,9 +257,15 @@ export function createApiClient(baseUrl: string) {
     ): Promise<PlanFeedbackData> =>
       unwrap((await sendPlanFeedback({ taskId, ...body })).data),
     requestTaskReview: async (
-      taskId: string
+      taskId: string,
+      body: RequestTaskReviewBody = {}
     ): Promise<RequestTaskReviewData> =>
-      unwrap((await requestTaskReview({ taskId })).data),
+      unwrap(
+        await requestJson(
+          `/api/tasks/${encodeURIComponent(taskId)}/review-request`,
+          { method: "POST", body: JSON.stringify(body) }
+        )
+      ),
     cleanupTaskWorktree: async (
       taskId: string
     ): Promise<CleanupTaskWorktreeData> =>

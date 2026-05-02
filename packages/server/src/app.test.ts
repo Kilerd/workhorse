@@ -404,6 +404,23 @@ async function createClaudeTask(
   });
 }
 
+function mountClaudeReviewAgent(
+  service: BoardService,
+  workspaceId: string,
+  name = "Technical Reviewer"
+) {
+  const agent = service.createAgent({
+    name,
+    description: "Reviews completed tasks for concrete correctness issues.",
+    runnerConfig: {
+      type: "claude",
+      prompt: "Review the current changes.",
+      agent: "code-reviewer"
+    }
+  });
+  return service.mountAgent(workspaceId, { agentId: agent.id, role: "worker" });
+}
+
 async function waitForRunToFinish(
   service: BoardService,
   taskId: string,
@@ -1068,7 +1085,7 @@ describe("workhorse runtime", () => {
     expect(log.some((entry) => entry.text.includes("Review complete."))).toBe(true);
   });
 
-  it("starts a manual Claude review run over HTTP for tasks in review", async () => {
+  it("starts a manual agent review run over HTTP for tasks in review", async () => {
     const { app, service, workspaceDir } = await createRuntime();
     await mkdir(join(workspaceDir, ".git"), { recursive: true });
     (service as any).gitWorktrees = {
@@ -1096,6 +1113,7 @@ describe("workhorse runtime", () => {
     };
     const workspace = await createWorkspace(service, workspaceDir);
     const task = await createCodexTask(service, workspace.id, "review");
+    const reviewer = mountClaudeReviewAgent(service, workspace.id);
 
     (service as any).runners.claude = {
       type: "claude",
@@ -1123,15 +1141,25 @@ describe("workhorse runtime", () => {
     };
 
     const response = await app.request(`/api/tasks/${task.id}/review-request`, {
-      method: "POST"
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        reviewerAgentId: reviewer.id,
+        focus: "technical review"
+      })
     });
 
     expect(response.status).toBe(200);
     const payload = await response.json();
     expect(payload.data.run.runnerType).toBe("claude");
     expect(payload.data.run.metadata).toMatchObject({
-      trigger: "manual_claude_review",
-      reviewAgent: "claude_code"
+      trigger: "manual_agent_review",
+      reviewAgentId: reviewer.id,
+      reviewAgentName: reviewer.name,
+      reviewFocus: "technical review",
+      reviewRunnerType: "claude"
     });
 
     const completedRun = await waitForRunToFinish(service, task.id);
@@ -1141,7 +1169,7 @@ describe("workhorse runtime", () => {
     });
   });
 
-  it("preserves the previous codex continuation run after a Claude review run", async () => {
+  it("preserves the previous codex continuation run after an agent review run", async () => {
     const { service, workspaceDir } = await createRuntime();
     await mkdir(join(workspaceDir, ".git"), { recursive: true });
     (service as any).gitWorktrees = {
@@ -1227,7 +1255,10 @@ describe("workhorse runtime", () => {
       }
     };
 
-    const reviewResult = await service.requestTaskReview(task.id);
+    const reviewer = mountClaudeReviewAgent(service, workspace.id);
+    const reviewResult = await service.requestTaskReview(task.id, {
+      reviewerAgentId: reviewer.id
+    });
     let completedReviewRun: Run | undefined;
     for (let attempt = 0; attempt < 40; attempt += 1) {
       completedReviewRun = service
@@ -1239,7 +1270,7 @@ describe("workhorse runtime", () => {
       await sleep(25);
     }
     if (!completedReviewRun) {
-      throw new Error("Expected Claude review run to finish");
+      throw new Error("Expected agent review run to finish");
     }
     const taskAfterReview = service.listTasks({}).find((entry) => entry.id === task.id);
 

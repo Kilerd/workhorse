@@ -1115,7 +1115,7 @@
     "/api/tasks/{taskId}/review-request": {
       "post": {
         "operationId": "requestTaskReview",
-        "summary": "Request a Claude review for a task in review",
+        "summary": "Request an agent review for a task in review",
         "tags": [
           "Runs"
         ],
@@ -1160,7 +1160,17 @@
               "type": "string"
             }
           }
-        ]
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestTaskReviewBody"
+              }
+            }
+          }
+        }
       }
     },
     "/api/tasks/{taskId}/diff": {
@@ -3389,6 +3399,20 @@
         "required": [
           "taskId"
         ]
+      },
+      "RequestTaskReviewBody": {
+        "type": "object",
+        "properties": {
+          "reviewerAgentId": {
+            "type": "string",
+            "description": "Workspace agent id selected by the coordinator for this review."
+          },
+          "focus": {
+            "type": "string",
+            "description": "Optional review focus, e.g. \"technical review\" or \"business review\"."
+          }
+        },
+        "required": []
       },
       "CleanupTaskWorktreeParams": {
         "type": "object",

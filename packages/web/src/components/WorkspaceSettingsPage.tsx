@@ -583,7 +583,7 @@ function AgentsTab({
   const workspaceAgentsQuery = useWorkspaceAgents(workspace.id);
   const mutations = useWorkspaceAgentMutations(workspace.id);
   const [selectedAgentId, setSelectedAgentId] = useState("");
-  const [selectedRole, setSelectedRole] = useState<"coordinator" | "worker">("worker");
+  const [selectedRole, setSelectedRole] = useState<WorkspaceAgent["role"]>("worker");
   const [selectedWorkspaceDescription, setSelectedWorkspaceDescription] = useState("");
   const [workspaceDescriptionDrafts, setWorkspaceDescriptionDrafts] = useState<
     Record<string, string>
@@ -804,7 +804,7 @@ function AgentsTab({
                           disabled={mutations.isPending}
                           value={agent.role}
                           onChange={(event) => {
-                            const role = event.target.value as "coordinator" | "worker";
+                            const role = event.target.value as WorkspaceAgent["role"];
                             void mutations
                               .updateRole({ agentId: agent.id, role })
                               .then(() => {
@@ -1036,14 +1036,14 @@ function AgentsTab({
                 hint={
                   selectedRole === "coordinator"
                     ? "This agent will become the single coordinator for workspace-level delegation."
-                    : "Workers execute delegated tasks while the coordinator routes work."
+                    : "Workers execute delegated tasks, planning help, or review responsibilities described in workspace instructions."
                 }
               >
                 <NativeSelect
                   disabled={mutations.isPending}
                   value={selectedRole}
                   onChange={(event) =>
-                    setSelectedRole(event.target.value as "coordinator" | "worker")
+                    setSelectedRole(event.target.value as WorkspaceAgent["role"])
                   }
                 >
                   <option value="worker">worker</option>
@@ -1069,7 +1069,7 @@ function AgentsTab({
               <div className="rounded-[var(--radius)] border border-border bg-[var(--panel)] px-4 py-3 text-[0.78rem] leading-[1.6] text-[var(--muted)]">
                 {selectedRole === "coordinator"
                   ? "A workspace can only have one coordinator at a time."
-                  : "Mount multiple workers to create a deeper execution bench for the coordinator."}
+                  : "Use workspace instructions to describe whether this worker codes, reviews technical changes, reviews business behavior, or helps with planning."}
               </div>
 
               <Button

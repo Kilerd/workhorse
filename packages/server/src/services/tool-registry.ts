@@ -184,7 +184,10 @@ export interface ToolRegistryDeps {
   plans: PlanService;
   threads: ThreadService;
   startTask?(taskId: string): Promise<{ task: Task; run: Run }>;
-  requestTaskReview?(taskId: string): Promise<{ task: Task; run: Run }>;
+  requestTaskReview?(
+    taskId: string,
+    options?: { reviewerAgentId?: string; requesterAgentId?: string; focus?: string }
+  ): Promise<{ task: Task; run: Run }>;
 }
 
 /**
@@ -393,18 +396,24 @@ export function buildDefaultToolRegistry(
     registry.register<Record<string, unknown>, { task: Task; run: Run }>({
       name: "request_task_review",
       description:
-        "Start a Claude review run for a task currently in the review column. Use this after inspecting a completed worker run when an independent reviewer should check the result.",
+        "Start one agent review run for a task currently in the review column. You must choose the reviewerAgentId from list_agents based on account/workspace descriptions. Call this multiple times for multiple review perspectives such as technical review and business review. Omit reviewerAgentId only when you intentionally want to review the task yourself.",
       inputSchema: {
         type: "object",
         properties: {
-          taskId: { type: "string" }
+          taskId: { type: "string" },
+          reviewerAgentId: { type: "string" },
+          focus: { type: "string" }
         },
         required: ["taskId"]
       },
-      handler: async (input) => {
+      handler: async (input, ctx) => {
         const obj = asRecord(input, "request_task_review");
         const taskId = requireString(obj, "taskId", "request_task_review");
-        return requestTaskReview(taskId);
+        return requestTaskReview(taskId, {
+          reviewerAgentId: optionalString(obj, "reviewerAgentId"),
+          requesterAgentId: ctx.agentId,
+          focus: optionalString(obj, "focus")
+        });
       }
     });
   }

@@ -1042,12 +1042,25 @@ describe("git worktree lifecycle", () => {
     });
   });
 
-  it("publishes Claude reviewer output back to the pull request as a GitHub review", async () => {
+  it("publishes agent reviewer output back to the pull request as a GitHub review", async () => {
     const github = createFakeGitHubProvider();
     const { service, seedDir, workspaceDir } = await createGitRuntimeWithProvider(github.provider);
     const workspace = await createGitWorkspace(service, workspaceDir);
     const task = await createGitTask(service, workspace.id, {
       title: "Review retry queue behavior"
+    });
+    const reviewerAccount = service.createAgent({
+      name: "Technical Reviewer",
+      description: "Reviews completed tasks for correctness and test coverage.",
+      runnerConfig: {
+        type: "claude",
+        prompt: "Review the current changes.",
+        agent: "code-reviewer"
+      }
+    });
+    const reviewer = service.mountAgent(workspace.id, {
+      agentId: reviewerAccount.id,
+      role: "worker"
     });
 
     await service.startTask(task.id);
@@ -1139,7 +1152,9 @@ describe("git worktree lifecycle", () => {
       }
     };
 
-    const reviewStart = await service.requestTaskReview(task.id);
+    const reviewStart = await service.requestTaskReview(task.id, {
+      reviewerAgentId: reviewer.id
+    });
     const finishedReviewRun = await waitForRunIdToFinish(
       service,
       task.id,
@@ -1161,7 +1176,7 @@ describe("git worktree lifecycle", () => {
       pullRequest: 91,
       action: "request_changes"
     });
-    expect(github.reviews[0]?.body).toContain("## Workhorse Claude Review");
+    expect(github.reviews[0]?.body).toContain("## Workhorse Agent Review");
     expect(github.reviews[0]?.body).toContain(
       "Cache invalidation still leaves stale entries behind when the retry queue is empty."
     );

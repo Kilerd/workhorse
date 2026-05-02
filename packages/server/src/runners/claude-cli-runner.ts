@@ -133,6 +133,7 @@ export class ClaudeCliRunner implements RunnerAdapter {
       plan ? `Implementation plan:\n${plan}` : undefined,
       `Working directory: ${context.workspace.rootPath}`,
       `Instruction:\n${config.prompt.trim()}`,
+      "Thread handoff:\nWhen you finish this task run, include `@coordinator` in your final response and briefly summarize the result so the task thread can notify the coordinator.",
       inputText ? `Additional instruction:\n${inputText}` : undefined
     ]
       .filter((section): section is string => Boolean(section))

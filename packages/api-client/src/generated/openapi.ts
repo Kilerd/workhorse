@@ -341,7 +341,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Request a Claude review for a task in review */
+        /** Request an agent review for a task in review */
         post: operations["requestTaskReview"];
         delete?: never;
         options?: never;
@@ -902,6 +902,12 @@ export interface components {
         };
         RequestTaskReviewParams: {
             taskId: string;
+        };
+        RequestTaskReviewBody: {
+            /** @description Workspace agent id selected by the coordinator for this review. */
+            reviewerAgentId?: string;
+            /** @description Optional review focus, e.g. "technical review" or "business review". */
+            focus?: string;
         };
         CleanupTaskWorktreeParams: {
             taskId: string;
@@ -2307,7 +2313,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RequestTaskReviewBody"];
+            };
+        };
         responses: {
             /** @description Started review run */
             200: {

@@ -4,7 +4,8 @@ import type {
   RunLogEntry,
   RunnerConfig,
   Task,
-  Workspace
+  Workspace,
+  WorkspaceAgent
 } from "@workhorse/contracts";
 import {
   resolveTemplate,
@@ -52,7 +53,11 @@ export class AiReviewService {
   constructor(private readonly deps: AiReviewDependencies) {}
 
   public isAiReviewTrigger(trigger?: string): boolean {
-    return trigger === "manual_claude_review" || trigger === "auto_ai_review";
+    return (
+      trigger === "manual_agent_review" ||
+      trigger === "manual_claude_review" ||
+      trigger === "auto_ai_review"
+    );
   }
 
   public async triggerReworkFromReview(task: Task, reviewRun: Run): Promise<void> {
@@ -109,7 +114,7 @@ export class AiReviewService {
         task.id,
         run.id,
         "GitHub review publish skipped",
-        "GitHub CLI auth is unavailable, so the Claude review was not posted back to the PR.\n"
+        "GitHub CLI auth is unavailable, so the agent review was not posted back to the PR.\n"
       );
       return;
     }
@@ -129,7 +134,7 @@ export class AiReviewService {
         task.id,
         run.id,
         "GitHub review publish skipped",
-        "Claude finished the review run, but there was no publishable review body to send to GitHub.\n"
+        "The reviewer finished the review run, but there was no publishable review body to send to GitHub.\n"
       );
       return;
     }
@@ -190,7 +195,35 @@ export class AiReviewService {
     }
   }
 
-  public buildManualReviewRunnerConfig(task: Task, workspace?: Workspace): RunnerConfig {
+  public buildManualReviewRunnerConfig(
+    task: Task,
+    workspace: Workspace | undefined,
+    reviewer: WorkspaceAgent,
+    focus?: string
+  ): RunnerConfig {
+    const prompt = this.buildManualReviewPrompt(task, workspace, focus);
+    const runnerConfig = structuredClone(reviewer.runnerConfig);
+
+    if (runnerConfig.type === "claude") {
+      return {
+        ...runnerConfig,
+        permissionMode: "plan",
+        prompt
+      };
+    }
+
+    return {
+      ...runnerConfig,
+      approvalMode: "default",
+      prompt
+    };
+  }
+
+  public buildManualReviewPrompt(
+    task: Task,
+    workspace?: Workspace,
+    focus?: string
+  ): string {
     const language = this.deps.getSettings().language.trim() || "English";
     const pullRequest = task.pullRequest;
     const changedFiles = (pullRequest?.files ?? [])
@@ -249,19 +282,30 @@ export class AiReviewService {
         language
       }
     );
-
-    return {
-      type: "claude",
-      agent: "code-reviewer",
-      permissionMode: "plan",
-      prompt
-    };
+    const reviewFocus = focus?.trim();
+    return reviewFocus
+      ? [
+          `Review focus: ${reviewFocus}`,
+          "",
+          prompt
+        ].join("\n")
+      : prompt;
   }
 
-  public buildManualReviewRunMetadata(task: Task): Record<string, string> {
+  public buildManualReviewRunMetadata(
+    task: Task,
+    reviewer: WorkspaceAgent,
+    requesterAgentId?: string,
+    focus?: string
+  ): Record<string, string> {
     return {
-      trigger: "manual_claude_review",
-      reviewAgent: "claude_code",
+      trigger: "manual_agent_review",
+      reviewAgentId: reviewer.id,
+      reviewAgentName: reviewer.name,
+      reviewAgentRole: reviewer.role,
+      reviewRunnerType: reviewer.runnerConfig.type,
+      ...(requesterAgentId ? { reviewRequesterAgentId: requesterAgentId } : {}),
+      ...(focus?.trim() ? { reviewFocus: focus.trim() } : {}),
       reviewBaseRef: task.worktree.baseRef,
       reviewBranch: task.worktree.branchName,
       reviewPullRequestUrl: task.pullRequestUrl ?? ""
@@ -298,7 +342,7 @@ export class AiReviewService {
     const summary = run.metadata?.reviewSummary?.trim();
     const narrative = await this.extractReviewerNarrative(run.id);
     const sections = [
-      "## Workhorse Claude Review",
+      "## Workhorse Agent Review",
       `**Task:** ${task.title}`,
       `**Verdict:** ${this.formatReviewVerdictLabel(this.resolveGitHubReviewAction(run.metadata?.reviewVerdict))}`,
       narrative || undefined,

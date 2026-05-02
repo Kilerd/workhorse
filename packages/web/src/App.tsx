@@ -469,6 +469,7 @@ function ReactAppShell() {
                 allTasks={allTasks}
                 workspaces={workspaces}
                 workspaceAgentsByWorkspaceId={workspaceAgentsByWorkspaceId}
+                workspaceThreadsByWorkspaceId={workspaceThreadsByWorkspaceId}
               />
             }
           />
@@ -566,13 +567,15 @@ interface TaskDetailsRouteProps {
   allTasks: BoardData["displayedTasks"];
   workspaces: Workspace[];
   workspaceAgentsByWorkspaceId: Map<string, WorkspaceAgent[]>;
+  workspaceThreadsByWorkspaceId: Map<string, Thread[]>;
 }
 
 function TaskDetailsRoute({
   board,
   allTasks,
   workspaces,
-  workspaceAgentsByWorkspaceId
+  workspaceAgentsByWorkspaceId,
+  workspaceThreadsByWorkspaceId
 }: TaskDetailsRouteProps) {
   const navigate = useNavigate();
   const { taskId } = useParams<{ taskId: string }>();
@@ -605,6 +608,22 @@ function TaskDetailsRoute({
     enabled: isSelectedTaskActive && Boolean(viewedRunId)
   });
   const runLog = runLogQuery.data ?? [];
+
+  async function requestCoordinatorReview() {
+    if (!task) return;
+    const thread = workspaceThreadsByWorkspaceId
+      .get(task.workspaceId)
+      ?.find((entry) => entry.kind === "task" && entry.taskId === task.id && !entry.archivedAt);
+    if (!thread) {
+      return;
+    }
+
+    await api.postThreadMessage(thread.id, {
+      content: `@coordinator Please choose the appropriate review agent(s) for "${task.title}" based on workspace agent descriptions, then run the needed review(s).`,
+      kind: "chat"
+    });
+    navigate(workspaceThreadPath(task.workspaceId, thread.id));
+  }
 
   if (!taskId) {
     return <Navigate to="/" replace />;
@@ -679,7 +698,9 @@ function TaskDetailsRoute({
         }
         reviewActionBusy={board.isBusy}
         onStart={() => board.startTask(task.id)}
-        onRequestReview={() => board.requestTaskReview(task.id)}
+        onRequestReview={() => {
+          void requestCoordinatorReview();
+        }}
         onStop={() => board.stopTask(task.id)}
         onSendInput={(text) => board.sendTaskInput({ taskId: task.id, text })}
         onMoveToTodo={() => board.moveToTodo(task.id)}

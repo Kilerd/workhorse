@@ -15,6 +15,7 @@ import type {
   HealthCodexQuotaData,
   ListTasksQuery,
   MountAgentBody,
+  RequestTaskReviewBody,
   Run,
   RunnerConfig,
   StartTaskBody,
@@ -90,6 +91,10 @@ interface BoardServiceDependencies {
   runners?: Record<string, RunnerAdapter>;
 }
 
+export interface RequestTaskReviewOptions extends RequestTaskReviewBody {
+  requesterAgentId?: string;
+}
+
 export type { GitReviewMonitorResult } from "./pr-monitor-service.js";
 
 function applyAgentPromptSynthesis(
@@ -98,6 +103,28 @@ function applyAgentPromptSynthesis(
 ): RunnerConfig {
   const synthesized = synthesizeAgentPrompt(runnerConfig.type, description);
   return { ...runnerConfig, prompt: synthesized };
+}
+
+function readMessagePayloadObject(payload: unknown): Record<string, unknown> {
+  return payload && typeof payload === "object" && !Array.isArray(payload)
+    ? (payload as Record<string, unknown>)
+    : {};
+}
+
+function readPayloadStringArray(
+  payload: Record<string, unknown>,
+  key: string
+): string[] {
+  const value = payload[key];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function readPayloadText(payload: unknown): string {
+  if (typeof payload === "string") return payload;
+  const object = readMessagePayloadObject(payload);
+  return typeof object.text === "string" ? object.text : "";
 }
 
 const COLUMN_ORDER: Record<Task["column"], number> = {
@@ -313,11 +340,105 @@ export class BoardService {
     options: StartTaskOptions = {}
   ): Promise<{ task: Task; run: Run }> {
     const task = this.requireTask(taskId);
-    return this.runLifecycle.startTask(taskId, {
+    const addressedAgentId =
+      options.runMetadata?.reviewAgentId?.trim() || task.assigneeAgentId;
+    const pendingInput = addressedAgentId
+      ? this.collectPendingTaskThreadInput(task, addressedAgentId)
+      : undefined;
+    const initialInputText = [pendingInput, options.initialInputText]
+      .filter((section): section is string => Boolean(section?.trim()))
+      .join("\n\n");
+
+    const result = await this.runLifecycle.startTask(taskId, {
       ...options,
+      ...(initialInputText ? { initialInputText } : {}),
       runnerConfigOverride:
         options.runnerConfigOverride ?? this.resolveTaskRunnerConfig(task)
     });
+
+    if (addressedAgentId) {
+      this.markPendingTaskThreadInputDelivered(task, addressedAgentId, result.run.id);
+    }
+
+    return result;
+  }
+
+  private collectPendingTaskThreadInput(
+    task: Task,
+    addressedAgentId: string
+  ): string | undefined {
+    const thread = this.store
+      .listThreadsByWorkspace(task.workspaceId)
+      .find((entry) => entry.kind === "task" && entry.taskId === task.id && !entry.archivedAt);
+    if (!thread) {
+      return undefined;
+    }
+
+    const pending = this.store
+      .listMessages(thread.id)
+      .filter((message) => {
+        if (message.sender.type !== "user" || message.kind !== "chat") {
+          return false;
+        }
+        const payload = readMessagePayloadObject(message.payload);
+        const pendingIds = readPayloadStringArray(payload, "pendingDeliveryAgentIds");
+        return pendingIds.includes(addressedAgentId);
+      })
+      .map((message) => {
+        const text = readPayloadText(message.payload).trim();
+        return text ? `- ${message.createdAt}: ${text}` : "";
+      })
+      .filter(Boolean);
+
+    if (pending.length === 0) {
+      return undefined;
+    }
+
+    return [
+      "Task thread messages addressed to you since the previous run:",
+      "",
+      ...pending
+    ].join("\n");
+  }
+
+  private markPendingTaskThreadInputDelivered(
+    task: Task,
+    addressedAgentId: string,
+    runId: string
+  ): void {
+    const thread = this.store
+      .listThreadsByWorkspace(task.workspaceId)
+      .find((entry) => entry.kind === "task" && entry.taskId === task.id && !entry.archivedAt);
+    if (!thread) {
+      return;
+    }
+
+    for (const message of this.store.listMessages(thread.id)) {
+      if (message.sender.type !== "user" || message.kind !== "chat") {
+        continue;
+      }
+      const payload = readMessagePayloadObject(message.payload);
+      const pendingIds = readPayloadStringArray(payload, "pendingDeliveryAgentIds");
+      if (!pendingIds.includes(addressedAgentId)) {
+        continue;
+      }
+
+      const deliveredIds = new Set(readPayloadStringArray(payload, "deliveredAgentIds"));
+      deliveredIds.add(addressedAgentId);
+      const updated = this.store.updateMessagePayload(message.id, {
+        ...payload,
+        pendingDeliveryAgentIds: pendingIds.filter((id) => id !== addressedAgentId),
+        deliveredAgentIds: [...deliveredIds],
+        deliveredRunId: runId
+      });
+      if (updated) {
+        this.events.publish({
+          type: "thread.message",
+          threadId: updated.threadId,
+          message: updated
+        });
+      }
+    }
   }
 
   private async checkAndHandleParentCompletion(parentTaskId: string): Promise<void> {
@@ -1032,7 +1153,10 @@ export class BoardService {
     return runs[0]?.metadata?.claudeSessionId;
   }
 
-  public async requestTaskReview(taskId: string): Promise<{ task: Task; run: Run }> {
+  public async requestTaskReview(
+    taskId: string,
+    options: RequestTaskReviewOptions = {}
+  ): Promise<{ task: Task; run: Run }> {
     if (this.runLifecycle.isActive(taskId)) {
       throw new AppError(409, "TASK_ALREADY_RUNNING", "Task already has an active run");
     }
@@ -1042,7 +1166,7 @@ export class BoardService {
       throw new AppError(
         409,
         "TASK_NOT_REVIEWABLE",
-        "Only tasks in review can request a reviewer run"
+        "Only tasks in review can request a review run"
       );
     }
 
@@ -1051,20 +1175,68 @@ export class BoardService {
       throw new AppError(
         400,
         "TASK_REVIEW_NOT_SUPPORTED",
-        "Claude review is only available for Git-backed tasks"
+        "Agent review is only available for Git-backed tasks"
       );
     }
 
+    const reviewer = this.resolveReviewAgent(task, options);
     const refreshedTask = await this.refreshTaskPullRequestSnapshotForReview(task, workspace);
-    return this.runLifecycle.startTask(refreshedTask.id, {
+    return this.startTaskInternal(refreshedTask.id, {
       allowedColumns: ["review"],
       runnerConfigOverride: this.aiReview.buildManualReviewRunnerConfig(
         refreshedTask,
-        workspace
+        workspace,
+        reviewer,
+        options.focus
       ),
-      runMetadata: this.aiReview.buildManualReviewRunMetadata(refreshedTask),
+      runMetadata: this.aiReview.buildManualReviewRunMetadata(
+        refreshedTask,
+        reviewer,
+        options.requesterAgentId,
+        options.focus
+      ),
       skipDependencyCheck: true
     });
+  }
+
+  private resolveReviewAgent(
+    task: Task,
+    options: RequestTaskReviewOptions
+  ): WorkspaceAgent {
+    const workspaceAgents = this.store.listWorkspaceAgents(task.workspaceId);
+    const explicitId = options.reviewerAgentId?.trim();
+    if (explicitId) {
+      const explicit = workspaceAgents.find((agent) => agent.id === explicitId);
+      if (!explicit) {
+        throw new AppError(
+          400,
+          "REVIEWER_AGENT_NOT_FOUND",
+          `Reviewer agent ${explicitId} is not mounted in this workspace`
+        );
+      }
+      return explicit;
+    }
+
+    const requesterId = options.requesterAgentId?.trim();
+    if (requesterId) {
+      const requester = workspaceAgents.find((agent) => agent.id === requesterId);
+      if (requester) {
+        if (requester.role !== "coordinator") {
+          throw new AppError(
+            400,
+            "REVIEWER_AGENT_REQUIRED",
+            "Only a coordinator requester can omit reviewerAgentId for self-review"
+          );
+        }
+        return requester;
+      }
+    }
+
+    throw new AppError(
+      400,
+      "REVIEWER_AGENT_REQUIRED",
+      "Select a mounted workspace agent for review, or call from a coordinator context for self-review"
+    );
   }
 
   public async getTaskDiff(
