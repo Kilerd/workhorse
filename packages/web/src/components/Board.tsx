@@ -386,16 +386,11 @@ export function Board({
                             </p>
                           ) : null}
 
-                          {hasCoordination ? (
+                          {hasCoordination && task.parentTaskId ? (
                             <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                              <span className="inline-flex min-h-7 items-center rounded-full border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] tone-accent">
-                                {`Agents · ${workspaceAgents.length} mounted`}
+                              <span className="inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-[0.6rem] uppercase tracking-[0.08em] tone-info">
+                                {`Subtask${assignedAgentName ? ` · ${assignedAgentName}` : ""}`}
                               </span>
-                              {task.parentTaskId ? (
-                                <span className="inline-flex min-h-7 items-center rounded-full border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] tone-info">
-                                  {`Subtask${assignedAgentName ? ` · ${assignedAgentName}` : ""}`}
-                                </span>
-                              ) : null}
                             </div>
                           ) : null}
 
@@ -530,7 +525,7 @@ export function Board({
                               {showColumnBadge ? (
                                 <span
                                   className={cn(
-                                    "inline-flex min-h-7 items-center whitespace-nowrap rounded-full border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em]",
+                                    "inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 font-mono text-[0.6rem] uppercase tracking-[0.08em]",
                                     taskRunBadge.className
                                   )}
                                 >
