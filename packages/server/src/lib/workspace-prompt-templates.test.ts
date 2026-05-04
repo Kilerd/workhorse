@@ -19,30 +19,19 @@ describe("resolveWorkspacePromptTemplates", () => {
     expect(
       resolveWorkspacePromptTemplates({
         promptTemplates: {
-          review: " \r\n\t "
+          coding: " \r\n\t "
         }
       })
     ).toBeUndefined();
   });
 
-  it("keeps valid partial template inputs while discarding blank and invalid entries", () => {
+  it("ignores invalid entries while keeping valid templates", () => {
     expect(
       resolveWorkspacePromptTemplates({
         promptTemplates: {
-          plan: "Task: Example",
-          coding: "\n\t ",
-          review: "Review task\r\nwith details",
-          reviewFollowUp: 42
-        } as unknown as {
-          plan?: string;
-          coding?: string;
-          review?: string;
-          reviewFollowUp?: string;
+          coding: 42 as unknown as string
         }
       })
-    ).toEqual({
-      plan: "Task: Example",
-      review: "Review task\nwith details"
-    });
+    ).toBeUndefined();
   });
 });

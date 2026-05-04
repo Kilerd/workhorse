@@ -43,6 +43,12 @@ export interface StartTaskOptions {
   targetOrder?: number;
   targetColumn?: Task["column"];
   skipDependencyCheck?: boolean;
+  /**
+   * When `false`, skip git worktree creation/use and run the worker directly
+   * in `workspace.rootPath`. Defaults to `true` (worktree-isolated).
+   * Ignored for non-git workspaces.
+   */
+  useWorktree?: boolean;
 }
 
 export interface RunLifecycleDependencies {
@@ -118,7 +124,7 @@ export class RunLifecycleService {
     const workspace = this.deps.requireWorkspace(task.workspaceId);
     let executionWorkspace = workspace;
 
-    if (workspace.isGitRepo) {
+    if (workspace.isGitRepo && options.useWorktree !== false) {
       task.worktree = await this.deps.gitWorktrees().ensureTaskWorktree(workspace, task);
       executionWorkspace = {
         ...workspace,

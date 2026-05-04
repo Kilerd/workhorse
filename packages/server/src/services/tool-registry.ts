@@ -183,7 +183,10 @@ export interface ToolRegistryDeps {
   tasks: TaskService;
   plans: PlanService;
   threads: ThreadService;
-  startTask?(taskId: string): Promise<{ task: Task; run: Run }>;
+  startTask?(
+    taskId: string,
+    options?: { useWorktree?: boolean }
+  ): Promise<{ task: Task; run: Run }>;
   requestTaskReview?(
     taskId: string,
     options?: { reviewerAgentId?: string; requesterAgentId?: string; focus?: string }
@@ -305,18 +308,26 @@ export function buildDefaultToolRegistry(
     registry.register<Record<string, unknown>, { task: Task; run: Run }>({
       name: "start_task",
       description:
-        "Start a task through the run lifecycle. Use this instead of move_task when work should begin; it creates a real run and lets the lifecycle move the task to running.",
+        "Start a task through the run lifecycle. Use this instead of move_task when work should begin; it creates a real run and lets the lifecycle move the task to running. Set `useWorktree: false` for small focused changes that should run directly in the workspace root (no branch isolation); leave it unset for the default isolated worktree.",
       inputSchema: {
         type: "object",
         properties: {
-          taskId: { type: "string" }
+          taskId: { type: "string" },
+          useWorktree: {
+            type: "boolean",
+            description:
+              "Default true. When false, the worker runs in the workspace root instead of a per-task git worktree. Only honored for git workspaces."
+          }
         },
         required: ["taskId"]
       },
       handler: async (input) => {
         const obj = asRecord(input, "start_task");
         const taskId = requireString(obj, "taskId", "start_task");
-        return startTask(taskId);
+        const useWorktreeRaw = obj.useWorktree;
+        const useWorktree =
+          typeof useWorktreeRaw === "boolean" ? useWorktreeRaw : undefined;
+        return startTask(taskId, useWorktree === undefined ? undefined : { useWorktree });
       }
     });
   }

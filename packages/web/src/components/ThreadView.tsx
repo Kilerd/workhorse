@@ -9,6 +9,7 @@ import {
 } from "react";
 import type { Message, Thread } from "@workhorse/contracts";
 import {
+  Bot,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -45,6 +46,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { PlanDraftCard } from "./PlanDraftCard";
+import { WorktreeDiffSummary } from "./WorktreeDiffSummary";
 
 interface Props {
   threadId: string;
@@ -175,8 +177,6 @@ export function ThreadView({
   return (
     <AgentNamesContext.Provider value={agentNames}>
       <section className={cn("flex min-h-0 flex-col gap-3", className)}>
-        {thread ? <CoordinatorHint thread={thread} pending={pendingCount} /> : null}
-
         {messagesQuery.isLoading ? (
           <div className="text-sm text-muted-foreground">Loading thread…</div>
         ) : messagesQuery.isError ? (
@@ -198,6 +198,8 @@ export function ThreadView({
             ))}
           </div>
         )}
+
+        {thread ? <CoordinatorHint thread={thread} pending={pendingCount} /> : null}
 
         <form
           className="shrink-0 grid gap-2 pb-2"
@@ -227,6 +229,13 @@ export function ThreadView({
                 <SessionMeta kind="worktree" value={sessionWorktree} />
               ) : null}
               {sessionBranch ? <SessionMeta kind="branch" value={sessionBranch} /> : null}
+              {thread?.kind === "task" && thread.taskId ? (
+                <WorktreeDiffSummary scope={{ kind: "task", taskId: thread.taskId }} />
+              ) : thread?.workspaceId ? (
+                <WorktreeDiffSummary
+                  scope={{ kind: "workspace", workspaceId: thread.workspaceId }}
+                />
+              ) : null}
             </div>
             <div className="ml-auto flex items-center gap-3">
               <span>{draft.length}/{MAX_CHAT_LENGTH}</span>
@@ -254,20 +263,30 @@ function CoordinatorHint({
 }) {
   if (thread.coordinatorState === "idle" && pending === 0) return null;
 
-  const label =
-    thread.coordinatorState === "running"
-      ? pending > 0
-        ? `Coordinator is thinking… ${pending} message${pending === 1 ? "" : "s"} queued for next turn`
-        : "Coordinator is thinking…"
-      : thread.coordinatorState === "queued"
-        ? `Queued · ${pending} message${pending === 1 ? "" : "s"} pending`
-        : null;
+  const isRunning = thread.coordinatorState === "running";
+  const isQueued = thread.coordinatorState === "queued";
+  if (!isRunning && !isQueued) return null;
 
-  if (!label) return null;
+  const label = isRunning ? "Coordinator thinking" : "Coordinator queued";
 
   return (
-    <div className="rounded-md border border-border bg-[var(--panel)] px-3 py-1.5 text-xs text-muted-foreground">
-      {label}
+    <div
+      className="flex shrink-0 items-center gap-1.5 self-start text-[0.7rem] text-[var(--muted)]"
+      title={label}
+    >
+      <Bot
+        className={cn(
+          "size-3.5 text-[var(--accent)]",
+          isRunning && "animate-pulse"
+        )}
+        aria-hidden="true"
+      />
+      <span>{label}</span>
+      {pending > 0 ? (
+        <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-[var(--accent-soft)] px-1 font-mono text-[0.62rem] text-[var(--accent-strong)]">
+          {pending}
+        </span>
+      ) : null}
     </div>
   );
 }

@@ -148,17 +148,7 @@ describe("AiReviewService", () => {
         ]
       }
     } satisfies Task;
-    const workspace = {
-      ...createWorkspace(),
-      promptTemplates: {
-        review: [
-          "Custom review for {{taskTitle}}",
-          "{{pullRequestUrlLine}}",
-          "{{changedFilesBlock}}",
-          "Language: {{language}}"
-        ].join("\n")
-      }
-    } satisfies Workspace;
+    const workspace = createWorkspace();
     const { service } = createService({ workspace });
 
     const config = service.buildManualReviewRunnerConfig(
@@ -174,28 +164,18 @@ describe("AiReviewService", () => {
     expect(config.permissionMode).toBe("plan");
     expect(config.agent).toBe("technical-reviewer");
     expect(config.prompt).toContain("Review focus: technical correctness");
-    expect(config.prompt).toContain("Custom review for Implement feature");
+    expect(config.prompt).toContain('Review task "Implement feature"');
     expect(config.prompt).toContain("GitHub PR: https://github.com/acme/workhorse/pull/42");
     expect(config.prompt).toContain("Changed files snapshot:");
-    expect(config.prompt).toContain("Language: 中文");
     expect(config.prompt).not.toContain("{{");
   });
 
-  it("uses workspace review follow-up templates when sending coding back for rework", async () => {
+  it("renders the built-in rework follow-up prompt when sending coding back for rework", async () => {
     const task = createTask();
     const reviewRun = createReviewRun(
       "Preview should render the effective template and variable hints need clearer wording."
     );
-    const workspace = {
-      ...createWorkspace(),
-      promptTemplates: {
-        reviewFollowUp: [
-          "Rework {{taskTitle}}",
-          "{{reviewFollowUpInstruction}}",
-          "Triggered by {{reviewRunId}}"
-        ].join("\n\n")
-      }
-    } satisfies Workspace;
+    const workspace = createWorkspace();
     const { service, startTask } = createService({ workspace });
 
     await service.triggerReworkFromReview(task, reviewRun);
@@ -204,13 +184,11 @@ describe("AiReviewService", () => {
       task.id,
       expect.objectContaining({
         initialInputText: [
-          "Rework Implement feature",
+          "The reviewer requested changes.",
           "",
           "Address the following feedback:",
           "",
-          "Preview should render the effective template and variable hints need clearer wording.",
-          "",
-          "Triggered by run-review-1"
+          "Preview should render the effective template and variable hints need clearer wording."
         ].join("\n"),
         runMetadata: {
           trigger: "ai_review_rework",

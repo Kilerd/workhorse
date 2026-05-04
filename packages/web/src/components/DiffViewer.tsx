@@ -100,7 +100,7 @@ function DiffFileCard({ file }: { file: TaskDiffFile }) {
     <div className="border-b border-border">
       <button
         type="button"
-        className="sticky top-0 z-10 flex w-full items-center gap-3 border-b border-border bg-[var(--surface-faint)] px-4 py-3 text-left transition-colors hover:bg-[var(--surface-hover)]"
+        className="sticky top-0 z-10 flex w-full items-center gap-2 border-b border-border bg-background px-3 py-2 text-left transition-[color,filter] hover:brightness-95 dark:hover:brightness-110"
         onClick={() => setCollapsed((prev) => !prev)}
       >
         <span className="font-mono text-[0.64rem] text-[var(--muted)]">

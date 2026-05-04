@@ -550,6 +550,16 @@ export class GitWorktreeService {
     return result.stdout;
   }
 
+  public async getWorkspaceDiff(workspace: Workspace): Promise<string> {
+    this.ensureGitWorkspace(workspace);
+    const result = await execFileAsync("git", ["diff", "HEAD", "--", "."], {
+      cwd: workspace.rootPath,
+      encoding: "utf8",
+      maxBuffer: 16 * 1024 * 1024
+    });
+    return result.stdout;
+  }
+
   private async runGit(
     cwd: string,
     args: string[]
