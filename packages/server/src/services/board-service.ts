@@ -28,7 +28,6 @@ import type {
   UpdateSettingsBody,
   UpdateTaskBody,
   UpdateWorkspaceBody,
-  UpdateWorkspaceConfigBody,
   WorkspaceAgent,
   WorkspaceGitRef,
   Workspace
@@ -977,7 +976,8 @@ export class BoardService {
     input: StartTaskBody = {}
   ): Promise<{ task: Task; run: Run }> {
     return this.startTaskInternal(taskId, {
-      targetOrder: input.order
+      targetOrder: input.order,
+      ...(input.useWorktree !== undefined ? { useWorktree: input.useWorktree } : {})
     });
   }
 
@@ -1296,6 +1296,30 @@ export class BoardService {
         files: parseUnifiedDiff(raw),
         baseRef: task.worktree.baseRef,
         headRef: task.worktree.branchName
+      };
+    } catch (error) {
+      throw new AppError(
+        500,
+        "DIFF_FAILED",
+        `Failed to compute diff: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  public async getWorkspaceDiff(
+    workspaceId: string
+  ): Promise<{ files: DiffFile[]; baseRef: string; headRef: string }> {
+    const workspace = this.requireWorkspace(workspaceId);
+    if (!workspace.isGitRepo) {
+      throw new AppError(400, "DIFF_NOT_AVAILABLE", "Workspace is not a git repo");
+    }
+
+    try {
+      const raw = await this.gitWorktrees.getWorkspaceDiff(workspace);
+      return {
+        files: parseUnifiedDiff(raw),
+        baseRef: "HEAD",
+        headRef: "WORKING_TREE"
       };
     } catch (error) {
       throw new AppError(
@@ -1789,24 +1813,6 @@ export class BoardService {
       workspaceId,
       agentId: updated.id,
       agent: updated
-    });
-    return updated;
-  }
-
-  // -------------------------------------------------------------------------
-  // Workspace config (Phase 4)
-  // -------------------------------------------------------------------------
-
-  public updateWorkspaceConfig(workspaceId: string, body: UpdateWorkspaceConfigBody): Workspace {
-    const updated = this.store.updateWorkspaceConfig(workspaceId, body);
-    if (!updated) {
-      throw new AppError(404, "WORKSPACE_NOT_FOUND", `Workspace not found: ${workspaceId}`);
-    }
-    this.events.publish({
-      type: "workspace.updated",
-      action: "updated",
-      workspaceId: updated.id,
-      workspace: updated
     });
     return updated;
   }

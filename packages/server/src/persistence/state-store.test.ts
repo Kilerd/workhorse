@@ -486,50 +486,6 @@ describe("StateStore — Workspace Agent Mounting (Phase 4)", () => {
   });
 });
 
-describe("StateStore — Workspace Config (Phase 4)", () => {
-  it("updates prStrategy and autoApproveSubtasks", async () => {
-    const store = new StateStore(":memory:");
-    await store.load();
-
-    const ws = makeWorkspace();
-    store.setWorkspaces([ws]);
-    await store.save();
-
-    const updated = store.updateWorkspaceConfig("workspace-1", {
-      prStrategy: "stacked",
-      autoApproveSubtasks: true
-    });
-
-    expect(updated?.prStrategy).toBe("stacked");
-    expect(updated?.autoApproveSubtasks).toBe(true);
-  });
-
-  it("returns null for unknown workspaceId", async () => {
-    const store = new StateStore(":memory:");
-    await store.load();
-
-    expect(store.updateWorkspaceConfig("nope", { prStrategy: "single" })).toBeNull();
-  });
-
-  it("persists workspace config across reload", async () => {
-    const store = new StateStore(":memory:");
-    await store.load();
-
-    const ws = makeWorkspace();
-    store.setWorkspaces([ws]);
-    await store.save();
-
-    store.updateWorkspaceConfig("workspace-1", { prStrategy: "stacked", autoApproveSubtasks: true });
-
-    // Force reload from DB
-    (store as any).state = (store as any).readStateFromDb();
-    const reloaded = store.listWorkspaces().find((w) => w.id === "workspace-1");
-    expect(reloaded?.prStrategy).toBe("stacked");
-    expect(reloaded?.autoApproveSubtasks).toBe(true);
-  });
-
-});
-
 describe("StateStore — Agent-driven board schema (Spec 01)", () => {
   // These tests exercise the raw DDL added by Spec 01. StateStore does not yet
   // expose public methods for threads/messages/plans (that's Spec 04); we reach

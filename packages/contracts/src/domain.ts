@@ -135,10 +135,6 @@ export interface Workspace {
   isGitRepo: boolean;
   codexSettings: WorkspaceCodexSettings;
   promptTemplates?: WorkspacePromptTemplates;
-  /** PR creation strategy for workspace-level agent coordination. */
-  prStrategy?: "independent" | "stacked" | "single";
-  /** When true, succeeded subtasks skip manual human approval. */
-  autoApproveSubtasks?: boolean;
   createdAt: string;
   updatedAt: string;
 }

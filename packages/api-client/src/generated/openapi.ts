@@ -366,6 +366,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{workspaceId}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get uncommitted file diff for the workspace root */
+        get: operations["getWorkspaceDiff"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tasks/{taskId}/runs": {
         parameters: {
             query?: never;
@@ -525,23 +542,6 @@ export interface paths {
         patch: operations["updateAgentRole"];
         trace?: never;
     };
-    "/api/workspaces/{workspaceId}/config": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /** Update workspace agent coordination config */
-        patch: operations["updateWorkspaceConfig"];
-        trace?: never;
-    };
     "/api/workspaces/{workspaceId}/threads": {
         parameters: {
             query?: never;
@@ -673,10 +673,6 @@ export interface components {
             isGitRepo: boolean;
             codexSettings: components["schemas"]["WorkspaceCodexSettings"];
             promptTemplates?: components["schemas"]["WorkspacePromptTemplates"];
-            /** @description PR creation strategy for workspace-level agent coordination. */
-            prStrategy?: "independent" | "stacked" | "single";
-            /** @description When true, succeeded subtasks skip manual human approval. */
-            autoApproveSubtasks?: boolean;
             createdAt: string;
             updatedAt: string;
         };
@@ -687,10 +683,7 @@ export interface components {
         CodexApprovalPolicy: "untrusted" | "on-failure" | "on-request" | "never";
         CodexSandboxMode: "read-only" | "workspace-write" | "danger-full-access";
         WorkspacePromptTemplates: {
-            plan?: string;
             coding?: string;
-            review?: string;
-            reviewFollowUp?: string;
         };
         WorkspaceGitRef: {
             name: string;
@@ -881,6 +874,12 @@ export interface components {
         };
         StartTaskBody: {
             order?: number;
+            /**
+             * @description When `false`, the task runs directly in the workspace root instead of an
+             *     isolated git worktree. Defaults to `true` (worktree-isolated). Only honored
+             *     for git workspaces; non-git workspaces always run in the workspace root.
+             */
+            useWorktree?: boolean;
         };
         StopTaskParams: {
             taskId: string;
@@ -914,6 +913,9 @@ export interface components {
         };
         TaskDiffParams: {
             taskId: string;
+        };
+        WorkspaceDiffParams: {
+            workspaceId: string;
         };
         ListRunsParams: {
             taskId: string;
@@ -1088,6 +1090,11 @@ export interface components {
             patch: string;
             additions: number;
             deletions: number;
+        };
+        WorkspaceDiffResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["TaskDiffData"];
         };
         RunsResponse: {
             /** @enum {unknown} */
@@ -1282,13 +1289,6 @@ export interface components {
         UpdateAgentRoleBody: {
             role?: "coordinator" | "worker";
             workspaceDescription?: string;
-        };
-        UpdateWorkspaceConfigBody: {
-            prStrategy?: "independent" | "stacked" | "single";
-            autoApproveSubtasks?: boolean;
-        };
-        UpdateWorkspaceConfigParams: {
-            workspaceId: string;
         };
         AgentResponse: {
             /** @enum {unknown} */
@@ -2388,6 +2388,46 @@ export interface operations {
             };
         };
     };
+    getWorkspaceDiff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Workspace diff content */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceDiffResponse"];
+                };
+            };
+            /** @description Diff not available */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Workspace not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     listRuns: {
         parameters: {
             query?: never;
@@ -2866,50 +2906,6 @@ export interface operations {
                 };
             };
             /** @description Workspace agent not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
-    updateWorkspaceConfig: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                workspaceId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateWorkspaceConfigBody"];
-            };
-        };
-        responses: {
-            /** @description Updated workspace */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkspaceResponse"];
-                };
-            };
-            /** @description Validation error */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Workspace not found */
             404: {
                 headers: {
                     [name: string]: unknown;

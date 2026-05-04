@@ -1224,6 +1224,57 @@
         ]
       }
     },
+    "/api/workspaces/{workspaceId}/diff": {
+      "get": {
+        "operationId": "getWorkspaceDiff",
+        "summary": "Get uncommitted file diff for the workspace root",
+        "tags": [
+          "Workspaces"
+        ],
+        "responses": {
+          "200": {
+            "description": "Workspace diff content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceDiffResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Diff not available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Workspace not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
     "/api/tasks/{taskId}/runs": {
       "get": {
         "operationId": "listRuns",
@@ -1863,67 +1914,6 @@
         }
       }
     },
-    "/api/workspaces/{workspaceId}/config": {
-      "patch": {
-        "operationId": "updateWorkspaceConfig",
-        "summary": "Update workspace agent coordination config",
-        "tags": [
-          "Agents"
-        ],
-        "responses": {
-          "200": {
-            "description": "Updated workspace",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorkspaceResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Validation error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Workspace not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "workspaceId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateWorkspaceConfigBody"
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/workspaces/{workspaceId}/threads": {
       "get": {
         "operationId": "listWorkspaceThreads",
@@ -2381,30 +2371,6 @@
           "promptTemplates": {
             "$ref": "#/components/schemas/WorkspacePromptTemplates"
           },
-          "prStrategy": {
-            "oneOf": [
-              {
-                "enum": [
-                  "independent"
-                ]
-              },
-              {
-                "enum": [
-                  "stacked"
-                ]
-              },
-              {
-                "enum": [
-                  "single"
-                ]
-              }
-            ],
-            "description": "PR creation strategy for workspace-level agent coordination."
-          },
-          "autoApproveSubtasks": {
-            "type": "boolean",
-            "description": "When true, succeeded subtasks skip manual human approval."
-          },
           "createdAt": {
             "type": "string"
           },
@@ -2483,16 +2449,7 @@
       "WorkspacePromptTemplates": {
         "type": "object",
         "properties": {
-          "plan": {
-            "type": "string"
-          },
           "coding": {
-            "type": "string"
-          },
-          "review": {
-            "type": "string"
-          },
-          "reviewFollowUp": {
             "type": "string"
           }
         },
@@ -3319,6 +3276,10 @@
         "properties": {
           "order": {
             "type": "number"
+          },
+          "useWorktree": {
+            "type": "boolean",
+            "description": "When `false`, the task runs directly in the workspace root instead of an\nisolated git worktree. Defaults to `true` (worktree-isolated). Only honored\nfor git workspaces; non-git workspaces always run in the workspace root."
           }
         },
         "required": []
@@ -3434,6 +3395,17 @@
         },
         "required": [
           "taskId"
+        ]
+      },
+      "WorkspaceDiffParams": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId"
         ]
       },
       "ListRunsParams": {
@@ -4071,6 +4043,23 @@
           "patch",
           "additions",
           "deletions"
+        ]
+      },
+      "WorkspaceDiffResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/TaskDiffData"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
         ]
       },
       "RunsResponse": {
@@ -4936,45 +4925,6 @@
           }
         },
         "required": []
-      },
-      "UpdateWorkspaceConfigBody": {
-        "type": "object",
-        "properties": {
-          "prStrategy": {
-            "oneOf": [
-              {
-                "enum": [
-                  "independent"
-                ]
-              },
-              {
-                "enum": [
-                  "stacked"
-                ]
-              },
-              {
-                "enum": [
-                  "single"
-                ]
-              }
-            ]
-          },
-          "autoApproveSubtasks": {
-            "type": "boolean"
-          }
-        },
-        "required": []
-      },
-      "UpdateWorkspaceConfigParams": {
-        "type": "object",
-        "properties": {
-          "workspaceId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "workspaceId"
-        ]
       },
       "AgentResponse": {
         "type": "object",

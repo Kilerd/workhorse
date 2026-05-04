@@ -143,9 +143,6 @@ function rowToWorkspace(row: WorkspaceRow): Workspace {
     isGitRepo: Boolean(row.isGitRepo),
     codexSettings: JSON.parse(row.codexSettings),
     promptTemplates: row.promptTemplates ? JSON.parse(row.promptTemplates) : undefined,
-    prStrategy:
-      (row.prStrategy as "independent" | "stacked" | "single") ?? undefined,
-    autoApproveSubtasks: row.autoApproveSubtasks ?? undefined,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt
   };
@@ -159,8 +156,6 @@ function workspaceToRow(ws: Workspace): typeof schema.workspaces.$inferInsert {
     isGitRepo: ws.isGitRepo,
     codexSettings: JSON.stringify(ws.codexSettings),
     promptTemplates: ws.promptTemplates != null ? JSON.stringify(ws.promptTemplates) : null,
-    prStrategy: ws.prStrategy ?? "independent",
-    autoApproveSubtasks: ws.autoApproveSubtasks ?? false,
     createdAt: ws.createdAt,
     updatedAt: ws.updatedAt
   };
@@ -760,41 +755,6 @@ export class StateStore {
   }
 
   // -------------------------------------------------------------------------
-  // Workspace coordination config (Phase 4)
-  // -------------------------------------------------------------------------
-
-  // Updates both DB and the in-memory state cache. Workspace objects follow the
-  // existing pattern of being kept in memory (unlike agents, which are pure-DB)
-  // because many hot-path reads go through this.state.workspaces without a DB
-  // round-trip (e.g. listWorkspaces, requireTask workspace lookup).
-  public updateWorkspaceConfig(
-    workspaceId: string,
-    config: Partial<Pick<Workspace, "prStrategy" | "autoApproveSubtasks">>
-  ): Workspace | null {
-    const workspaces = this.state.workspaces;
-    const idx = workspaces.findIndex((ws) => ws.id === workspaceId);
-    if (idx === -1) {
-      return null;
-    }
-    const updated: Workspace = {
-      ...workspaces[idx]!,
-      ...config,
-      updatedAt: new Date().toISOString()
-    };
-    this.db
-      .update(schema.workspaces)
-      .set({
-        prStrategy: updated.prStrategy ?? "independent",
-        autoApproveSubtasks: updated.autoApproveSubtasks ?? false,
-        updatedAt: updated.updatedAt
-      })
-      .where(eq(schema.workspaces.id, workspaceId))
-      .run();
-    this.state.workspaces[idx] = updated;
-    return updated;
-  }
-
-  // -------------------------------------------------------------------------
   // Threads / Messages / Agent Sessions (Spec 04)
   // -------------------------------------------------------------------------
 
@@ -1326,8 +1286,6 @@ export class StateStore {
         is_git_repo INTEGER NOT NULL DEFAULT 0,
         codex_settings TEXT NOT NULL,
         prompt_templates TEXT,
-        pr_strategy TEXT NOT NULL DEFAULT 'independent',
-        auto_approve_subtasks INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
@@ -1494,8 +1452,6 @@ export class StateStore {
       "ALTER TABLE tasks ADD COLUMN source TEXT NOT NULL DEFAULT 'user'",
       "ALTER TABLE tasks ADD COLUMN plan_id TEXT",
       "ALTER TABLE tasks ADD COLUMN assignee_agent_id TEXT",
-      "ALTER TABLE workspaces ADD COLUMN pr_strategy TEXT NOT NULL DEFAULT 'independent'",
-      "ALTER TABLE workspaces ADD COLUMN auto_approve_subtasks INTEGER NOT NULL DEFAULT 0",
       "ALTER TABLE workspace_agents ADD COLUMN description TEXT"
     ]) {
       try {
@@ -1512,7 +1468,9 @@ export class StateStore {
       "ALTER TABLE tasks DROP COLUMN team_id",
       "ALTER TABLE tasks DROP COLUMN team_agent_id",
       "ALTER TABLE tasks DROP COLUMN runner_type",
-      "ALTER TABLE tasks DROP COLUMN runner_config"
+      "ALTER TABLE tasks DROP COLUMN runner_config",
+      "ALTER TABLE workspaces DROP COLUMN pr_strategy",
+      "ALTER TABLE workspaces DROP COLUMN auto_approve_subtasks"
     ]) {
       try {
         this.sqlite.exec(drop);
@@ -1605,16 +1563,14 @@ export class StateStore {
         const row = workspaceToRow(ws);
         this.sqlite
           .prepare(
-            `INSERT INTO workspaces (id, name, root_path, is_git_repo, codex_settings, prompt_templates, pr_strategy, auto_approve_subtasks, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `INSERT INTO workspaces (id, name, root_path, is_git_repo, codex_settings, prompt_templates, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(id) DO UPDATE SET
                name = excluded.name,
                root_path = excluded.root_path,
                is_git_repo = excluded.is_git_repo,
                codex_settings = excluded.codex_settings,
                prompt_templates = excluded.prompt_templates,
-               pr_strategy = excluded.pr_strategy,
-               auto_approve_subtasks = excluded.auto_approve_subtasks,
                updated_at = excluded.updated_at`
           )
           .run(
@@ -1624,8 +1580,6 @@ export class StateStore {
             row.isGitRepo ? 1 : 0,
             row.codexSettings,
             row.promptTemplates ?? null,
-            row.prStrategy ?? "independent",
-            row.autoApproveSubtasks ? 1 : 0,
             row.createdAt,
             row.updatedAt
           );

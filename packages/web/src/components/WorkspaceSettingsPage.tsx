@@ -3,11 +3,8 @@ import { useNavigate } from "react-router-dom";
 import {
   Bot,
   Crown,
-  GitPullRequest,
   Plus,
-  ShieldCheck,
-  Users,
-  Workflow
+  Users
 } from "lucide-react";
 import type {
   ModelConfig,
@@ -102,8 +99,6 @@ export function WorkspaceSettingsPage({ workspace, taskCount, onSubmit }: Props)
     useState<WorkspaceCodexSettings["approvalPolicy"]>("on-request");
   const [sandboxMode, setSandboxMode] =
     useState<WorkspaceCodexSettings["sandboxMode"]>("workspace-write");
-  const [prStrategy, setPrStrategy] = useState<Workspace["prStrategy"]>("independent");
-  const [autoApproveSubtasks, setAutoApproveSubtasks] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>("general");
   const [promptTemplates, setPromptTemplates] = useState(EMPTY_WORKSPACE_PROMPT_TEMPLATES);
   const [showPreview, setShowPreview] = useState(false);
@@ -115,8 +110,6 @@ export function WorkspaceSettingsPage({ workspace, taskCount, onSubmit }: Props)
     setName(workspace.name);
     setApprovalPolicy(workspace.codexSettings.approvalPolicy);
     setSandboxMode(workspace.codexSettings.sandboxMode);
-    setPrStrategy(workspace.prStrategy ?? "independent");
-    setAutoApproveSubtasks(workspace.autoApproveSubtasks ?? false);
     setPromptTemplates(createWorkspacePromptTemplateState(workspace.promptTemplates));
   }, [workspace]);
 
@@ -175,13 +168,7 @@ export function WorkspaceSettingsPage({ workspace, taskCount, onSubmit }: Props)
               taskCount={taskCount}
             />
           ) : activeTab === "agents" ? (
-            <AgentsTab
-              workspace={workspace}
-              prStrategy={prStrategy ?? "independent"}
-              autoApproveSubtasks={autoApproveSubtasks}
-              onPrStrategyChange={(value) => setPrStrategy(value)}
-              onAutoApproveChange={setAutoApproveSubtasks}
-            />
+            <AgentsTab workspace={workspace} />
           ) : (
             <PromptTab
               templateId={activePromptTemplateId}
@@ -496,17 +483,6 @@ function describeRunnerConfig(config: RunnerConfig): { label: string; detail: st
   }
 }
 
-function describePrStrategy(strategy: NonNullable<Workspace["prStrategy"]>): string {
-  switch (strategy) {
-    case "stacked":
-      return "Subtasks can layer pull requests in dependency order once downstream flows are ready.";
-    case "single":
-      return "Subtasks converge into a single pull request owned by the coordinator.";
-    default:
-      return "Each approved subtask can progress independently, which matches the current downstream UI best.";
-  }
-}
-
 function MetricCard({
   icon: Icon,
   label,
@@ -566,25 +542,14 @@ function RoleBadge({ role }: { role: WorkspaceAgent["role"] }) {
 }
 
 function AgentsTab({
-  workspace,
-  prStrategy,
-  autoApproveSubtasks,
-  onPrStrategyChange,
-  onAutoApproveChange
+  workspace
 }: {
   workspace: Workspace;
-  prStrategy: NonNullable<Workspace["prStrategy"]>;
-  autoApproveSubtasks: boolean;
-  onPrStrategyChange(value: NonNullable<Workspace["prStrategy"]>): void;
-  onAutoApproveChange(value: boolean): void;
 }) {
   const navigate = useNavigate();
   const agentsQuery = useAgents();
   const workspaceAgentsQuery = useWorkspaceAgents(workspace.id);
   const mutations = useWorkspaceAgentMutations(workspace.id);
-  const [selectedAgentId, setSelectedAgentId] = useState("");
-  const [selectedRole, setSelectedRole] = useState<WorkspaceAgent["role"]>("worker");
-  const [selectedWorkspaceDescription, setSelectedWorkspaceDescription] = useState("");
   const [workspaceDescriptionDrafts, setWorkspaceDescriptionDrafts] = useState<
     Record<string, string>
   >({});
@@ -595,8 +560,6 @@ function AgentsTab({
   const availableAgents = agents.filter(
     (agent) => !mountedAgents.some((entry) => entry.id === agent.id)
   );
-  const selectedAgent =
-    availableAgents.find((agent) => agent.id === selectedAgentId) ?? availableAgents[0] ?? null;
   const agentsLoadError = agentsQuery.error
     ? readErrorMessage(agentsQuery.error, "Failed to load account agents.")
     : null;
@@ -604,22 +567,23 @@ function AgentsTab({
     ? readErrorMessage(workspaceAgentsQuery.error, "Failed to load mounted workspace agents.")
     : null;
 
-  useEffect(() => {
-    if (!selectedAgentId) {
-      setSelectedAgentId(availableAgents[0]?.id ?? "");
-      return;
-    }
-
-    if (!availableAgents.some((agent) => agent.id === selectedAgentId)) {
-      setSelectedAgentId(availableAgents[0]?.id ?? "");
-    }
-  }, [availableAgents, selectedAgentId]);
-
-  useEffect(() => {
-    if (coordinator && selectedRole === "coordinator") {
-      setSelectedRole("worker");
-    }
-  }, [coordinator, selectedRole]);
+  const mountAgent = (agentId: string, role: WorkspaceAgent["role"], agentName: string) => {
+    void mutations
+      .mount({ agentId, role, workspaceDescription: "" })
+      .then(() => {
+        toast({
+          title: "Agent mounted",
+          description: `${agentName} is now available in ${workspace.name} as ${role}.`
+        });
+      })
+      .catch((nextError) => {
+        toast({
+          variant: "destructive",
+          title: "Couldn't mount agent",
+          description: readErrorMessage(nextError, "Failed to mount workspace agent.")
+        });
+      });
+  };
 
   useEffect(() => {
     const nextMountedAgents = workspaceAgentsQuery.data ?? [];
@@ -654,7 +618,7 @@ function AgentsTab({
           </div>
         </div>
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <MetricCard
             icon={Bot}
             label="Mounted"
@@ -684,16 +648,6 @@ function AgentsTab({
               mountedWorkerCount > 0
                 ? `${formatCount(mountedWorkerCount, "worker")} available for delegated subtasks.`
                 : "No workers mounted yet."
-            }
-          />
-          <MetricCard
-            icon={ShieldCheck}
-            label="Review policy"
-            value={autoApproveSubtasks ? "Auto-approve on" : "Manual review"}
-            hint={
-              autoApproveSubtasks
-                ? "Succeeded subtasks skip review and move directly to done."
-                : "Succeeded subtasks stay in review until a human approves them."
             }
           />
         </div>
@@ -977,249 +931,63 @@ function AgentsTab({
             </div>
           </div>
         ) : (
-          <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_320px]">
-            <div className="grid gap-3 sm:grid-cols-2">
-              {availableAgents.map((agent) => {
-                const runner = describeRunnerConfig(agent.runnerConfig);
-                const isSelected = agent.id === selectedAgent?.id;
+          <div className="mt-4 overflow-hidden rounded-[var(--radius-lg)] border border-border bg-[var(--panel)]">
+            {availableAgents.map((agent, index) => {
+              const runner = describeRunnerConfig(agent.runnerConfig);
 
-                return (
-                  <button
-                    key={agent.id}
-                    type="button"
-                    className={cn(
-                      "grid gap-3 rounded-[var(--radius-lg)] border p-4 text-left transition-[border-color,background-color,transform] hover:-translate-y-px",
-                      isSelected
-                        ? "border-[rgba(113,112,255,0.38)] bg-[rgba(113,112,255,0.12)]"
-                        : "border-border bg-[var(--panel)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)]"
-                    )}
-                    onClick={() => setSelectedAgentId(agent.id)}
-                  >
+              return (
+                <div
+                  key={agent.id}
+                  className={cn(
+                    "flex flex-wrap items-center gap-4 px-4 py-3",
+                    index > 0 && "border-t border-border"
+                  )}
+                >
+                  <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="inline-flex min-h-7 items-center rounded-full border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] tone-accent">
-                        Select
+                      <span className="truncate text-[0.9rem] font-semibold leading-[1.3]">
+                        {agent.name}
                       </span>
-                      <span className="inline-flex min-h-7 items-center rounded-full border border-border px-2.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] text-[var(--muted)]">
+                      <span className="inline-flex min-h-6 items-center rounded-full border border-border px-2 font-mono text-[0.62rem] uppercase tracking-[0.08em] text-[var(--muted)]">
                         {titleCase(agent.runnerConfig.type)}
                       </span>
                     </div>
-                    <div className="grid gap-1">
-                      <p className="m-0 text-[0.96rem] font-semibold leading-[1.3]">{agent.name}</p>
-                      <p className="m-0 text-[0.8rem] leading-[1.6] text-[var(--muted)]">
-                        {agent.description?.trim() || "No description yet."}
-                      </p>
-                    </div>
-                    <div className="grid gap-1 text-[0.76rem] text-[var(--muted)]">
-                      <span>{runner.label}</span>
-                      <span>{runner.detail}</span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            <aside className="surface-card-faint grid content-start gap-3.5 px-4 py-3.5">
-              <div className="grid gap-1">
-                <span className="section-kicker">Mount Selection</span>
-                <h4 className="m-0 text-[0.98rem] font-semibold">
-                  {selectedAgent ? selectedAgent.name : "Choose an account agent"}
-                </h4>
-                <p className="m-0 text-[0.8rem] leading-[1.6] text-[var(--muted)]">
-                  {selectedAgent
-                    ? describeRunnerConfig(selectedAgent.runnerConfig).detail
-                    : "Pick an agent card to review its runner profile and mount it into this workspace."}
-                </p>
-              </div>
-
-              <Field
-                label="Workspace role"
-                hint={
-                  selectedRole === "coordinator"
-                    ? "This agent will become the single coordinator for workspace-level delegation."
-                    : "Workers execute delegated tasks, planning help, or review responsibilities described in workspace instructions."
-                }
-              >
-                <NativeSelect
-                  disabled={mutations.isPending}
-                  value={selectedRole}
-                  onChange={(event) =>
-                    setSelectedRole(event.target.value as WorkspaceAgent["role"])
-                  }
-                >
-                  <option value="worker">worker</option>
-                  <option value="coordinator" disabled={Boolean(coordinator)}>
-                    coordinator
-                  </option>
-                </NativeSelect>
-              </Field>
-
-              <Field
-                label="Workspace instructions"
-                hint="Optional instructions that only apply when this agent works in this workspace."
-              >
-                <Textarea
-                  className="min-h-28 resize-y text-[0.82rem] leading-[1.5]"
-                  disabled={mutations.isPending}
-                  placeholder="Describe this agent's workspace-specific responsibilities."
-                  value={selectedWorkspaceDescription}
-                  onChange={(event) => setSelectedWorkspaceDescription(event.target.value)}
-                />
-              </Field>
-
-              <div className="rounded-[var(--radius)] border border-border bg-[var(--panel)] px-4 py-3 text-[0.78rem] leading-[1.6] text-[var(--muted)]">
-                {selectedRole === "coordinator"
-                  ? "A workspace can only have one coordinator at a time."
-                  : "Use workspace instructions to describe whether this worker codes, reviews technical changes, reviews business behavior, or helps with planning."}
-              </div>
-
-              <Button
-                type="button"
-                disabled={!selectedAgentId || mutations.isPending}
-                onClick={() => {
-                  if (!selectedAgentId) {
-                    return;
-                  }
-
-                  void mutations
-                    .mount({
-                      agentId: selectedAgentId,
-                      role: selectedRole,
-                      workspaceDescription: selectedWorkspaceDescription
-                    })
-                    .then(() => {
-                      setSelectedWorkspaceDescription("");
-                      toast({
-                        title: "Agent mounted",
-                        description: `${selectedAgent?.name ?? "Selected agent"} is now available in ${workspace.name}.`
-                      });
-                    })
-                    .catch((nextError) => {
-                      toast({
-                        variant: "destructive",
-                        title: "Couldn't mount agent",
-                        description: readErrorMessage(
-                          nextError,
-                          "Failed to mount workspace agent."
-                        )
-                      });
-                    });
-                }}
-              >
-                Mount selected agent
-              </Button>
-            </aside>
+                    <p className="m-0 mt-0.5 truncate text-[0.78rem] leading-[1.5] text-[var(--muted)]">
+                      {agent.description?.trim() || "No description yet."}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right text-[0.74rem] leading-[1.4] text-[var(--muted)]">
+                    <div>{runner.label}</div>
+                    <div className="truncate max-w-[14rem]">{runner.detail}</div>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled={mutations.isPending}
+                      onClick={() => mountAgent(agent.id, "worker", agent.name)}
+                    >
+                      Mount as worker
+                    </Button>
+                    {!coordinator ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={mutations.isPending}
+                        onClick={() => mountAgent(agent.id, "coordinator", agent.name)}
+                      >
+                        Mount as coordinator
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </section>
 
-      <section className="surface-card px-4 py-3.5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="grid gap-1">
-            <span className="section-kicker">Coordination Settings</span>
-            <h3 className="m-0 text-[1.02rem] font-semibold">Tune how delegated work lands</h3>
-            <p className="m-0 max-w-[46rem] text-[0.82rem] leading-[1.6] text-[var(--muted)]">
-              These controls apply when the workspace coordinator creates and routes subtasks for
-              this workspace.
-            </p>
-          </div>
-          <div className="rounded-full border border-border bg-[var(--surface-soft)] px-3 py-1.5 text-[0.76rem] text-[var(--muted)]">
-            {coordinator ? `Applies to ${coordinator.name}` : "No coordinator mounted yet"}
-          </div>
-        </div>
-
-        <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.92fr)]">
-          <div className="grid gap-4 rounded-[var(--radius-lg)] border border-border bg-[var(--panel)] p-4">
-            <div className="flex items-center gap-2 text-[0.76rem] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">
-              <GitPullRequest className="size-4" />
-              Pull Request Flow
-            </div>
-            <Field label="PR strategy" hint={describePrStrategy(prStrategy)}>
-              <NativeSelect
-                disabled={mutations.isPending}
-                value={prStrategy}
-                onChange={(event) =>
-                  onPrStrategyChange(event.target.value as NonNullable<Workspace["prStrategy"]>)
-                }
-              >
-                <option value="independent">independent</option>
-                <option value="stacked">stacked</option>
-                <option value="single">single</option>
-              </NativeSelect>
-            </Field>
-            <div className="rounded-[var(--radius)] border border-border bg-[var(--surface-soft)] px-4 py-3 text-[0.78rem] leading-[1.6] text-[var(--muted)]">
-              Current downstream flows are best tuned for <strong className="text-foreground">independent</strong> mode today,
-              but you can preconfigure the other strategies here.
-            </div>
-          </div>
-
-          <div className="grid gap-4 rounded-[var(--radius-lg)] border border-border bg-[var(--panel)] p-4">
-            <div className="flex items-center gap-2 text-[0.76rem] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">
-              <Workflow className="size-4" />
-              Subtask Completion
-            </div>
-            <div className="grid gap-1">
-              <p className="m-0 text-[0.9rem] font-semibold">Approval handoff</p>
-              <p className="m-0 text-[0.8rem] leading-[1.6] text-[var(--muted)]">
-                Decide whether successful subtasks pause for human review or complete automatically.
-              </p>
-            </div>
-            <label className="grid gap-3 rounded-[var(--radius)] border border-border bg-[var(--surface-soft)] px-4 py-4">
-              <div className="flex items-start gap-3">
-                <input
-                  className="mt-1"
-                  type="checkbox"
-                  checked={autoApproveSubtasks}
-                  onChange={(event) => onAutoApproveChange(event.target.checked)}
-                />
-                <div className="grid gap-1">
-                  <span className="text-[0.84rem] font-semibold text-foreground">
-                    Auto-approve succeeded subtasks
-                  </span>
-                  <span className="text-[0.78rem] leading-[1.6] text-[var(--muted)]">
-                    {autoApproveSubtasks
-                      ? "Succeeded subtasks will skip manual review and move directly to done."
-                      : "Succeeded subtasks will remain in review until someone approves them."}
-                  </span>
-                </div>
-              </div>
-            </label>
-          </div>
-        </div>
-
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
-          <p className="m-0 max-w-[46rem] text-[0.78rem] leading-[1.6] text-[var(--muted)]">
-            {coordinator
-              ? `${coordinator.name} will use these settings the next time it coordinates work in ${workspace.name}.`
-              : "You can save these settings now and they will take effect as soon as a coordinator is mounted."}
-          </p>
-          <Button
-            type="button"
-            disabled={mutations.isPending}
-            onClick={() => {
-              void mutations
-                .updateConfig({ prStrategy, autoApproveSubtasks })
-                .then(() => {
-                  toast({
-                    title: "Coordination settings saved",
-                    description: `${workspace.name} will use the latest delegation settings.`
-                  });
-                })
-                .catch((nextError) => {
-                  toast({
-                    variant: "destructive",
-                    title: "Couldn't save coordination settings",
-                    description: readErrorMessage(
-                      nextError,
-                      "Failed to update workspace coordination settings."
-                    )
-                  });
-                });
-            }}
-          >
-            Save coordination settings
-          </Button>
-        </div>
-      </section>
     </div>
   );
 }

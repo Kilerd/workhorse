@@ -15,8 +15,7 @@ export interface BuildCoordinatorPromptInput {
  * Produces the system prompt shown to the coordinator agent at run start.
  *
  * The output has three sections, in order:
- *   1. Workspace operating rules — PR strategy, auto-approve policy, review
- *      preferences — inserted verbatim from `Workspace`.
+ *   1. Workspace operating rules — review preferences and tool-call discipline.
  *   2. Agent roster — every mounted agent with BOTH descriptions (account
  *      capability + workspace-specific note) so the coordinator can delegate.
  *   3. Tool inventory — names, descriptions, and JSON schemas; the runner
@@ -40,11 +39,6 @@ export function buildCoordinatorSystemPrompt(
   lines.push("");
 
   lines.push("## Operating rules");
-  const prStrategy = workspace.prStrategy ?? "independent";
-  lines.push(`- PR strategy: ${prStrategy}`);
-  lines.push(
-    `- Auto-approve subtasks: ${workspace.autoApproveSubtasks ? "on" : "off"}`
-  );
   lines.push(
     "- Code is a tool server. Decide *when* to call tools; do not invent state-machine shortcuts."
   );

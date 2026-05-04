@@ -56,6 +56,8 @@ import type {
   TaskDependenciesResponse,
   TaskDiffParams,
   TaskDiffResponse,
+  WorkspaceDiffParams,
+  WorkspaceDiffResponse,
   RetryTaskParams,
   RunLogParams,
   RunLogResponse,
@@ -77,8 +79,6 @@ import type {
   UpdateTaskParams,
   UpdateSettingsBody,
   UpdateWorkspaceBody,
-  UpdateWorkspaceConfigBody,
-  UpdateWorkspaceConfigParams,
   UpdateWorkspaceParams,
   WorkspaceAgentParams,
   WorkspaceAgentResponse,
@@ -147,6 +147,7 @@ export const validateRequestTaskReviewBody =
 export const validateCleanupTaskWorktreeParams =
   typia.createValidate<CleanupTaskWorktreeParams>();
 export const validateTaskDiffParams = typia.createValidate<TaskDiffParams>();
+export const validateWorkspaceDiffParams = typia.createValidate<WorkspaceDiffParams>();
 export const validateListRunsParams = typia.createValidate<ListRunsParams>();
 export const validateRunLogParams = typia.createValidate<RunLogParams>();
 export const validateSetTaskDependenciesParams =
@@ -183,10 +184,6 @@ export const validateWorkspaceAgentParams =
   typia.createValidate<WorkspaceAgentParams>();
 export const validateUpdateAgentRoleBody =
   typia.createValidate<UpdateAgentRoleBody>();
-export const validateUpdateWorkspaceConfigBody =
-  typia.createValidate<UpdateWorkspaceConfigBody>();
-export const validateUpdateWorkspaceConfigParams =
-  typia.createValidate<UpdateWorkspaceConfigParams>();
 
 export const schemaRegistry = {
   ApiError: () => typia.json.schema<ApiError>(),
@@ -225,6 +222,7 @@ export const schemaRegistry = {
   RequestTaskReviewBody: () => typia.json.schema<RequestTaskReviewBody>(),
   CleanupTaskWorktreeParams: () => typia.json.schema<CleanupTaskWorktreeParams>(),
   TaskDiffParams: () => typia.json.schema<TaskDiffParams>(),
+  WorkspaceDiffParams: () => typia.json.schema<WorkspaceDiffParams>(),
   ListRunsParams: () => typia.json.schema<ListRunsParams>(),
   RunLogParams: () => typia.json.schema<RunLogParams>(),
   SettingsResponse: () => typia.json.schema<SettingsResponse>(),
@@ -246,6 +244,7 @@ export const schemaRegistry = {
   RequestTaskReviewResponse: () => typia.json.schema<RequestTaskReviewResponse>(),
   CleanupTaskWorktreeResponse: () => typia.json.schema<CleanupTaskWorktreeResponse>(),
   TaskDiffResponse: () => typia.json.schema<TaskDiffResponse>(),
+  WorkspaceDiffResponse: () => typia.json.schema<WorkspaceDiffResponse>(),
   RunsResponse: () => typia.json.schema<RunsResponse>(),
   RunLogResponse: () => typia.json.schema<RunLogResponse>(),
   HealthResponse: () => typia.json.schema<HealthResponse>(),
@@ -264,8 +263,6 @@ export const schemaRegistry = {
   MountAgentBody: () => typia.json.schema<MountAgentBody>(),
   WorkspaceAgentParams: () => typia.json.schema<WorkspaceAgentParams>(),
   UpdateAgentRoleBody: () => typia.json.schema<UpdateAgentRoleBody>(),
-  UpdateWorkspaceConfigBody: () => typia.json.schema<UpdateWorkspaceConfigBody>(),
-  UpdateWorkspaceConfigParams: () => typia.json.schema<UpdateWorkspaceConfigParams>(),
   AgentResponse: () => typia.json.schema<AgentResponse>(),
   ListAgentsResponse: () => typia.json.schema<ListAgentsResponse>(),
   DeleteAgentResponse: () => typia.json.schema<DeleteAgentResponse>(),

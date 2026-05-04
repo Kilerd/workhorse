@@ -151,30 +151,15 @@ export function useWorkspaceAgentMutations(workspaceId: string | null) {
     onSuccess: invalidateWorkspace
   });
 
-  const updateConfigMutation = useMutation({
-    mutationFn: async (body: Parameters<typeof api.updateWorkspaceConfig>[1]) => {
-      if (!workspaceId) {
-        throw new Error("Workspace config context is unavailable.");
-      }
-      const response = await api.updateWorkspaceConfig(workspaceId, body);
-      return response.workspace;
-    },
-    onSuccess: async () => {
-      await invalidateWorkspace();
-    }
-  });
-
   return {
     mount: mountMutation.mutateAsync,
     update: updateWorkspaceAgentMutation.mutateAsync,
     updateRole: ({ agentId, role }: { agentId: string; role: WorkspaceAgent["role"] }) =>
       updateWorkspaceAgentMutation.mutateAsync({ agentId, body: { role } }),
     unmount: unmountMutation.mutateAsync,
-    updateConfig: updateConfigMutation.mutateAsync,
     isPending:
       mountMutation.isPending ||
       updateWorkspaceAgentMutation.isPending ||
-      unmountMutation.isPending ||
-      updateConfigMutation.isPending
+      unmountMutation.isPending
   };
 }

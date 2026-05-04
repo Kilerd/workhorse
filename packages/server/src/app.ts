@@ -23,6 +23,7 @@ import {
   validateSetTaskDependenciesBody,
   validateSetTaskDependenciesParams,
   validateTaskDiffParams,
+  validateWorkspaceDiffParams,
   validateRunLogParams,
   validateStartTaskBody,
   validateStartTaskParams,
@@ -43,8 +44,6 @@ import {
   validateMountAgentBody,
   validateWorkspaceAgentParams,
   validateUpdateAgentRoleBody,
-  validateUpdateWorkspaceConfigParams,
-  validateUpdateWorkspaceConfigBody,
   validateListThreadsParams,
   validateCreateThreadBody,
   validateListThreadMessagesParams,
@@ -392,6 +391,16 @@ export function createApp(
     return c.json(ok(result));
   });
 
+  app.get("/api/workspaces/:workspaceId/diff", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateWorkspaceDiffParams,
+      "Invalid workspace params"
+    );
+    const result = await service.getWorkspaceDiff(params.workspaceId);
+    return c.json(ok(result));
+  });
+
   app.post("/api/tasks/:taskId/worktree/cleanup", async (c) => {
     const params = validateOrThrow(
       c.req.param(),
@@ -554,22 +563,6 @@ export function createApp(
     );
     service.unmountAgent(params.workspaceId, params.agentId);
     return c.json(ok({ deleted: true }));
-  });
-
-  // Workspace config route (Phase 4)
-  app.patch("/api/workspaces/:workspaceId/config", async (c) => {
-    const params = validateOrThrow(
-      c.req.param(),
-      validateUpdateWorkspaceConfigParams,
-      "Invalid workspace params"
-    );
-    const body = validateOrThrow(
-      await c.req.json(),
-      validateUpdateWorkspaceConfigBody,
-      "Invalid workspace config body"
-    );
-    const workspace = service.updateWorkspaceConfig(params.workspaceId, body);
-    return c.json(ok({ workspace }));
   });
 
   // ── Agent-driven board: Thread / Message routes (Spec 04) ─────────────────

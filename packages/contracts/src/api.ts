@@ -187,6 +187,12 @@ export interface StartTaskParams {
 
 export interface StartTaskBody {
   order?: number;
+  /**
+   * When `false`, the task runs directly in the workspace root instead of an
+   * isolated git worktree. Defaults to `true` (worktree-isolated). Only honored
+   * for git workspaces; non-git workspaces always run in the workspace root.
+   */
+  useWorktree?: boolean;
 }
 
 export interface StopTaskParams {
@@ -270,6 +276,12 @@ export interface TaskDiffData {
   baseRef: string;
   headRef: string;
 }
+
+export interface WorkspaceDiffParams {
+  workspaceId: string;
+}
+
+export type WorkspaceDiffData = TaskDiffData;
 
 export interface CleanupTaskWorktreeParams {
   taskId: string;
@@ -378,6 +390,7 @@ export type PlanFeedbackResponse = ApiSuccess<PlanFeedbackData>;
 export type RequestTaskReviewResponse = ApiSuccess<RequestTaskReviewData>;
 export type CleanupTaskWorktreeResponse = ApiSuccess<CleanupTaskWorktreeData>;
 export type TaskDiffResponse = ApiSuccess<TaskDiffData>;
+export type WorkspaceDiffResponse = ApiSuccess<WorkspaceDiffData>;
 export type RunsResponse = ApiSuccess<ListRunsData>;
 export type RunLogResponse = ApiSuccess<RunLogData>;
 export type HealthResponse = ApiSuccess<HealthData>;
@@ -421,15 +434,6 @@ export interface WorkspaceAgentParams {
 export interface UpdateAgentRoleBody {
   role?: AgentRole;
   workspaceDescription?: string;
-}
-
-export interface UpdateWorkspaceConfigBody {
-  prStrategy?: "independent" | "stacked" | "single";
-  autoApproveSubtasks?: boolean;
-}
-
-export interface UpdateWorkspaceConfigParams {
-  workspaceId: string;
 }
 
 export interface AgentData {
@@ -574,6 +578,7 @@ export type SchemaName =
   | "RequestTaskReviewBody"
   | "CleanupTaskWorktreeParams"
   | "TaskDiffParams"
+  | "WorkspaceDiffParams"
   | "ListRunsParams"
   | "RunLogParams"
   | "WorkspacesResponse"
@@ -593,6 +598,7 @@ export type SchemaName =
   | "RequestTaskReviewResponse"
   | "CleanupTaskWorktreeResponse"
   | "TaskDiffResponse"
+  | "WorkspaceDiffResponse"
   | "RunsResponse"
   | "RunLogResponse"
   | "HealthResponse"
@@ -611,8 +617,6 @@ export type SchemaName =
   | "MountAgentBody"
   | "WorkspaceAgentParams"
   | "UpdateAgentRoleBody"
-  | "UpdateWorkspaceConfigBody"
-  | "UpdateWorkspaceConfigParams"
   | "AgentResponse"
   | "ListAgentsResponse"
   | "DeleteAgentResponse"
@@ -1214,6 +1218,31 @@ export const endpointRegistry: EndpointSpec[] = [
     ]
   },
   {
+    operationId: "getWorkspaceDiff",
+    method: "get",
+    path: "/api/workspaces/{workspaceId}/diff",
+    summary: "Get uncommitted file diff for the workspace root",
+    tag: "Workspaces",
+    paramsSchema: "WorkspaceDiffParams",
+    responses: [
+      {
+        status: 200,
+        description: "Workspace diff content",
+        schema: "WorkspaceDiffResponse"
+      },
+      {
+        status: 400,
+        description: "Diff not available",
+        schema: "ApiError"
+      },
+      {
+        status: 404,
+        description: "Workspace not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
     operationId: "listRuns",
     method: "get",
     path: "/api/tasks/{taskId}/runs",
@@ -1516,32 +1545,6 @@ export const endpointRegistry: EndpointSpec[] = [
       {
         status: 404,
         description: "Workspace agent not found",
-        schema: "ApiError"
-      }
-    ]
-  },
-  {
-    operationId: "updateWorkspaceConfig",
-    method: "patch",
-    path: "/api/workspaces/{workspaceId}/config",
-    summary: "Update workspace agent coordination config",
-    tag: "Agents",
-    paramsSchema: "UpdateWorkspaceConfigParams",
-    bodySchema: "UpdateWorkspaceConfigBody",
-    responses: [
-      {
-        status: 200,
-        description: "Updated workspace",
-        schema: "WorkspaceResponse"
-      },
-      {
-        status: 400,
-        description: "Validation error",
-        schema: "ApiError"
-      },
-      {
-        status: 404,
-        description: "Workspace not found",
         schema: "ApiError"
       }
     ]

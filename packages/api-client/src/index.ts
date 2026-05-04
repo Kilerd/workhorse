@@ -34,6 +34,7 @@ import type {
   StopTaskData,
   TaskData,
   TaskDiffData,
+  WorkspaceDiffData,
   TaskInputBody,
   TaskInputData,
   ThreadData,
@@ -42,7 +43,6 @@ import type {
   UpdateSettingsBody,
   UpdateTaskBody,
   UpdateWorkspaceBody,
-  UpdateWorkspaceConfigBody,
   WorkspaceAgentData,
   WorkspaceData,
   WorkspaceGitRefsData,
@@ -141,6 +141,10 @@ export function createApiClient(baseUrl: string) {
     .create();
   const getTaskDiff = fetcher
     .path("/api/tasks/{taskId}/diff")
+    .method("get")
+    .create();
+  const getWorkspaceDiff = fetcher
+    .path("/api/workspaces/{workspaceId}/diff")
     .method("get")
     .create();
   const listRuns = fetcher
@@ -272,6 +276,8 @@ export function createApiClient(baseUrl: string) {
       unwrap((await cleanupTaskWorktree({ taskId })).data),
     getTaskDiff: async (taskId: string): Promise<TaskDiffData> =>
       unwrap((await getTaskDiff({ taskId })).data),
+    getWorkspaceDiff: async (workspaceId: string): Promise<WorkspaceDiffData> =>
+      unwrap((await getWorkspaceDiff({ workspaceId })).data),
     listRuns: async (taskId: string): Promise<ListRunsData> =>
       unwrap((await listRuns({ taskId })).data),
     getRunLog: async (runId: string): Promise<RunLogData> =>
@@ -353,16 +359,6 @@ export function createApiClient(baseUrl: string) {
       unwrap(
         await requestJson(
           `/api/workspaces/${encodeURIComponent(workspaceId)}/agents/${encodeURIComponent(agentId)}`,
-          { method: "PATCH", body: JSON.stringify(body) }
-        )
-      ),
-    updateWorkspaceConfig: async (
-      workspaceId: string,
-      body: UpdateWorkspaceConfigBody
-    ): Promise<WorkspaceData> =>
-      unwrap(
-        await requestJson(
-          `/api/workspaces/${encodeURIComponent(workspaceId)}/config`,
           { method: "PATCH", body: JSON.stringify(body) }
         )
       ),

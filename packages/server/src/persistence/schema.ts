@@ -12,10 +12,6 @@ export const workspaces = sqliteTable("workspaces", {
   isGitRepo: integer("is_git_repo", { mode: "boolean" }).notNull().default(false),
   codexSettings: text("codex_settings").notNull(),
   promptTemplates: text("prompt_templates"),
-  prStrategy: text("pr_strategy").notNull().default("independent"),
-  autoApproveSubtasks: integer("auto_approve_subtasks", { mode: "boolean" })
-    .notNull()
-    .default(false),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull()
 });
