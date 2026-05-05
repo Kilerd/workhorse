@@ -139,6 +139,22 @@ export interface Workspace {
   updatedAt: string;
 }
 
+export type WorkspaceHarnessFileId = "claude-md" | "agents-md";
+
+export interface WorkspaceHarnessFile {
+  id: WorkspaceHarnessFileId;
+  relativePath: string;
+  exists: boolean;
+  sizeBytes?: number;
+  modifiedAt?: string;
+  content?: string;
+  truncated?: boolean;
+}
+
+export interface WorkspaceHarness {
+  files: WorkspaceHarnessFile[];
+}
+
 export type ReasoningEffort = "low" | "medium" | "high" | "xhigh";
 
 export interface BuiltinModelConfig {

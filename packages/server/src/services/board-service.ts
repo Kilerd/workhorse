@@ -30,6 +30,7 @@ import type {
   UpdateWorkspaceBody,
   WorkspaceAgent,
   WorkspaceGitRef,
+  WorkspaceHarness,
   Workspace
 } from "@workhorse/contracts";
 import { resolveTemplate } from "@workhorse/contracts";
@@ -46,6 +47,7 @@ import { createRunLogEntry } from "../lib/run-log.js";
 import { createTaskWorktree } from "../lib/task-worktree.js";
 import { resolveGlobalSettings } from "../lib/global-settings.js";
 import { resolveWorkspacePromptTemplates } from "../lib/workspace-prompt-templates.js";
+import { readWorkspaceHarness } from "../lib/workspace-harness.js";
 import { StateStore } from "../persistence/state-store.js";
 import {
   CodexAppServerManager,
@@ -608,6 +610,11 @@ export class BoardService {
 
     await this.gitWorktrees.pullWorkspace(workspace);
     return { success: true };
+  }
+
+  public async getWorkspaceHarness(workspaceId: string): Promise<WorkspaceHarness> {
+    const workspace = this.requireWorkspace(workspaceId);
+    return readWorkspaceHarness(workspace.rootPath);
   }
 
   public async createWorkspace(input: CreateWorkspaceBody): Promise<Workspace> {

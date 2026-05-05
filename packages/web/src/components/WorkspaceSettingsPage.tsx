@@ -37,16 +37,18 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 import { useAgents, useWorkspaceAgentMutations, useWorkspaceAgents } from "@/hooks/useAgents";
+import { WorkspaceContextPanel } from "@/components/WorkspaceContextPanel";
 
 // ---------------------------------------------------------------------------
 // Tab definition
 // ---------------------------------------------------------------------------
 
-type TabId = "general" | "agents" | WorkspacePromptTemplateId;
+type TabId = "general" | "agents" | "context" | WorkspacePromptTemplateId;
 
 const TABS: Array<{ id: TabId; label: string }> = [
   { id: "general", label: "General" },
   { id: "agents", label: "Agents" },
+  { id: "context", label: "Context" },
   ...WORKSPACE_PROMPT_TEMPLATE_IDS.map((id) => ({
     id: id as TabId,
     label: WORKSPACE_PROMPT_TEMPLATE_DEFINITIONS[id].label
@@ -126,7 +128,7 @@ export function WorkspaceSettingsPage({ workspace, taskCount, onSubmit }: Props)
 
   const canSubmit = Boolean(name.trim());
   const activePromptTemplateId: WorkspacePromptTemplateId =
-    activeTab === "general" || activeTab === "agents"
+    activeTab === "general" || activeTab === "agents" || activeTab === "context"
       ? WORKSPACE_PROMPT_TEMPLATE_IDS[0]
       : activeTab;
 
@@ -169,6 +171,8 @@ export function WorkspaceSettingsPage({ workspace, taskCount, onSubmit }: Props)
             />
           ) : activeTab === "agents" ? (
             <AgentsTab workspace={workspace} />
+          ) : activeTab === "context" ? (
+            <WorkspaceContextPanel workspace={workspace} active={activeTab === "context"} />
           ) : (
             <PromptTab
               templateId={activePromptTemplateId}
@@ -191,7 +195,7 @@ export function WorkspaceSettingsPage({ workspace, taskCount, onSubmit }: Props)
             />
           )}
 
-          {activeTab !== "agents" ? (
+          {activeTab !== "agents" && activeTab !== "context" ? (
             <div className="pt-4">
               <Button
                 type="button"

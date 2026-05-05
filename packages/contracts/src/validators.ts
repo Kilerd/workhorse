@@ -85,6 +85,8 @@ import type {
   WorkspaceGitRefsResponse,
   WorkspaceGitStatusResponse,
   WorkspaceGitPullResponse,
+  WorkspaceHarnessParams,
+  WorkspaceHarnessResponse,
   WorkspaceResponse,
   WorkspacesResponse
 } from "./api.js";
@@ -118,6 +120,8 @@ export const validateWorkspaceGitStatusParams =
   typia.createValidate<WorkspaceGitStatusParams>();
 export const validateWorkspaceGitPullParams =
   typia.createValidate<WorkspaceGitPullParams>();
+export const validateWorkspaceHarnessParams =
+  typia.createValidate<WorkspaceHarnessParams>();
 
 export const validateListTasksQuery = typia.createValidate<ListTasksQuery>();
 export const validateCreateTaskBody = typia.createValidate<CreateTaskBody>();
@@ -231,6 +235,8 @@ export const schemaRegistry = {
   WorkspaceGitRefsResponse: () => typia.json.schema<WorkspaceGitRefsResponse>(),
   WorkspaceGitStatusResponse: () => typia.json.schema<WorkspaceGitStatusResponse>(),
   WorkspaceGitPullResponse: () => typia.json.schema<WorkspaceGitPullResponse>(),
+  WorkspaceHarnessParams: () => typia.json.schema<WorkspaceHarnessParams>(),
+  WorkspaceHarnessResponse: () => typia.json.schema<WorkspaceHarnessResponse>(),
   PickWorkspaceRootResponse: () => typia.json.schema<PickWorkspaceRootResponse>(),
   DeleteWorkspaceResponse: () => typia.json.schema<DeleteWorkspaceResponse>(),
   TasksResponse: () => typia.json.schema<TasksResponse>(),

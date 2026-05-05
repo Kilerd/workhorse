@@ -433,6 +433,47 @@
         ]
       }
     },
+    "/api/workspaces/{workspaceId}/harness": {
+      "get": {
+        "operationId": "getWorkspaceHarness",
+        "summary": "Read project-level harness files (CLAUDE.md, AGENTS.md) from the workspace root",
+        "tags": [
+          "Workspaces"
+        ],
+        "responses": {
+          "200": {
+            "description": "Harness file metadata and content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceHarnessResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Workspace not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
     "/api/tasks": {
       "get": {
         "operationId": "listTasks",
@@ -3622,6 +3663,93 @@
         },
         "required": [
           "success"
+        ]
+      },
+      "WorkspaceHarnessParams": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId"
+        ]
+      },
+      "WorkspaceHarnessResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "enum": [
+              true
+            ]
+          },
+          "data": {
+            "$ref": "#/components/schemas/WorkspaceHarness"
+          }
+        },
+        "required": [
+          "ok",
+          "data"
+        ]
+      },
+      "WorkspaceHarness": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceHarnessFile"
+            }
+          }
+        },
+        "required": [
+          "files"
+        ]
+      },
+      "WorkspaceHarnessFile": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/WorkspaceHarnessFileId"
+          },
+          "relativePath": {
+            "type": "string"
+          },
+          "exists": {
+            "type": "boolean"
+          },
+          "sizeBytes": {
+            "type": "number"
+          },
+          "modifiedAt": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "relativePath",
+          "exists"
+        ]
+      },
+      "WorkspaceHarnessFileId": {
+        "oneOf": [
+          {
+            "enum": [
+              "claude-md"
+            ]
+          },
+          {
+            "enum": [
+              "agents-md"
+            ]
+          }
         ]
       },
       "PickWorkspaceRootResponse": {

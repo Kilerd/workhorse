@@ -143,6 +143,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{workspaceId}/harness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read project-level harness files (CLAUDE.md, AGENTS.md) from the workspace root */
+        get: operations["getWorkspaceHarness"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tasks": {
         parameters: {
             query?: never;
@@ -976,6 +993,27 @@ export interface components {
         WorkspaceGitPullData: {
             success: boolean;
         };
+        WorkspaceHarnessParams: {
+            workspaceId: string;
+        };
+        WorkspaceHarnessResponse: {
+            /** @enum {unknown} */
+            ok: true;
+            data: components["schemas"]["WorkspaceHarness"];
+        };
+        WorkspaceHarness: {
+            files: components["schemas"]["WorkspaceHarnessFile"][];
+        };
+        WorkspaceHarnessFile: {
+            id: components["schemas"]["WorkspaceHarnessFileId"];
+            relativePath: string;
+            exists: boolean;
+            sizeBytes?: number;
+            modifiedAt?: string;
+            content?: string;
+            truncated?: boolean;
+        };
+        WorkspaceHarnessFileId: "claude-md" | "agents-md";
         PickWorkspaceRootResponse: {
             /** @enum {unknown} */
             ok: true;
@@ -1776,6 +1814,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Workspace not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getWorkspaceHarness: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspaceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Harness file metadata and content */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceHarnessResponse"];
                 };
             };
             /** @description Workspace not found */

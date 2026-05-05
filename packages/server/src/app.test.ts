@@ -611,6 +611,35 @@ describe("workhorse runtime", () => {
     expect(openApiPayload.paths["/api/workspaces/pick-root"]).toBeDefined();
   });
 
+  it("returns workspace harness files over HTTP", async () => {
+    const { app, service, workspaceDir } = await createRuntime();
+    const workspace = await createWorkspace(service, workspaceDir);
+
+    await writeFile(join(workspaceDir, "CLAUDE.md"), "project rules", "utf8");
+
+    const response = await app.request(
+      `/api/workspaces/${workspace.id}/harness`
+    );
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.ok).toBe(true);
+
+    const ids = payload.data.files.map((file: { id: string }) => file.id).sort();
+    expect(ids).toEqual(["agents-md", "claude-md"]);
+
+    const claude = payload.data.files.find(
+      (file: { id: string }) => file.id === "claude-md"
+    );
+    expect(claude.exists).toBe(true);
+    expect(claude.content).toBe("project rules");
+
+    const agents = payload.data.files.find(
+      (file: { id: string }) => file.id === "agents-md"
+    );
+    expect(agents.exists).toBe(false);
+  });
+
   it("returns the selected workspace root path over HTTP", async () => {
     const { app } = await createRuntime({
       workspaceRootPicker: {

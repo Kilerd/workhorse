@@ -14,6 +14,7 @@ import type {
   ThreadKind,
   WorkspaceAgent,
   WorkspaceCodexSettings,
+  WorkspaceHarness,
   WorkspacePromptTemplates,
   Run,
   RunLogEntry,
@@ -110,6 +111,12 @@ export interface WorkspaceGitPullParams {
 export interface WorkspaceGitPullData {
   success: boolean;
 }
+
+export interface WorkspaceHarnessParams {
+  workspaceId: string;
+}
+
+export type WorkspaceHarnessData = WorkspaceHarness;
 
 export interface UpdateWorkspaceParams {
   workspaceId: string;
@@ -377,6 +384,7 @@ export type WorkspaceResponse = ApiSuccess<WorkspaceData>;
 export type WorkspaceGitRefsResponse = ApiSuccess<WorkspaceGitRefsData>;
 export type WorkspaceGitStatusResponse = ApiSuccess<WorkspaceGitStatusData>;
 export type WorkspaceGitPullResponse = ApiSuccess<WorkspaceGitPullData>;
+export type WorkspaceHarnessResponse = ApiSuccess<WorkspaceHarnessData>;
 export type PickWorkspaceRootResponse = ApiSuccess<PickWorkspaceRootData>;
 export type DeleteWorkspaceResponse = ApiSuccess<DeleteResult>;
 export type TasksResponse = ApiSuccess<ListTasksData>;
@@ -554,6 +562,8 @@ export type SchemaName =
   | "ListWorkspaceGitRefsParams"
   | "WorkspaceGitStatusParams"
   | "WorkspaceGitPullParams"
+  | "WorkspaceHarnessParams"
+  | "WorkspaceHarnessResponse"
   | "UpdateWorkspaceBody"
   | "UpdateWorkspaceParams"
   | "DeleteWorkspaceParams"
@@ -823,6 +833,26 @@ export const endpointRegistry: EndpointSpec[] = [
         status: 400,
         description: "Pull failed",
         schema: "ApiError"
+      },
+      {
+        status: 404,
+        description: "Workspace not found",
+        schema: "ApiError"
+      }
+    ]
+  },
+  {
+    operationId: "getWorkspaceHarness",
+    method: "get",
+    path: "/api/workspaces/{workspaceId}/harness",
+    summary: "Read project-level harness files (CLAUDE.md, AGENTS.md) from the workspace root",
+    tag: "Workspaces",
+    paramsSchema: "WorkspaceHarnessParams",
+    responses: [
+      {
+        status: 200,
+        description: "Harness file metadata and content",
+        schema: "WorkspaceHarnessResponse"
       },
       {
         status: 404,

@@ -37,6 +37,7 @@ import {
   validateUpdateWorkspaceParams,
   validateWorkspaceGitStatusParams,
   validateWorkspaceGitPullParams,
+  validateWorkspaceHarnessParams,
   validateAgentParams,
   validateCreateAgentBody,
   validateUpdateAgentBody,
@@ -210,6 +211,16 @@ export function createApp(
     );
     const result = await service.pullWorkspace(params.workspaceId);
     return c.json(ok(result));
+  });
+
+  app.get("/api/workspaces/:workspaceId/harness", async (c) => {
+    const params = validateOrThrow(
+      c.req.param(),
+      validateWorkspaceHarnessParams,
+      "Invalid workspace params"
+    );
+    const harness = await service.getWorkspaceHarness(params.workspaceId);
+    return c.json(ok(harness));
   });
 
   app.delete("/api/workspaces/:workspaceId", async (c) => {
